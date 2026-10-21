@@ -21,7 +21,7 @@ pre{background:#07101f;padding:15px;min-height:145px;max-height:350px;overflow:a
 </style>
 </head>
 <body><main class="wrap">
-<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.6. A safe starting point for our student-friendly programming environment.</p></header>
+<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.6.1. A safe starting point for our student-friendly programming environment.</p></header>
 <section class="panel"><h2>USB connection</h2><p>This page can listen to data and send a read-position request. Movement buttons send only small, individual factory-servo position commands. No torque or mode-switch commands are sent.</p>
 <div class="controls"><label>Baud rate<select id="baud"><option value="1000000" selected>1,000,000</option><option value="115200">115,200</option></select></label><button id="connect">Connect &amp; Listen</button><button class="secondary" id="disconnect" disabled>Disconnect</button><button class="secondary" id="readPositions" disabled>Read Joint Positions</button></div>
 <div class="status" id="status"><span class="dot"></span><span id="statusText">Disconnected</span></div>
@@ -140,13 +140,13 @@ function handleFrames(bytes){
       $('lastFrame').textContent='Header: '+data.slice(0,5).map(n=>n.toString(16).padStart(2,'0').toUpperCase()).join(' ')+'\nPayload: '+data.slice(5,-1).map(n=>n.toString(16).padStart(2,'0').toUpperCase()).join(' ')+'\nChecksum: '+data[size-1].toString(16).padStart(2,'0').toUpperCase();
    }
    if(!positionPending||data[4]!==96||length<14)continue;
-   const positions=[];
-   for(let i=0;i<6;i++){let n=data[5+i*2]+data[6+i*2]*256;if(n>=32768)n-=65536;positions.push(n)}
-   if(positions.some(n=>n<0||n>4095))continue;
+   const readbackPositions=[];
+   for(let i=0;i<6;i++){let n=data[5+i*2]+data[6+i*2]*256;if(n>=32768)n-=65536;readbackPositions.push(n)}
+   if(readbackPositions.some(n=>n<0||n>4095))continue;
    clearTimeout(readTimeout);positionPending=false;message('Connected — listening');
    $('readStatus').textContent='Valid joint position reply received!';
    $('jointData').innerHTML='';
-   positions.forEach((n,i)=>{const row=document.createElement('p');row.textContent=jointNames[i]+': '+n+' / 4095 (raw servo units)';$('jointData').appendChild(row)});
+   readbackPositions.forEach((n,i)=>{const row=document.createElement('p');row.textContent=jointNames[i]+': '+n+' / 4095 (raw servo units)';$('jointData').appendChild(row)});
  }
 }
 $('readPositions').onclick=async()=>{
