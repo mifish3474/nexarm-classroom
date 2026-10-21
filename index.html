@@ -13,16 +13,24 @@ button.secondary{background:#334155;color:white}button:disabled{opacity:.45;curs
 .status{display:inline-flex;align-items:center;gap:9px;font-weight:700;margin-top:15px}.dot{width:10px;height:10px;background:#fbbf24;border-radius:50%}.connected .dot{background:#4ade80}
 pre{background:#07101f;padding:15px;min-height:145px;max-height:350px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;border-radius:12px;color:#c4f1ff;font-size:.88rem;line-height:1.5}
 .stats{color:#cbd5e1;font-size:.91rem}footer{font-size:.88rem;color:#9bb0c9;margin:20px 0}
+.servo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:14px 0}
+.servo-card{border:1px solid #435673;background:#0c192c;border-radius:12px;padding:14px}
+.servo-card h3{margin:0 0 8px;font-size:1.05rem}
+.servo-card .controls{align-items:center;margin-top:10px}
+.servo-card button{min-width:72px}
 </style>
 </head>
 <body><main class="wrap">
-<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.5. A safe starting point for our student-friendly programming environment.</p></header>
-<section class="panel"><h2>USB connection</h2><p>This page can listen to data and send a read-position request. It never sends movement, torque, or mode-switch commands.</p>
+<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.6. A safe starting point for our student-friendly programming environment.</p></header>
+<section class="panel"><h2>USB connection</h2><p>This page can listen to data and send a read-position request. Movement buttons send only small, individual factory-servo position commands. No torque or mode-switch commands are sent.</p>
 <div class="controls"><label>Baud rate<select id="baud"><option value="1000000" selected>1,000,000</option><option value="115200">115,200</option></select></label><button id="connect">Connect &amp; Listen</button><button class="secondary" id="disconnect" disabled>Disconnect</button><button class="secondary" id="readPositions" disabled>Read Joint Positions</button></div>
 <div class="status" id="status"><span class="dot"></span><span id="statusText">Disconnected</span></div>
 <p class="stats">Bytes received: <strong id="count">0</strong></p></section>
 <section class="panel"><h2>Joint positions (experimental)</h2><p>Read-only position request using Hiwonder’s LeRobot command 96. Factory firmware may not support it. No torque or mode-change commands are sent.</p><p id="readStatus" role="status">Connect, then select Read Joint Positions.</p><div id="jointData" class="stats">No joint positions received yet.</div></section>
-<section class="panel"><h2>Servo 1 · First movement test</h2><p>Move Servo 1 by exactly 20 raw units from its latest observed position. Only the base servo receives a command. Keep the arm clear and be ready to switch off its power if motion is unexpected.</p><p class="stats">Measured Servo 1: <strong id="servo1Value">Not available</strong> · Last target: <strong id="servo1Target">—</strong></p><div class="controls"><button id="minus20" disabled>−20</button><button id="plus20" disabled>+20</button></div><p id="moveStatus" role="status">Connect and wait for live position data. Test range: 2000–3000.</p></section>
+<section class="panel"><h2>Six-servo manual controls</h2>
+<p>Move one servo at a time, 20 raw units per press. Each servo is limited to ±100 units around its measured position at connection. These are <strong>test limits, not collision protection</strong>. Keep the arm clear and its power switch accessible.</p>
+<div id="servoControls" class="servo-grid"></div>
+<p id="moveStatus" role="status">Connect and wait for six live position readings.</p></section>
 <section class="panel"><h2>Possible live joint positions</h2><p>Experimental decoding of the last 12 payload bytes of command 0x0B. These might be servo positions; they are <strong>not yet verified</strong>. No commands are sent for this display.</p><div id="candidatePositions" class="stats">Waiting for command 0x0B packets…</div></section>
 <section class="panel"><h2>Passive packet inspector</h2><p>Observes the robot’s existing messages without sending anything. These are <strong>unidentified data fields</strong>, not confirmed joint positions.</p><p class="stats">Valid packets: <strong id="frameCount">0</strong> · Most recent command: <strong id="lastCommand">—</strong></p><pre id="lastFrame">Waiting for a complete packet…</pre></section>
 <section class="panel"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Incoming hexadecimal data</h2><button class="secondary" id="clear">Clear output</button></div><p>Shows the first 2,048 bytes per session to keep the display manageable. The total byte counter continues updating.</p><pre id="output" aria-live="off">Waiting for connection…</pre></section>
@@ -30,9 +38,26 @@ pre{background:#07101f;padding:15px;min-height:145px;max-height:350px;overflow:a
 </main>
 <script>
 const $=id=>document.getElementById(id);
-let port=null,reader=null,connected=false,total=0,shown=0,positionPending=false,readTimeout=null,rx=[],frameCount=0,servo1=null,servo1Updated=0,moveBusy=false,lastMoveTime=0;
+let port=null,reader=null,connected=false,total=0,shown=0,positionPending=false,readTimeout=null,rx=[],frameCount=0,positions=Array(6).fill(null),startPositions=Array(6).fill(null),positionUpdated=0,moveBusy=false,lastMoveTime=0;
 const maxShown=2048;
-function refreshMoveButtons(){const ready=connected&&!moveBusy&&servo1!==null&&Date.now()-servo1Updated<1500; $('minus20').disabled=!ready||servo1-20<2000; $('plus20').disabled=!ready||servo1+20>3000}
+const servoLabels=['Servo 1 · Base','Servo 2 · Shoulder','Servo 3 · Elbow','Servo 4 · Wrist pitch','Servo 5 · Wrist roll','Servo 6 · Gripper'];
+for(let i=0;i<6;i++){
+ const card=document.createElement('div');card.className='servo-card';
+ card.innerHTML='<h3>'+servoLabels[i]+'</h3><div class="stats">Actual: <strong id="actual'+i+'">—</strong> · Target: <strong id="target'+i+'">—</strong></div><div class="stats">Test window: <span id="window'+i+'">—</span></div><div class="controls"><button id="minus'+i+'" disabled>−20</button><button id="plus'+i+'" disabled>+20</button></div>';
+ $('servoControls').appendChild(card);
+ $('minus'+i).onclick=()=>moveServo(i,-20);
+ $('plus'+i).onclick=()=>moveServo(i,20);
+}
+function refreshMoveButtons(){
+ const ready=connected&&!moveBusy&&Date.now()-positionUpdated<1500;
+ for(let i=0;i<6;i++){
+  const p=positions[i],base=startPositions[i];
+  const can=ready&&p!==null&&base!==null;
+  const low=Math.max(100,base-100),high=Math.min(3995,base+100);
+  $('minus'+i).disabled=!can||p-20<low;
+  $('plus'+i).disabled=!can||p+20>high;
+ }
+}
 function message(text){$('statusText').textContent=text;$('status').classList.toggle('connected',connected);$('connect').disabled=connected;$('disconnect').disabled=!connected;$('baud').disabled=connected;$('readPositions').disabled=!connected||positionPending;refreshMoveButtons()}
 function log(text){$('output').textContent=text}
 function append(text){if($('output').textContent==='Waiting for connection…')log('');$('output').textContent+=text;$('output').scrollTop=$('output').scrollHeight}
@@ -53,7 +78,7 @@ try {
 finally{await closePort()}
 }
 async function closePort(){
- connected=false;positionPending=false;servo1=null;servo1Updated=0;refreshMoveButtons();clearTimeout(readTimeout);
+ connected=false;positionPending=false;positions.fill(null);startPositions.fill(null);positionUpdated=0;refreshMoveButtons();clearTimeout(readTimeout);
  if(reader){try{await reader.cancel()}catch(e){}}
  if(port){const p=port;port=null;try{await p.close()}catch(e){}}
  message('Disconnected');
@@ -63,7 +88,9 @@ $('connect').onclick=async()=>{
  try{
   port=await navigator.serial.requestPort();
   await port.open({baudRate:Number($('baud').value)});
-  connected=true;total=0;shown=0;rx=[];servo1=null;servo1Updated=0;$('servo1Value').textContent='Not available';$ ('servo1Target').textContent='—';frameCount=0;$('candidatePositions').textContent='Waiting for command 0x0B packets…';$('frameCount').textContent='0';$('lastCommand').textContent='—';$('lastFrame').textContent='Waiting for a complete packet…';positionPending=false;$('count').textContent='0';log('');message('Connected — listening only');
+  connected=true;total=0;shown=0;rx=[];positions.fill(null);startPositions.fill(null);positionUpdated=0;
+  for(let i=0;i<6;i++){$('actual'+i).textContent='—';$('target'+i).textContent='—';$('window'+i).textContent='—'}
+  $('moveStatus').textContent='Waiting for live positions…';frameCount=0;$('candidatePositions').textContent='Waiting for command 0x0B packets…';$('frameCount').textContent='0';$('lastCommand').textContent='—';$('lastFrame').textContent='Waiting for a complete packet…';positionPending=false;$('count').textContent='0';log('');message('Connected — listening only');
   listen();
  }catch(e){append('\nConnection error: '+e.message);await closePort()}
 };
@@ -94,7 +121,12 @@ function handleFrames(bytes){
        const nums=[];
        for(let i=0;i<12;i+=2)nums.push(candidate[i]+256*candidate[i+1]);
        if(nums.every(n=>n>=0&&n<=4095)){
-          servo1=nums[0];servo1Updated=Date.now();$('servo1Value').textContent=String(servo1);refreshMoveButtons();
+          positions=nums;positionUpdated=Date.now();
+          for(let i=0;i<6;i++){
+            if(startPositions[i]===null){startPositions[i]=nums[i];$('window'+i).textContent=Math.max(100,nums[i]-100)+'–'+Math.min(3995,nums[i]+100)}
+            $('actual'+i).textContent=String(nums[i]);
+          }
+          refreshMoveButtons();
           const target=$('candidatePositions');
           target.replaceChildren();
           nums.forEach((n,i)=>{const row=document.createElement('p');row.textContent='Candidate joint '+(i+1)+': '+n;target.appendChild(row)});
@@ -131,27 +163,27 @@ $('readPositions').onclick=async()=>{
   },2000);
  }catch(e){positionPending=false;message('Connected — listening');$('readStatus').textContent='Read request error: '+e.message}
 };
-// Factory USB transparent servo write, per Hiwonder NexArm Motion Control §3.3.5.5.
-// FF FF 01 05 03 2A <position little endian> <inverted sum checksum>
-async function moveServo1(delta){
- if(!connected||!port||moveBusy||servo1===null||Date.now()-servo1Updated>1500){$('moveStatus').textContent='No fresh Servo 1 reading. Wait for telemetry.';return}
+// Factory transparent servo write (single servo ID 1..6): FF FF ID 05 03 2A LO HI CHECKSUM
+async function moveServo(index,delta){
+ const p=positions[index],base=startPositions[index],id=index+1;
+ if(!connected||!port||moveBusy||p===null||base===null||Date.now()-positionUpdated>1500){
+  $('moveStatus').textContent='No fresh positions. Wait for telemetry.';return;
+ }
  if(Date.now()-lastMoveTime<900){$('moveStatus').textContent='Wait a moment between movements.';return}
- const target=servo1+delta;
- if(target<2000||target>3000){$('moveStatus').textContent='Blocked: target outside conservative test range (2000–3000).';return}
+ const target=p+delta,low=Math.max(100,base-100),high=Math.min(3995,base+100);
+ if(target<low||target>high){$('moveStatus').textContent='Blocked: Servo '+id+' is outside its ±100-unit test window.';return}
  moveBusy=true;refreshMoveButtons();
  try{
-  const bytes=[0x01,0x05,0x03,0x2A,target&0xFF,(target>>8)&0xFF];
-  const check=(~bytes.reduce((a,b)=>a+b,0))&0xFF;
-  const frame=new Uint8Array([0xFF,0xFF,...bytes,check]);
+  const bytes=[id,0x05,0x03,0x2A,target&255,(target>>8)&255];
+  const check=(~bytes.reduce((a,b)=>a+b,0))&255;
+  const frame=new Uint8Array([255,255,...bytes,check]);
   const writer=port.writable.getWriter();
   try{await writer.write(frame)}finally{writer.releaseLock()}
-  lastMoveTime=Date.now();$('servo1Target').textContent=String(target);
-  $('moveStatus').textContent='Sent Servo 1 target '+target+'. Watch the arm and the live reading; command receipt does not guarantee movement.';
- }catch(e){$('moveStatus').textContent='Move command error: '+e.message}
+  lastMoveTime=Date.now();$('target'+index).textContent=String(target);
+  $('moveStatus').textContent='Sent Servo '+id+' target '+target+'. Check motion and live feedback; command receipt does not guarantee movement.';
+ }catch(e){$('moveStatus').textContent='Movement command error: '+e.message}
  finally{moveBusy=false;refreshMoveButtons()}
 }
-$('minus20').onclick=()=>moveServo1(-20);
-$('plus20').onclick=()=>moveServo1(20);
 $('disconnect').onclick=()=>closePort();
 $('clear').onclick=()=>{log('');shown=0};
 </script></body></html>
