@@ -16,12 +16,13 @@ pre{background:#07101f;padding:15px;min-height:145px;max-height:350px;overflow:a
 </style>
 </head>
 <body><main class="wrap">
-<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.4. A safe starting point for our student-friendly programming environment.</p></header>
+<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.5. A safe starting point for our student-friendly programming environment.</p></header>
 <section class="panel"><h2>USB connection</h2><p>This page can listen to data and send a read-position request. It never sends movement, torque, or mode-switch commands.</p>
 <div class="controls"><label>Baud rate<select id="baud"><option value="1000000" selected>1,000,000</option><option value="115200">115,200</option></select></label><button id="connect">Connect &amp; Listen</button><button class="secondary" id="disconnect" disabled>Disconnect</button><button class="secondary" id="readPositions" disabled>Read Joint Positions</button></div>
 <div class="status" id="status"><span class="dot"></span><span id="statusText">Disconnected</span></div>
 <p class="stats">Bytes received: <strong id="count">0</strong></p></section>
 <section class="panel"><h2>Joint positions (experimental)</h2><p>Read-only position request using Hiwonder’s LeRobot command 96. Factory firmware may not support it. No torque or mode-change commands are sent.</p><p id="readStatus" role="status">Connect, then select Read Joint Positions.</p><div id="jointData" class="stats">No joint positions received yet.</div></section>
+<section class="panel"><h2>Servo 1 · First movement test</h2><p>Move Servo 1 by exactly 20 raw units from its latest observed position. Only the base servo receives a command. Keep the arm clear and be ready to switch off its power if motion is unexpected.</p><p class="stats">Measured Servo 1: <strong id="servo1Value">Not available</strong> · Last target: <strong id="servo1Target">—</strong></p><div class="controls"><button id="minus20" disabled>−20</button><button id="plus20" disabled>+20</button></div><p id="moveStatus" role="status">Connect and wait for live position data. Test range: 2000–3000.</p></section>
 <section class="panel"><h2>Possible live joint positions</h2><p>Experimental decoding of the last 12 payload bytes of command 0x0B. These might be servo positions; they are <strong>not yet verified</strong>. No commands are sent for this display.</p><div id="candidatePositions" class="stats">Waiting for command 0x0B packets…</div></section>
 <section class="panel"><h2>Passive packet inspector</h2><p>Observes the robot’s existing messages without sending anything. These are <strong>unidentified data fields</strong>, not confirmed joint positions.</p><p class="stats">Valid packets: <strong id="frameCount">0</strong> · Most recent command: <strong id="lastCommand">—</strong></p><pre id="lastFrame">Waiting for a complete packet…</pre></section>
 <section class="panel"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Incoming hexadecimal data</h2><button class="secondary" id="clear">Clear output</button></div><p>Shows the first 2,048 bytes per session to keep the display manageable. The total byte counter continues updating.</p><pre id="output" aria-live="off">Waiting for connection…</pre></section>
@@ -29,9 +30,10 @@ pre{background:#07101f;padding:15px;min-height:145px;max-height:350px;overflow:a
 </main>
 <script>
 const $=id=>document.getElementById(id);
-let port=null,reader=null,connected=false,total=0,shown=0,positionPending=false,readTimeout=null,rx=[],frameCount=0;
+let port=null,reader=null,connected=false,total=0,shown=0,positionPending=false,readTimeout=null,rx=[],frameCount=0,servo1=null,servo1Updated=0,moveBusy=false,lastMoveTime=0;
 const maxShown=2048;
-function message(text){$('statusText').textContent=text;$('status').classList.toggle('connected',connected);$('connect').disabled=connected;$('disconnect').disabled=!connected;$('baud').disabled=connected;$('readPositions').disabled=!connected||positionPending}
+function refreshMoveButtons(){const ready=connected&&!moveBusy&&servo1!==null&&Date.now()-servo1Updated<1500; $('minus20').disabled=!ready||servo1-20<2000; $('plus20').disabled=!ready||servo1+20>3000}
+function message(text){$('statusText').textContent=text;$('status').classList.toggle('connected',connected);$('connect').disabled=connected;$('disconnect').disabled=!connected;$('baud').disabled=connected;$('readPositions').disabled=!connected||positionPending;refreshMoveButtons()}
 function log(text){$('output').textContent=text}
 function append(text){if($('output').textContent==='Waiting for connection…')log('');$('output').textContent+=text;$('output').scrollTop=$('output').scrollHeight}
 async function listen(){
@@ -51,7 +53,7 @@ try {
 finally{await closePort()}
 }
 async function closePort(){
- connected=false;positionPending=false;clearTimeout(readTimeout);
+ connected=false;positionPending=false;servo1=null;servo1Updated=0;refreshMoveButtons();clearTimeout(readTimeout);
  if(reader){try{await reader.cancel()}catch(e){}}
  if(port){const p=port;port=null;try{await p.close()}catch(e){}}
  message('Disconnected');
@@ -61,7 +63,7 @@ $('connect').onclick=async()=>{
  try{
   port=await navigator.serial.requestPort();
   await port.open({baudRate:Number($('baud').value)});
-  connected=true;total=0;shown=0;rx=[];frameCount=0;$('candidatePositions').textContent='Waiting for command 0x0B packets…';$('frameCount').textContent='0';$('lastCommand').textContent='—';$('lastFrame').textContent='Waiting for a complete packet…';positionPending=false;$('count').textContent='0';log('');message('Connected — listening only');
+  connected=true;total=0;shown=0;rx=[];servo1=null;servo1Updated=0;$('servo1Value').textContent='Not available';$ ('servo1Target').textContent='—';frameCount=0;$('candidatePositions').textContent='Waiting for command 0x0B packets…';$('frameCount').textContent='0';$('lastCommand').textContent='—';$('lastFrame').textContent='Waiting for a complete packet…';positionPending=false;$('count').textContent='0';log('');message('Connected — listening only');
   listen();
  }catch(e){append('\nConnection error: '+e.message);await closePort()}
 };
@@ -92,6 +94,7 @@ function handleFrames(bytes){
        const nums=[];
        for(let i=0;i<12;i+=2)nums.push(candidate[i]+256*candidate[i+1]);
        if(nums.every(n=>n>=0&&n<=4095)){
+          servo1=nums[0];servo1Updated=Date.now();$('servo1Value').textContent=String(servo1);refreshMoveButtons();
           const target=$('candidatePositions');
           target.replaceChildren();
           nums.forEach((n,i)=>{const row=document.createElement('p');row.textContent='Candidate joint '+(i+1)+': '+n;target.appendChild(row)});
@@ -128,6 +131,27 @@ $('readPositions').onclick=async()=>{
   },2000);
  }catch(e){positionPending=false;message('Connected — listening');$('readStatus').textContent='Read request error: '+e.message}
 };
+// Factory USB transparent servo write, per Hiwonder NexArm Motion Control §3.3.5.5.
+// FF FF 01 05 03 2A <position little endian> <inverted sum checksum>
+async function moveServo1(delta){
+ if(!connected||!port||moveBusy||servo1===null||Date.now()-servo1Updated>1500){$('moveStatus').textContent='No fresh Servo 1 reading. Wait for telemetry.';return}
+ if(Date.now()-lastMoveTime<900){$('moveStatus').textContent='Wait a moment between movements.';return}
+ const target=servo1+delta;
+ if(target<2000||target>3000){$('moveStatus').textContent='Blocked: target outside conservative test range (2000–3000).';return}
+ moveBusy=true;refreshMoveButtons();
+ try{
+  const bytes=[0x01,0x05,0x03,0x2A,target&0xFF,(target>>8)&0xFF];
+  const check=(~bytes.reduce((a,b)=>a+b,0))&0xFF;
+  const frame=new Uint8Array([0xFF,0xFF,...bytes,check]);
+  const writer=port.writable.getWriter();
+  try{await writer.write(frame)}finally{writer.releaseLock()}
+  lastMoveTime=Date.now();$('servo1Target').textContent=String(target);
+  $('moveStatus').textContent='Sent Servo 1 target '+target+'. Watch the arm and the live reading; command receipt does not guarantee movement.';
+ }catch(e){$('moveStatus').textContent='Move command error: '+e.message}
+ finally{moveBusy=false;refreshMoveButtons()}
+}
+$('minus20').onclick=()=>moveServo1(-20);
+$('plus20').onclick=()=>moveServo1(20);
 $('disconnect').onclick=()=>closePort();
 $('clear').onclick=()=>{log('');shown=0};
 </script></body></html>
