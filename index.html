@@ -16,18 +16,19 @@ pre{background:#07101f;padding:15px;min-height:145px;max-height:350px;overflow:a
 </style>
 </head>
 <body><main class="wrap">
-<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.1. A safe starting point for our student-friendly programming environment.</p></header>
-<section class="panel"><h2>USB connection</h2><p>This page can listen to data from the robot. It <strong>never sends commands</strong> and cannot intentionally move the arm.</p>
+<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.3. A safe starting point for our student-friendly programming environment.</p></header>
+<section class="panel"><h2>USB connection</h2><p>This page can listen to data and send a read-position request. It never sends movement, torque, or mode-switch commands.</p>
 <div class="controls"><label>Baud rate<select id="baud"><option value="1000000" selected>1,000,000</option><option value="115200">115,200</option></select></label><button id="connect">Connect &amp; Listen</button><button class="secondary" id="disconnect" disabled>Disconnect</button><button class="secondary" id="readPositions" disabled>Read Joint Positions</button></div>
 <div class="status" id="status"><span class="dot"></span><span id="statusText">Disconnected</span></div>
 <p class="stats">Bytes received: <strong id="count">0</strong></p></section>
 <section class="panel"><h2>Joint positions (experimental)</h2><p>Read-only position request using Hiwonder’s LeRobot command 96. Factory firmware may not support it. No torque or mode-change commands are sent.</p><p id="readStatus" role="status">Connect, then select Read Joint Positions.</p><div id="jointData" class="stats">No joint positions received yet.</div></section>
+<section class="panel"><h2>Passive packet inspector</h2><p>Observes the robot’s existing messages without sending anything. These are <strong>unidentified data fields</strong>, not confirmed joint positions.</p><p class="stats">Valid packets: <strong id="frameCount">0</strong> · Most recent command: <strong id="lastCommand">—</strong></p><pre id="lastFrame">Waiting for a complete packet…</pre></section>
 <section class="panel"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Incoming hexadecimal data</h2><button class="secondary" id="clear">Clear output</button></div><p>Shows the first 2,048 bytes per session to keep the display manageable. The total byte counter continues updating.</p><pre id="output" aria-live="off">Waiting for connection…</pre></section>
 <footer>Chrome or Edge on a supported computer/Chromebook · Requires HTTPS or localhost · Close other serial terminal tabs before connecting.</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
-let port=null,reader=null,connected=false,total=0,shown=0,positionPending=false,readTimeout=null,rx=[];
+let port=null,reader=null,connected=false,total=0,shown=0,positionPending=false,readTimeout=null,rx=[],frameCount=0;
 const maxShown=2048;
 function message(text){$('statusText').textContent=text;$('status').classList.toggle('connected',connected);$('connect').disabled=connected;$('disconnect').disabled=!connected;$('baud').disabled=connected;$('readPositions').disabled=!connected||positionPending}
 function log(text){$('output').textContent=text}
@@ -59,7 +60,7 @@ $('connect').onclick=async()=>{
  try{
   port=await navigator.serial.requestPort();
   await port.open({baudRate:Number($('baud').value)});
-  connected=true;total=0;shown=0;rx=[];positionPending=false;$('count').textContent='0';log('');message('Connected — listening only');
+  connected=true;total=0;shown=0;rx=[];frameCount=0;$('frameCount').textContent='0';$('lastCommand').textContent='—';$('lastFrame').textContent='Waiting for a complete packet…';positionPending=false;$('count').textContent='0';log('');message('Connected — listening only');
   listen();
  }catch(e){append('\nConnection error: '+e.message);await closePort()}
 };
@@ -83,6 +84,12 @@ function handleFrames(bytes){
    const shortChecksum=(~data.slice(2,5).reduce((a,b)=>a+b,0))&255;
    if(data[size-1]!==checksum&&data[size-1]!==shortChecksum){rx.shift();continue}
    rx.splice(0,size);
+   frameCount++;
+   $('frameCount').textContent=frameCount.toLocaleString();
+   $('lastCommand').textContent='0x'+data[4].toString(16).padStart(2,'0').toUpperCase()+' ('+data[4]+')';
+   if(frameCount%5===1){
+      $('lastFrame').textContent='Header: '+data.slice(0,5).map(n=>n.toString(16).padStart(2,'0').toUpperCase()).join(' ')+'\nPayload: '+data.slice(5,-1).map(n=>n.toString(16).padStart(2,'0').toUpperCase()).join(' ')+'\nChecksum: '+data[size-1].toString(16).padStart(2,'0').toUpperCase();
+   }
    if(!positionPending||data[4]!==96||length<14)continue;
    const positions=[];
    for(let i=0;i<6;i++){let n=data[5+i*2]+data[6+i*2]*256;if(n>=32768)n-=65536;positions.push(n)}
