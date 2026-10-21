@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NexArm Classroom — Connection Lab</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;color-scheme:dark;background:#0b1424;color:#eff6ff}
+*{box-sizing:border-box}body{margin:0;padding:28px 16px}.wrap{max-width:850px;margin:auto}
+header{margin-bottom:22px}.eyebrow{color:#7dd3fc;font-weight:750;letter-spacing:.13em;font-size:.76rem}h1{font-size:clamp(1.9rem,5vw,2.75rem);margin:.25em 0}p{color:#bacde0;line-height:1.55}.panel{background:#142237;border:1px solid #31415b;border-radius:18px;padding:22px;margin:15px 0}
+.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end}label{display:grid;gap:8px;font-weight:650;font-size:.9rem}
+select,button{font:inherit;border-radius:10px;padding:11px 15px}select{background:#0c1627;color:white;border:1px solid #64748b}button{border:0;background:#38bdf8;color:#081320;font-weight:800;cursor:pointer}
+button.secondary{background:#334155;color:white}button:disabled{opacity:.45;cursor:not-allowed}
+.status{display:inline-flex;align-items:center;gap:9px;font-weight:700;margin-top:15px}.dot{width:10px;height:10px;background:#fbbf24;border-radius:50%}.connected .dot{background:#4ade80}
+pre{background:#07101f;padding:15px;min-height:145px;max-height:350px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;border-radius:12px;color:#c4f1ff;font-size:.88rem;line-height:1.5}
+.stats{color:#cbd5e1;font-size:.91rem}footer{font-size:.88rem;color:#9bb0c9;margin:20px 0}
+</style>
+</head>
+<body><main class="wrap">
+<header><div class="eyebrow">MRFISH.APP · ROBOTICS</div><h1>NexArm Classroom</h1><p>Connection Lab · Version 0.1. A safe starting point for our student-friendly programming environment.</p></header>
+<section class="panel"><h2>USB connection</h2><p>This page can listen to data from the robot. It <strong>never sends commands</strong> and cannot intentionally move the arm.</p>
+<div class="controls"><label>Baud rate<select id="baud"><option value="1000000" selected>1,000,000</option><option value="115200">115,200</option></select></label><button id="connect">Connect &amp; Listen</button><button class="secondary" id="disconnect" disabled>Disconnect</button></div>
+<div class="status" id="status"><span class="dot"></span><span id="statusText">Disconnected</span></div>
+<p class="stats">Bytes received: <strong id="count">0</strong></p></section>
+<section class="panel"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Incoming hexadecimal data</h2><button class="secondary" id="clear">Clear output</button></div><p>Shows the first 2,048 bytes per session to keep the display manageable. The total byte counter continues updating.</p><pre id="output" aria-live="off">Waiting for connection…</pre></section>
+<footer>Chrome or Edge on a supported computer/Chromebook · Requires HTTPS or localhost · Close other serial terminal tabs before connecting.</footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let port=null,reader=null,connected=false,total=0,shown=0;
+const maxShown=2048;
+function message(text){$('statusText').textContent=text;$('status').classList.toggle('connected',connected);$('connect').disabled=connected;$('disconnect').disabled=!connected;$('baud').disabled=connected}
+function log(text){$('output').textContent=text}
+function append(text){if($('output').textContent==='Waiting for connection…')log('');$('output').textContent+=text;$('output').scrollTop=$('output').scrollHeight}
+async function listen(){
+try {
+ while(port && port.readable){
+  reader=port.readable.getReader();
+  try{while(true){
+   const {value,done}=await reader.read();if(done)break;
+   if(!value)continue;total+=value.length;$('count').textContent=total.toLocaleString();
+   const available=Math.max(0,maxShown-shown),slice=value.slice(0,available);
+   if(slice.length){append(Array.from(slice,b=>b.toString(16).padStart(2,'0').toUpperCase()).join(' ')+' ');shown+=slice.length}
+   if(shown===maxShown && shown-slice.length<maxShown)append('\n\n[Display limit reached; counter still running.]');
+  }} finally{reader.releaseLock();reader=null}
+  if(!connected)break;
+ }
+}catch(e){if(connected)append('\n\nRead error: '+e.message)}
+finally{await closePort()}
+}
+async function closePort(){
+ connected=false;
+ if(reader){try{await reader.cancel()}catch(e){}}
+ if(port){const p=port;port=null;try{await p.close()}catch(e){}}
+ message('Disconnected');
+}
+$('connect').onclick=async()=>{
+ if(!('serial' in navigator)){message('Web Serial unavailable: use current Chrome or Edge over HTTPS.');return}
+ try{
+  port=await navigator.serial.requestPort();
+  await port.open({baudRate:Number($('baud').value)});
+  connected=true;total=0;shown=0;$('count').textContent='0';log('');message('Connected — listening only');
+  listen();
+ }catch(e){append('\nConnection error: '+e.message);await closePort()}
+};
+$('disconnect').onclick=()=>closePort();
+$('clear').onclick=()=>{log('');shown=0};
+</script></body></html>
