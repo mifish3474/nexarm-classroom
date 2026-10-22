@@ -1,10 +1,10 @@
 # Servo 2: next local mapping test
 
-Status: proposed; not approved, implemented, or executed. Existing servo-1 approval
-remains consumed. No movement is authorized by this document.
-
-Deferred while [factory software findings](./FACTORY_SOFTWARE_FINDINGS.md) are
-used to build/validate a candidate model without additional physical movement.
+Historical proposal, superseded by the teacher's request for one build testing
+all remaining joints and a staged return for all six servos. The implemented scope
+and operating instructions are in [Joint suite and Reference A return](./JOINT_SUITE_AND_HOME.md).
+Existing servo-1 approval remains consumed. This document records the earlier
+servo-2 rationale; it does not add movement authority beyond the current scope.
 
 ## Purpose
 

@@ -1,7 +1,35 @@
-# Simulation and teacher mapping preview 0.7.0-dev.4
+# Simulation and teacher mapping preview 0.7.0-dev.5
 
 This preview starts architecture packages A/B/C. It is not a complete safety
 controller, full programming curriculum, or student live-robot release.
+
+## This build: joint suite and staged return
+
+The teacher requested a build testing all remaining joints, then a staged return
+covering all servos so the robot can reach Reference A before those tests.
+`/mapping.html` now provides five separate one-shot tests (servos 2–6), teacher
+observation fields, and one combined local report. Servo 1's confirmed clockwise
+base test remains recorded and consumed; it is not offered for a repeat.
+
+The staged return covers all six servos, skips joints already within +/-5 of
+Reference A, previews its complete route, and requires separate Enable and Start.
+From the teacher's reported `[2046,2009,1943,2048,2044,2052]`, it plans two shoulder
+waypoints and six elbow waypoints. It uses at most 20 raw units per nominal step,
+checks actual readback before sending (maximum 25), waits for settled feedback,
+and preserves at least 900 ms between writes. Tests and return share one guarded
+writer and cannot overlap. Stop/fault cancels future commands without retry.
+
+This is a bounded teacher commissioning tool, not general calibrated Home or
+student live control. One return attempt total is consumed before its first
+write, including failure/Stop; reload does not restore it. Numerical bounds are
+local commissioning guards, not verified mechanical/collision limits. Physical
+clearance, speed, force, and stopping behavior still require teacher validation.
+See [exact bounds, targets, failure rules, and operating steps](./JOINT_SUITE_AND_HOME.md).
+
+Verification: 68 unit tests, production TypeScript/Vite build, and 9 passing mocked
+Chrome tests cover the joint suite and staged return alongside existing simulation and
+passive inspection checks. The assistant has not accessed real hardware. The
+existing Blockly bundle-size warning remains; Chromebook performance is unverified.
 
 ## What works
 
@@ -72,9 +100,14 @@ injected CSS and field positioning, but continues to disallow inline scripts,
 eval, and runtime data connections. The worker loads from the same origin.
 
 The production app loads its HTML, CSS, and JavaScript from the same origin.
-The approved mapping page records one localStorage approval-consumption marker
-(`nexarm.approval.reference-a-servo1-plus20.2026-10-22`) containing scope, target,
-and attempt timestamp. It contains no student/USB identifiers and is not uploaded.
+The mapping page retains the original servo-1 localStorage approval marker
+(`nexarm.approval.reference-a-servo1-plus20.2026-10-22`), adds five independent
+`nexarm.approval.joint-suite.servoN.positive.2026-10-22` markers, and uses
+`nexarm.approval.staged-reference-a.2026-10-22` for the one return. Only attempted
+scopes are stored. They contain scope/target/route and attempt time, no student or
+USB identifiers, and are never uploaded. Teacher notes/results stay in memory
+until local JSON export; reload loses them but retains consumed markers. Do not
+clear those markers to repeat movement; a new attempt requires review.
 There are no accounts, cookies, analytics, telemetry upload,
 project uploads, or external fonts. Hosting still receives normal asset-request
 metadata. The local development server uses Vite's local update connection; use
@@ -89,26 +122,26 @@ technology, or hardware validation.
 
 ## Next work
 
-[Factory software findings](./FACTORY_SOFTWARE_FINDINGS.md) provide the next
-non-motion route: the supplied controller contains a URDF, arm meshes, and the
-3D viewer's joint-specific offsets/scales. Build and validate a simulation-only
-candidate model from those facts before resuming physical mapping tests.
-[Servo 2 mapping proposal](./SERVO_2_TEST_PROPOSAL.md) is deferred, remains
-unapproved, and is not implemented. The base stays where it is.
+[Factory software findings](./FACTORY_SOFTWARE_FINDINGS.md) provide a candidate
+model: the supplied controller contains a URDF, arm meshes, and the 3D viewer's
+joint-specific offsets/scales. Use the requested joint-suite observations to
+check that hypothesis before representing its display as an accurate live model.
+[The earlier servo-2 proposal](./SERVO_2_TEST_PROPOSAL.md) is superseded by the
+teacher-requested suite and staged return documented above.
 
 The first supplied reference and two photographs are summarized in
 [Reference A review](./REFERENCE_A_REVIEW.md), including the exact proposed
 single-axis command, preconditions, and observation/failure plan. The teacher has
-approved this one test; `/mapping.html` implements its fixed single command,
-explicit Enable/Send, feedback deadline, and persisted no-repeat guard. Follow
-the review document for the teacher test sequence and recorded result. The teacher
+approved and completed this first test. Its fixed command, feedback deadline,
+and persisted no-repeat guard are retained; the current UI offers only remaining
+tests. Follow the review document for the historical scope and recorded result. The teacher
 completed the one attempt: servo 1 reported 2051 → 2066 toward target 2068, other
 exported channels were unchanged, and a small clockwise movement was observed.
 The teacher confirmed servo 1 is the base-turn joint and increasing raw values
 rotate it clockwise when viewed directly from above. This establishes a local
 mapping/direction, not degrees per raw unit, zero angle, travel limits, or reverse
-behavior. The agent has not accessed a real robot; no repeat or reverse movement
-is authorized.
+behavior. The agent has not accessed a real robot. The later staged-return request
+covers the bounded return described above, not a repeat of the base mapping test.
 
 Following teacher testing, the approved servo-1 starting window is now 2043–2053
 inclusive. The fixed target remains 2068 (a 15–25-unit positive command). Every

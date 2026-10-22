@@ -1,15 +1,17 @@
 # Reference, calibration, and repeatable starts
 
-Status: passive observation implemented; one Reference A servo-1 positive test
-has been explicitly approved. All other physical movement tests remain gated.
+Status: passive observation and the completed Reference A servo-1 test are retained.
+The teacher subsequently requested the remaining joint tests and a staged return
+covering all six servos. See [the current scope and instructions](./JOINT_SUITE_AND_HOME.md).
+General student live control, calibrated homing, and unrestricted jogging remain gated.
 
 Update: [static inspection of the factory control software](./FACTORY_SOFTWARE_FINDINGS.md)
-recovered candidate geometry and the viewer's raw-to-angle conversions. Pursue
-that simulation/read-only validation route before further physical mapping.
+recovered candidate geometry and the viewer's raw-to-angle conversions. This is
+model evidence, not verification of physical limits or collision clearance.
 
 The first teacher-supplied export and photographs are reviewed in
 [Reference A and the first mapping-test proposal](./REFERENCE_A_REVIEW.md).
-That single test is approved and implemented on a separate teacher page. Passive
+That single test was completed; the separate teacher page now hosts the joint suite. Passive
 inspection remains read-only, and simulation has no hardware access.
 
 ## Three different operations
@@ -20,7 +22,8 @@ inspection remains read-only, and simulation has no hardware access.
    offsets and angle relationship, real limits, and measured link geometry. Recording
    a six-number vector does not perform this work.
 3. **Return to a lesson start:** Explicitly command an approved route to a reviewed
-   pose and verify arrival. This remains unimplemented and requires separate approval.
+   pose and verify arrival. A bounded teacher commissioning return is now implemented
+   under the later explicit request; a general calibrated lesson-start profile is not.
 
 The virtual arm still starts at six values of 2048. These are illustrative values,
 not a robot-neutral position or a safe target. No new feature maps live readings

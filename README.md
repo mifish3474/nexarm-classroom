@@ -12,9 +12,10 @@ six virtual joints, an animated arm illustration, a Blockly repeat-loop lesson,
 manual simulation jogging, Stop, and Reset Simulation. It has no USB connection
 or live movement capability. A separate teacher page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from the footer.
-That page also links to the separately approved, single-use Reference A servo-1
-mapping test. Follow [its exact scope and operating steps](docs/REFERENCE_A_REVIEW.md)
-before using it. It is not general live robot control and has no automatic return.
+That page links to the teacher-requested joint mapping suite and a bounded staged
+return to Reference A. Follow [the scope and operating steps](docs/JOINT_SUITE_AND_HOME.md)
+before using them. Tests are individual deliberate actions; the return has its own
+route preview, Enable, and Start. The prior base test remains consumed.
 Project saving is not implemented yet. The arm is an illustration, not a calibrated
 NexArm model. See the calibration plan before connecting hardware.
 
@@ -51,6 +52,7 @@ Project documents:
 - [First implementation scope and teacher review](docs/IMPLEMENTATION_NOTES.md)
 - [Read-only reference capture and calibration plan](docs/CALIBRATION_PLAN.md)
 - [Factory software inspection and candidate model findings](docs/FACTORY_SOFTWARE_FINDINGS.md)
+- [Joint mapping suite and staged return instructions](docs/JOINT_SUITE_AND_HOME.md)
 
 The architecture covers module boundaries, execution and fault handling,
 local project storage, privacy, testing, and incremental delivery. New physical
