@@ -1,7 +1,14 @@
-# Simulation and teacher mapping preview 0.7.0-dev.7
+# Simulation and teacher mapping preview 0.7.0-dev.8
 
 This preview starts architecture packages A/B/C. It is not a complete safety
 controller, full programming curriculum, or student live-robot release.
+
+The simulator, passive inspection, and joint mapping pages now display the loaded
+version in their headers. Vite fills these labels and the simulator footer from
+`package.json` in development and production builds, so future version changes
+need only one application version source.
+The development server reads that source for each HTML response; a running server
+does not retain an older label after the package version changes.
 
 ## This build: joint suite and staged return
 

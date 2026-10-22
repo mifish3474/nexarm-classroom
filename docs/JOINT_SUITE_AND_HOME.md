@@ -1,6 +1,6 @@
 # Joint tests, staged return, and teacher recovery
 
-Updated for 0.7.0-dev.7. Supervised teacher commissioning only; this is not student
+Updated for 0.7.0-dev.8. Supervised teacher commissioning only; this is not student
 live control or calibrated general homing. The teacher requested the remaining
 joint tests, a return for all servos, and subsequently a practical retry/manual
 positioning workflow. The assistant has not connected to or moved real hardware.
