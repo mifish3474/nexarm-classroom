@@ -19,6 +19,9 @@ route preview, Enable, and Start. The prior base test remains consumed.
 Teacher recovery permits a separately reviewed retry while preserving earlier
 records. Guarded manual positioning provides separate release, holding restore,
 and physical confirmation controls; unfinished setup blocks movement across reload.
+Teachers can review a stable current test start within the existing local region,
+so joint tests need no precise manual Home placement. The page explains remaining
+feedback, clearance, pose, and retry requirements in its Next steps panel.
 Project saving is not implemented yet. The arm is an illustration, not a calibrated
 NexArm model. See the calibration plan before connecting hardware.
 

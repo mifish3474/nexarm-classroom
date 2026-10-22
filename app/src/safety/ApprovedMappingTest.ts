@@ -15,6 +15,7 @@ export interface TestPort extends ReadOnlyPort { readonly writable: WritableStre
 // resurrect an approval that was already consumed by an earlier app version.
 export const APPROVAL_KEY = BASE_APPROVAL_KEY;
 type Phase = 'Disconnected' | 'Observing' | 'Enabled' | 'Observing result' | 'Complete' | 'Stopped' | 'Fault';
+type TestStart = {id:string;positions:readonly number[];reviewedAt:string};
 
 // Teacher commissioning only. Retries require a separate recorded adult review;
 // callers never supply arbitrary targets/packets or erase consumed approvals.
@@ -44,6 +45,8 @@ export class ApprovedMappingTest {
   private attemptId: string | null = null;
   private manual: ManualPositioning;
   private lastCommandAt = -Infinity;
+  private testStart: TestStart | null = null;
+  private attemptedStart: TestStart | null = null;
 
   constructor(locks: LockManager, private readonly storage: Pick<Storage, 'getItem' | 'setItem'>,
     private readonly now: () => number, private readonly visible: () => boolean,
@@ -55,6 +58,7 @@ export class ApprovedMappingTest {
       this.connectionState = state; this.connected = state === 'Listening';
       if (this.connected) { this.phase = 'Observing'; this.connectedAt = this.now(); this.message = 'Collecting full-checksum starting-state evidence.'; }
       else {
+        this.testStart=null;
         this.attempts.clearPermit();
         this.manual.interrupt('Connection ended during manual setup.', this.positions ?? []);
         if(this.home?.activeRun)this.home.fail('Connection lost during return. No further command is authorized.');
@@ -74,6 +78,10 @@ export class ApprovedMappingTest {
     if (this.frozenPlan && (this.phase === 'Enabled' || this.attempt)) return this.frozenPlan;
     if (this.plan.servo === 1) return this.plan;
     const i = this.plan.servo - 1;
+    if(this.testStart)return {...this.plan, reference:this.testStart.positions,
+      startMin:Math.max(0,this.testStart.positions[i]!-12),
+      startMax:Math.min(4095-20,this.testStart.positions[i]!+12),
+      target:this.positions?this.positions[i]!+20:this.testStart.positions[i]!+20};
     return { ...this.plan, startMin: Math.min(this.plan.startMin, HOME_REFERENCE[i]! - HOME_TOLERANCE),
       startMax: Math.max(this.plan.startMax, HOME_REFERENCE[i]! + HOME_TOLERANCE),
       target: this.positions ? this.positions[i]! + 20 : this.plan.target };
@@ -91,8 +99,21 @@ export class ApprovedMappingTest {
     const window = this.evidence.capture(this.now());
     const plan = this.candidatePlan();
     const selected = this.plan.servo - 1;
-    if (window.observation.min[selected]! < plan.startMin || window.observation.max[selected]! > plan.startMax) return `Servo ${plan.servo}: observed ${window.observation.min[selected]}–${window.observation.max[selected]}, permitted start ${plan.startMin}–${plan.startMax}. Review a staged return before this test; do not force powered joints.`;
+    if(plan.target>4095)return `Servo ${plan.servo}: +20 would target ${plan.target}, outside the command encoding range. Select another joint or reposition manually; no alternate direction is chosen automatically.`;
+    if (window.observation.min[selected]! < plan.startMin || window.observation.max[selected]! > plan.startMax) return `Servo ${plan.servo}: observed ${window.observation.min[selected]}–${window.observation.max[selected]}, permitted start ${plan.startMin}–${plan.startMax}. Inspect the physical pose and use Review current test start to record it.`;
     if (this.phase === 'Enabled' && (plan.target - this.positions![selected]! < 15 || plan.target - this.positions![selected]! > 25)) return 'Selected joint changed more than 5 raw units after Enable. Review the starting pose again.';
+    if(this.testStart){
+      for(let i=0;i<6;i++){
+        const low=Math.max(0,this.testStart.positions[i]!-12);
+        let high=this.testStart.positions[i]!+12;
+        // Allow a previously attempted positive step plus the existing12-unit
+        // feedback margin. These are relative observation checks, not joint limits.
+        try{if(i>0&&i!==selected&&this.storage.getItem(jointPlan(i+1).key)!==null)high+=20+12;}catch{return 'Local attempt storage is unavailable.';}
+        high=Math.min(high,4095);
+        if(window.observation.min[i]!<low||window.observation.max[i]!>high)return `Servo ${i+1}: observed ${window.observation.min[i]}–${window.observation.max[i]}, reviewed local start region ${low}–${high}. Inspect the pose and review a new test start if needed.`;
+      }
+      return null;
+    }
     for (let i = 0; i < 6; i++) {
       if (i === selected) continue;
       if (this.plan.servo !== 1 && i === 0) {
@@ -123,6 +144,8 @@ export class ApprovedMappingTest {
       canSend: this.phase === 'Enabled' && reason === null,
       canConnect: this.connectionState === 'Disconnected', attempted: this.attempt,
       plan: this.candidatePlan(), retryJointReason: this.retryReason('joint'), retryReturnReason: this.retryReason('return'),
+      testStartReview:this.testStart?{...this.testStart,positions:[...this.testStart.positions]}:null,
+      testStartReason:this.testStartReason(),returnReason:this.returnReason(),
       canSelect: !this.manual.blocked && !this.home?.activeRun && !this.writeInFlight && ['Disconnected', 'Listening'].includes(this.connectionState) && !['Enabled', 'Observing result', 'Fault'].includes(this.phase),
       homeCanEnable: this.returnReason()===null, homeCanStart: this.home?.phase==='Enabled'&&this.connected&&this.visible()&&this.now()-this.receivedAt<=500,
       homePhase:this.home?.phase??'Not started',homeMessage:this.home?.message??this.returnReason(),
@@ -134,6 +157,27 @@ export class ApprovedMappingTest {
       manualReason:this.manualReason() };
   }
 
+  private testStartReason():string|null {
+    if(this.manual.blocked)return 'Finish manual positioning and confirm holding first.';
+    const reason=this.manualReason();if(reason)return reason;
+    if(this.plan.servo===1)return 'The historical base test cannot use a new start.';
+    try{
+      const i=this.plan.servo-1,target=this.positions![i]!+20;
+      // The teacher reviews clearance at the actual pose. Historical bounds
+      // describe the staged return route, not mechanical limits for this test.
+      if(target>4095)return `Servo ${i+1}: +20 would target ${target}, outside the command encoding range. Select another joint or reposition manually; no alternate direction is chosen automatically.`;
+      return null;
+    }catch(error){return error instanceof Error?error.message:'Starting pose needs review.';}
+  }
+  reviewTestStart(confirmed:boolean) {
+    const reason=this.testStartReason();if(!confirmed||reason)throw new Error(reason??'Confirm stable holding, current pose, clearance for +20 tests, and cutoff access.');
+    const record=this.attempts.recordTestStart(this.positions!);
+    this.testStart=Object.freeze({id:record.id,positions:Object.freeze([...this.positions!]),reviewedAt:record.reviewedAt});
+    this.attempt=false;this.before=null;this.written=false;this.frozenPlan=null;this.attemptId=null;
+    this.phase='Observing';this.evidence.clear();this.message='Current test start reviewed. No movement or calibration command sent. Reconfirm selected-joint clearance, then Enable and Send.';
+    this.changed();
+  }
+
   private manualReason(): string | null {
     if (!this.connected || !this.visible()) return 'Connect explicitly with this page visible.';
     if (this.writeInFlight || this.home?.activeRun || ['Enabled','Observing result','Fault','Stopped'].includes(this.phase)) return 'Resolve the active operation and reconnect after a fault.';
@@ -143,7 +187,7 @@ export class ApprovedMappingTest {
   }
   enableManual(confirmed: boolean) {
     const reason=this.manualReason();if(!confirmed||reason)throw new Error(reason??'Confirm support, empty gripper, clearance, and cutoff access.');
-    this.manual.enable();this.attempts.clearPermit();this.attempt=false;this.before=null;this.frozenPlan=null;this.phase='Observing';this.changed();
+    this.manual.enable();this.testStart=null;this.attempts.clearPermit();this.attempt=false;this.before=null;this.frozenPlan=null;this.phase='Observing';this.changed();
   }
   sendHolding(enabled: boolean, confirmed: boolean) {
     const reason=this.manualReason();if(!confirmed||reason)throw new Error(reason??'Keep the arm supported and pinch areas clear.');
@@ -176,7 +220,8 @@ export class ApprovedMappingTest {
       const key = scope === 'return' ? RETURN_APPROVAL_KEY : this.plan.key;
       if (this.storage.getItem(key) === null) return 'No previous attempt needs renewal.';
       if (this.attempts.reason(key) === null) return 'One reviewed retry is already available for this connection.';
-      referenceReturnProposal(this.positions!); // Recovery cannot widen the local region.
+      if(scope==='return')referenceReturnProposal(this.positions!);
+      else { const reason=this.testStartReason();if(reason)return reason; }
       return null;
     } catch (error) { return error instanceof Error ? error.message : 'Review is unavailable.'; }
   }
@@ -205,7 +250,7 @@ export class ApprovedMappingTest {
   }
   enableReturn(confirmed:boolean,gripperClear:boolean){
     const reason=this.returnReason();if(!confirmed||!gripperClear||reason)throw new Error(reason??'Confirm full-route clearance and an empty gripper.');
-    this.home=new StagedReferenceReturn(this.positions!,this.now());this.attempt=false;this.before=null;this.written=false;this.frozenPlan=null;this.phase='Observing';this.changed();
+    this.home=new StagedReferenceReturn(this.positions!,this.now());this.testStart=null;this.attempt=false;this.before=null;this.written=false;this.frozenPlan=null;this.phase='Observing';this.changed();
   }
   startReturn(confirmed:boolean,gripperClear:boolean){
     if(!confirmed||!gripperClear||this.home?.phase!=='Enabled'||!this.connected||!this.visible()||this.evidence.reason(this.now()))throw new Error('Return preconditions are no longer satisfied.');
@@ -217,6 +262,9 @@ export class ApprovedMappingTest {
   private pumpReturn(){
     if(!this.home||this.home.phase!=='Running')return;
     if(!this.connected||!this.visible()||this.now()-this.receivedAt>500){this.fault('Return connection/freshness/visibility check failed.');return;}
+    // The shared writer timestamps dispatch slightly after route planning.
+    // Wait here rather than faulting at that clock boundary.
+    if(this.now()-this.lastCommandAt<900)return;
     const step=this.home.next(this.now());
     if(this.home.report().phase==='Fault'){this.fault(this.home.message);return;}
     if(step){if(this.writeInFlight){this.fault('A writer is still active.');return;}this.writeCommand(step.servo,step.target,()=>{this.home?.written(this.now());if(this.home?.phase==='Fault')this.fault(this.home.message);this.changed();});}
@@ -238,6 +286,7 @@ export class ApprovedMappingTest {
     // Another tab may have released the arm since this page was opened.
     // Refresh the durable interlock before acquiring any new serial session.
     this.manual = new ManualPositioning(this.storage);
+    this.testStart=null;
     this.parser.reset(); this.evidence.clear(); this.positions = null; this.receivedAt = -Infinity;
     this.connection.connect(async () => {
       const port = await select(); this.port = port;
@@ -255,7 +304,7 @@ export class ApprovedMappingTest {
     if (this.plan.servo === 6 && !gripperClear) throw new Error('Confirm an empty gripper and clear pinch area before this test.');
     const reason = this.preflight();
     if (!confirmed || this.phase !== 'Observing' || reason) throw new Error(reason ?? 'Confirm the reviewed setup before enabling.');
-    this.frozenPlan = this.candidatePlan();
+    this.frozenPlan = Object.freeze(this.candidatePlan());
     this.phase = 'Enabled'; this.message = `Enabled for one attempt: servo ${this.plan.servo} → ${this.frozenPlan.target}. Send is a separate deliberate action.`; this.changed();
   }
 
@@ -267,9 +316,10 @@ export class ApprovedMappingTest {
     // Synchronous consumption and write initiation: no await can let Stop, a
     // second click, or another UI action interleave after validation.
     try {
-      this.attemptId = this.attempts.consume(plan.key, { target: plan.target, startingWindow: [plan.startMin, plan.startMax], startingValue: this.positions![plan.servo - 1] });
+      this.attemptId = this.attempts.consume(plan.key, { target: plan.target, startingWindow: [plan.startMin, plan.startMax], startingValue: this.positions![plan.servo - 1],testStartReview:this.testStart });
     } catch { this.fault('Approval storage failed. No write was attempted. Review before proceeding.'); return; }
     this.before = [...this.positions!]; this.attempt = true; this.startedAt = this.now();
+    this.attemptedStart=this.testStart;
     this.phase = 'Observing result'; this.written = false; this.settled = [];
     this.message = 'One attempt consumed. Observing feedback; no retry or automatic return.';
     this.writeCommand(plan.servo,plan.target,()=>{
@@ -350,7 +400,7 @@ export class ApprovedMappingTest {
     this.changed();
   }
 
-  private fault(message: string) { this.manual.interrupt(message,this.positions??[]);if(this.home&&this.home.phase!=='Complete')this.home.fail(message);this.phase = 'Fault'; this.message = message; this.evidence.clear(); this.connection.disconnect(); this.changed(); }
-  stop() { this.manual.interrupt('Manual setup stopped/disconnected.',this.positions??[]);this.attempts.clearPermit();this.home?.stop();if (this.phase !== 'Complete' && this.phase !== 'Fault') { this.phase = 'Stopped'; this.message = 'Stopped/disarmed. A sent command cannot be recalled. No physical stop is guaranteed.'; } this.evidence.clear(); this.connection.disconnect(); this.changed(); }
-  report() { const plan = this.candidatePlan(); return { format: 'nexarm-mapping-test-result', servo: plan.servo, approval: plan.key, attemptId: this.attemptId, target: plan.target, startingWindow: [plan.startMin, plan.startMax], attempted: this.attempt, written: this.written, phase: this.phase, message: this.message, before: this.before ? [...this.before] : null, latest: this.positions ? [...this.positions] : null, physicalJoint: null, observedDirection: null, capturedAt: new Date().toISOString() }; }
+  private fault(message: string) { this.testStart=null;this.manual.interrupt(message,this.positions??[]);if(this.home&&this.home.phase!=='Complete')this.home.fail(message);this.phase = 'Fault'; this.message = message; this.evidence.clear(); this.connection.disconnect(); this.changed(); }
+  stop() { this.testStart=null;this.manual.interrupt('Manual setup stopped/disconnected.',this.positions??[]);this.attempts.clearPermit();this.home?.stop();if (this.phase !== 'Complete' && this.phase !== 'Fault') { this.phase = 'Stopped'; this.message = 'Stopped/disarmed. A sent command cannot be recalled. No physical stop is guaranteed.'; } this.evidence.clear(); this.connection.disconnect(); this.changed(); }
+  report() { const plan = this.candidatePlan(),review=this.attempt?this.attemptedStart:this.testStart; return { format: 'nexarm-mapping-test-result', servo: plan.servo, approval: plan.key, attemptId: this.attemptId, testStartReview:review?{...review,positions:[...review.positions]}:null, target: plan.target, startingWindow: [plan.startMin, plan.startMax], attempted: this.attempt, written: this.written, phase: this.phase, message: this.message, before: this.before ? [...this.before] : null, latest: this.positions ? [...this.positions] : null, physicalJoint: null, observedDirection: null, capturedAt: new Date().toISOString() }; }
 }

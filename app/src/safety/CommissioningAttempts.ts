@@ -25,6 +25,14 @@ export class CommissioningAttempts {
   review(scope: string, positions: readonly number[], previousResult: unknown) {
     this.clearPermit();
     if (this.storage.getItem(scope) === null) throw new Error('No consumed attempt needs renewal for this operation.');
+    const record=this.recordReview(scope,positions,previousResult);
+    this.permit = { scope, id: record.id };
+  }
+  recordTestStart(positions:readonly number[]) {
+    this.clearPermit();
+    return this.recordReview('nexarm.commissioning.test-start',positions,{purpose:'Teacher-reviewed local test start; not calibration or a change to Reference A',step:20});
+  }
+  private recordReview(scope:string,positions:readonly number[],previousResult:unknown) {
     const records = this.history();
     if (records.length >= 500) throw new Error('Recovery history is full; export for review.');
     const record = { id: crypto.randomUUID(), scope, reviewedAt: new Date().toISOString(), positions: [...positions], previousAttempt: this.storage.getItem(scope), previousResult };
@@ -32,7 +40,7 @@ export class CommissioningAttempts {
     if (value.length > 2_000_000) throw new Error('Recovery history is full; export for review.');
     this.storage.setItem(REVIEW_HISTORY_KEY, value);
     if (this.storage.getItem(REVIEW_HISTORY_KEY) !== value) throw new Error('Could not record teacher review. No retry permitted.');
-    this.permit = { scope, id: record.id };
+    return record;
   }
   consume(scope: string, details: object): string {
     const reason = this.reason(scope); if (reason) throw new Error(reason);

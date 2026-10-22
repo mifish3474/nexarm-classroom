@@ -1,6 +1,6 @@
 # Joint tests, staged return, and teacher recovery
 
-Updated for 0.7.0-dev.8. Supervised teacher commissioning only; this is not student
+Updated for 0.7.0-dev.10. Supervised teacher commissioning only; this is not student
 live control or calibrated general homing. The teacher requested the remaining
 joint tests, a return for all servos, and subsequently a practical retry/manual
 positioning workflow. The assistant has not connected to or moved real hardware.
@@ -22,7 +22,7 @@ Each review permits one additional attempt for that scope on this connection.
 Stop, disconnect, page hiding, selection changes, and reload revoke unused retry
 permission. Failed/uncertain writes consume attempts without automatic retry.
 Review is unavailable during active operations, stale/weak feedback, unresolved
-write/close cleanup, or an out-of-region pose. The historical base test cannot be
+write/close cleanup. An out-of-region pose blocks return renewal only. The historical base test cannot be
 renewed here. Do not clear browser storage or change profiles to bypass guards.
 
 Original consumed markers remain. Each review records scope, timestamp, readings,
@@ -34,6 +34,46 @@ student names. Earlier observations lost on reload cannot be reconstructed from
 command records. Storage failure blocks review/write without erasing evidence.
 History is bounded to 500 reviews and 2 MB; a full history needs export and
 engineering review, not a storage reset. All data stays local.
+
+## Continue testing without precise manual Home placement
+
+If holding is already restored, do not repeat release/restore to fit a narrow
+numeric window. In dev.10:
+
+1. Reconnect if needed and wait for stable readings. After holding confirmation,
+   the **Choose your next step** panel explains why each action is unavailable and links to
+   its controls. Movement-clearance boxes must be checked again deliberately.
+2. In **Review current test start**, inspect the current pose and holding,
+   clearance for positive 20-unit tests, and cutoff access. Check its confirmation
+   and click **Review current test start**. This records readings; it sends nothing.
+3. Wait for a new stable window. Confirm the selected joint's clearance and use
+   **Enable one attempt → Send single test**. Record physical joint and direction.
+4. Select each remaining joint in turn, renew clearance, and repeat its separate
+   test. The current-pose review stays active across selection on this connection.
+   Gripper requires its additional pinch-area confirmation.
+5. If a test was consumed earlier, use the separate teacher retry review. Reviewing
+   the current pose never erases or renews an old attempt. Export before leaving.
+
+The current-pose review uses the teacher's on-site clearance assessment for a
+single +20 test. It is independent of the historical Home-return bounds below;
+servo 2 at 2108 can be reviewed and tested toward 2128. The old 2004-2076 region
+is a return-route scope, not a mechanical limit. Single-joint retry review also
+uses this separation; reviewing the pose alone does not renew a consumed test.
+
+New per-joint start windows are within 12 of the captured readings. At Enable,
+target freezes at current reading +20; actual Send delta must remain 15-25.
+Uncommanded-joint drift supervision remains 12. A recorded earlier positive test
+may leave a companion near its endpoint; fresh feedback must still fit the
+reviewed relative observation window. The encoder rejects targets above 4095;
+0-4095 describes the protocol, not safe mechanical travel. No automatic reversal
+or general jog controls are added. The teacher must inspect physical clearance
+at the reviewed pose; student live control remains disabled.
+
+Active start reviews are session-only and are invalidated by Stop, fault,
+disconnect, reload, new manual setup, or enabling a return. Reference A stays
+unchanged. The review is saved in the existing bounded local review history;
+exports include `testStartReview`, and each attempted command retains its review
+evidence even if that attempt faults. No new accounts or network requests exist.
 
 ## Teacher manual positioning in the browser
 
@@ -101,7 +141,8 @@ ends the test. Avoid All Home and Calibration Center for this recovery.
 Use factory Read Pos to refresh its numbers. After holding is restored and stable,
 close the factory app, reconnect the browser, and inspect fresh readings. If they
 do not follow a changed pose, stop before any movement and report it. Manual
-placement does not redefine Reference A or bypass numerical gates. Position
+placement does not redefine Reference A. The staged return keeps its own
+starting-region limits; current-pose joint tests use the teacher-reviewed start. Position
 telemetry does not prove torque state. The external manufacturer link opens only
 on a click. Autonomous hand-guided recording/playback remains unimplemented.
 
@@ -119,14 +160,16 @@ selected/tested individually. Factory joint labels remain hypotheses until obser
 | 5 | Wrist roll | 2033–2051 | Current reported value +20 |
 | 6 | Gripper | 2044–2062 | Current reported value +20 |
 
-Target/packet preview freezes at Enable. Send requires continued near-reference
+The table describes legacy starts when no current pose has been reviewed. A
+reviewed current start replaces these windows with captured readings +/-12.
+Target/packet preview freezes at Enable. Send requires continued reviewed-start
 evidence and a positive measured command of 15–25 units. Readings can change the
 preview before Enable, never the frozen target afterward. This fixes the old
 mismatch between Reference A arrival and tests centered on earlier readings.
 The old targets still result when enabling at those old exact readings. Servo 1's
 original fixed command/window remains unchanged internally.
 
-Starting windows combine Reference A +/-9 with earlier reviewed windows.
+Without a current-pose review, legacy starting windows combine Reference A +/-9 with earlier reviewed windows.
 Unselected joints match the reviewed reference/test regions; attempted joints may
 remain near their declared local positive endpoint. Base must match Reference A
 (2039–2057) or the historical result (2061–2071). Markers do not prove position.
@@ -148,8 +191,8 @@ ordinary 5–9-unit residual error; the old +/-5 gate could reject that normal r
 The new gate accepts settled +/-9 without chasing error; it does not prove angular
 accuracy. Teacher physical inspection remains necessary.
 
-These are local commissioning software bounds, **not verified mechanical or
-collision limits**. Upper edges are unchanged. Lower edges for 1, 4, 5, and 6 now
+These are staged-return software bounds, **not verified mechanical or
+collision limits**. They apply only to this automatic route. Upper edges are unchanged. Lower edges for 1, 4, 5, and 6 now
 include Reference A minus9. An out-of-region pose is rejected.
 
 | Servo | Permitted return-start readings | Reference A |
@@ -187,6 +230,8 @@ lag, near-home starts, review/reload/storage failures, Stop, hanging writes, and
 command spacing. Release/restore checks also cover exact factory packets,
 physical-confirmation gates, storage failures, reload/older-tab interlocks,
 hanging writes, and late completion. Actual speed, force, clearance, stopping,
-and torque state remain unmeasured. Factory release/re-enable and post-manual
-readback were teacher-tested; these new browser controls still need their first
-supervised physical check.
+and torque state remain unmeasured. Factory release/re-enable, post-manual readback,
+and browser manual positioning through holding confirmation were teacher-tested.
+The revised page order and current-pose policy need teacher validation. Automated
+regressions cover reviewed servo 2 starts 2018 and 2108, independent Home blocking,
+selected-joint retry at 2108, and rejection of an unencodable +20 target.

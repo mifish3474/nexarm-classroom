@@ -30,6 +30,78 @@ function fixture(options: { rejectWrite?: boolean; hangWrite?: boolean; storageF
   return { test, port, writes, stored, feed, ready, setTime: (at: number) => { time = at; }, hide: () => { visible = false; }, finishWrite: () => finishWrite() };
 }
 describe('approved single-axis commissioning exception', () => {
+  it('reviews the current stable local pose without a home move, then tests multiple joints relative to that pose',async()=>{
+    const f=fixture({servo:2}),pose=[2046,2009,1943,2048,2044,2052];f.test.connect(async()=>f.port);await flush();
+    for(let at=0;at<=1100;at+=100)await f.feed(at,pose);
+    expect(f.test.snapshot().canEnable).toBe(false);expect(()=>f.test.reviewTestStart(false)).toThrow('Confirm');
+    f.test.reviewTestStart(true);expect(f.writes).toEqual([]);expect(f.test.snapshot().canEnable).toBe(false);
+    for(let at=1200;at<=2300;at+=100)await f.feed(at,pose);
+    expect(f.test.snapshot().plan.target).toBe(2029);expect(f.test.snapshot().canEnable).toBe(true);
+    const review=f.test.snapshot().testStartReview;f.test.enable(true);
+    expect(()=>Object.assign(f.test.snapshot().plan,{target:9999})).toThrow();f.test.send();await flush();
+    expect(f.writes[0]!.slice(2,8)).toEqual([2,5,3,42,237,7]);
+    pose[1]=2027;for(const at of [2400,2500,2600])await f.feed(at,pose);
+    expect(f.test.snapshot().phase).toBe('Complete');f.test.selectJoint(3);
+    for(let at=2700;at<=3800;at+=100)await f.feed(at,pose);
+    expect(f.test.snapshot().canEnable).toBe(true);f.test.enable(true);f.test.send();await flush();
+    expect(f.writes[1]!.slice(2,8)).toEqual([3,5,3,42,171,7]);
+    expect(f.test.report().testStartReview?.id).toBe(review?.id);f.test.stop();await flush();
+  });
+  it.each([1999,2018,2108])('accepts teacher-reviewed servo 2 start %s independently of the home-return region',async start=>{
+    const f=fixture({servo:2});await f.ready(start);
+    expect(f.test.snapshot().testStartReason).toBeNull();f.test.reviewTestStart(true);expect(f.writes).toEqual([]);
+    for(let at=1200;at<=2300;at+=100)await f.feed(at,[2066,start,2043,2049,2043,2053]);
+    expect(f.test.snapshot().canEnable).toBe(true);f.test.enable(true);f.test.send();await flush();
+    expect(f.writes).toHaveLength(1);expect(f.writes[0]![6]!+256*f.writes[0]![7]!).toBe(start+20);
+    if(start===2108)expect(f.test.snapshot().returnReason).not.toBeNull();
+    f.test.stop();await flush();
+  });
+  it('keeps the automatic home route restricted while permitting teacher-reviewed joint retries at 2108',async()=>{
+    const f=fixture({servo:2});f.stored.set(jointPlan(2).key,'prior attempt');f.stored.set(RETURN_APPROVAL_KEY,'prior return');await f.ready(2108);
+    expect(f.test.snapshot().retryReturnReason).toContain('Servo 2 reports 2108');expect(f.test.snapshot().homeCanEnable).toBe(false);
+    f.test.reviewTestStart(true);for(let at=1200;at<=2300;at+=100)await f.feed(at,[2066,2108,2043,2049,2043,2053]);
+    expect(f.test.snapshot().canEnable).toBe(false);f.test.reviewRetry('joint',true);expect(f.writes).toEqual([]);
+    for(let at=2400;at<=3500;at+=100)await f.feed(at,[2066,2108,2043,2049,2043,2053]);
+    f.test.enable(true);f.test.send();await flush();expect(f.writes[0]![6]!+256*f.writes[0]![7]!).toBe(2128);
+    expect(f.stored.get(jointPlan(2).key)).toBe('prior attempt');expect(f.stored.get(RETURN_APPROVAL_KEY)).toBe('prior return');f.test.stop();await flush();
+  });
+  it('checks command encoding at review and after switching to another reviewed joint',async()=>{
+    const f=fixture({servo:2});await f.ready(4080);
+    expect(()=>f.test.reviewTestStart(true)).toThrow('4100');expect(f.writes).toEqual([]);f.test.stop();await flush();
+    const g=fixture({servo:2}),pose=[2066,2108,4080,2049,2043,2053];g.test.connect(async()=>g.port);await flush();
+    for(let at=0;at<=1100;at+=100)await g.feed(at,pose);g.test.reviewTestStart(true);g.test.selectJoint(3);
+    for(let at=1200;at<=2300;at+=100)await g.feed(at,pose);
+    expect(g.test.snapshot().canEnable).toBe(false);expect(g.test.snapshot().reason).toContain('4100');expect(g.writes).toEqual([]);g.test.stop();await flush();
+  });
+  it('does not renew consumed joint approval by reviewing a different starting pose',async()=>{
+    const f=fixture({servo:2});f.stored.set(jointPlan(2).key,'original attempt');await f.ready(2010);f.test.reviewTestStart(true);
+    for(let at=1200;at<=2300;at+=100)await f.feed(at,[2066,2010,2043,2049,2043,2053]);
+    expect(f.test.snapshot().canEnable).toBe(false);expect(f.test.snapshot().reason).toContain('consumed');expect(f.stored.get(jointPlan(2).key)).toBe('original attempt');
+    f.test.reviewRetry('joint',true);for(let at=2400;at<=3500;at+=100)await f.feed(at,[2066,2010,2043,2049,2043,2053]);
+    expect(f.test.snapshot().canEnable).toBe(true);expect(f.writes).toEqual([]);f.test.stop();await flush();
+  });
+  it('invalidates reviewed starts on manual setup and Stop, preserving only their audit records',async()=>{
+    const f=fixture({servo:2});await f.ready(2010);f.test.reviewTestStart(true);
+    for(let at=1200;at<=2300;at+=100)await f.feed(at,[2066,2010,2043,2049,2043,2053]);
+    f.test.enableManual(true);expect(f.test.snapshot().testStartReview).toBeNull();f.test.stop();await flush();
+    const g=fixture({servo:2});await g.ready(2010);g.test.reviewTestStart(true);g.test.stop();await flush();expect(g.test.snapshot().testStartReview).toBeNull();
+    const h=fixture({servo:2});for(const [key,value]of g.stored)h.stored.set(key,value);await h.ready(2010);expect(h.test.snapshot().testStartReview).toBeNull();expect(h.test.snapshot().canEnable).toBe(false);h.test.stop();await flush();
+  });
+  it('retains the reviewed starting evidence in a faulted attempt report',async()=>{
+    const f=fixture({servo:2});await f.ready(2010);f.test.reviewTestStart(true);
+    for(let at=1200;at<=2300;at+=100)await f.feed(at,[2066,2010,2043,2049,2043,2053]);
+    const id=f.test.snapshot().testStartReview!.id;f.test.enable(true);f.test.send();await flush();
+    await f.feed(2400,[2066,2030,2063,2049,2043,2053]);expect(f.test.snapshot().phase).toBe('Fault');
+    expect(f.test.snapshot().testStartReview).toBeNull();expect(f.test.report().testStartReview?.id).toBe(id);expect(f.writes).toHaveLength(1);
+  });
+  it('rejects changed starting conditions after Enable and never moves the frozen target to follow them',async()=>{
+    const f=fixture({servo:2});await f.ready(2010);f.test.reviewTestStart(true);
+    for(let at=1200;at<=2300;at+=100)await f.feed(at,[2066,2010,2043,2049,2043,2053]);
+    f.test.enable(true);await f.feed(2400,[2066,2016,2043,2049,2043,2053]);expect(f.test.snapshot().phase).toBe('Fault');expect(f.writes).toEqual([]);
+  });
+  it('does not activate a reviewed start when durable review storage fails',async()=>{
+    const f=fixture({servo:2,storageFails:true});await f.ready(2010);expect(()=>f.test.reviewTestStart(true)).toThrow('No storage');expect(f.test.snapshot().testStartReview).toBeNull();expect(f.writes).toEqual([]);f.test.stop();await flush();
+  });
   it('releases and restores through the same writer, requiring new evidence and physical holding confirmation',async()=>{
     const f=fixture({servo:2});await f.ready();expect(()=>f.test.enableManual(false)).toThrow('Confirm');
     f.test.enableManual(true);expect(f.writes).toEqual([]);expect(f.test.snapshot().canRelease).toBe(true);

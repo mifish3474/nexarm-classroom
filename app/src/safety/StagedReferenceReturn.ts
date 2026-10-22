@@ -39,7 +39,7 @@ export class StagedReferenceReturn {
     }else a.samples=[];
     this.advance();
   }
-  written(at:number){if(this.phase==='Running'&&this.active){if(at-this.active.at>=2000){this.fail('Waypoint write deadline exceeded.');return;}this.active.written=true;this.advance();}}
+  written(at:number){if(this.phase==='Running'&&this.active){if(at-this.active.at>=2000){this.fail('Waypoint write deadline exceeded.');return;}this.lastWrite=Math.max(this.lastWrite,at);this.active.written=true;this.advance();}}
   private advance(){
     const a=this.active;if(!a||!a.written||a.samples.length<3||a.samples.at(-1)!.at-a.samples[0]!.at<200)return;
     this.index++;this.active=null;this.holding=[...this.latest];

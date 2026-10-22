@@ -11,6 +11,7 @@ const homeClear=node<HTMLInputElement>('home-clear'),homeEnable=node<HTMLButtonE
 const recoveryReviewed=node<HTMLInputElement>('recovery-reviewed');
 const retryReturn=node<HTMLButtonElement>('retry-return'),retryJoint=node<HTMLButtonElement>('retry-joint');
 const manualSupport=node<HTMLInputElement>('manual-support'),manualHeld=node<HTMLInputElement>('manual-held');
+const testStartClear=node<HTMLInputElement>('test-start-clear'),testStartReview=node<HTMLButtonElement>('test-start-review');
 const connect = node<HTMLButtonElement>('mapping-connect'), enable = node<HTMLButtonElement>('mapping-enable'), send = node<HTMLButtonElement>('mapping-send');
 const reference = [2048,2048,2047,2048,2042,2053];
 let selected = 2;
@@ -24,7 +25,7 @@ const tableRows = REMAINING_TESTS.map(plan => {
   for (const text of [String(plan.servo), plan.hypothesis, `${Math.min(plan.startMin,reference[plan.servo-1]!-HOME_TOLERANCE)}–${Math.max(plan.startMax,reference[plan.servo-1]!+HOME_TOLERANCE)}`, '+20 at Enable']) { const cell = document.createElement('td'); cell.textContent = text; row.append(cell); }
   const result = document.createElement('td'); result.textContent = 'Not attempted'; row.append(result);
   node('mapping-test-table').append(row);
-  return { servo: plan.servo, result };
+  return { servo: plan.servo, start:row.children[2] as HTMLElement, result };
 });
 const values = Array.from({ length: 6 }, (_, i) => {
   const card = document.createElement('div'); card.className = 'joint-card'; const title = document.createElement('h3'); title.textContent = `Reported servo ${i + 1}`;
@@ -35,6 +36,26 @@ const serial = (navigator as Navigator & { serial?: { requestPort(): Promise<Tes
 let test: ApprovedMappingTest | null = null;
 let terminal = '';
 let lastConnectionState = '';
+let holdingConfirmedThisSession=false;
+type State=ReturnType<ApprovedMappingTest['snapshot']>;
+function jointReadiness(state:State):string {
+  if(state.manualPhase!=='Normal')return 'Finish manual positioning and confirm holding first.';
+  if(state.connectionState!=='Listening')return 'Use Connect at the top of the page. After a fault, reconnect explicitly.';
+  if(state.phase==='Observing result')return 'Joint test is running. Wait for its result.';
+  if(state.phase==='Complete')return 'Test finished. Select another joint or review one more attempt.';
+  const reasons=[state.reason];
+  if(!setup.checked)reasons.push('Check “I reviewed clearance and cutoff conditions for this selected joint” in the joint controls.');
+  if(selected===6&&!grip.checked)reasons.push('Confirm the empty gripper and clear pinch area.');
+  return reasons.filter(Boolean).join(' ') || (state.canSend?'Ready: click Send single test.':state.canEnable?'Ready: click Enable one attempt.':'Wait for the current operation to finish.');
+}
+function returnReadiness(state:State):string {
+  if(state.manualPhase!=='Normal')return 'Finish manual positioning and confirm holding first.';
+  if(state.connectionState!=='Listening')return 'Connect and collect fresh readings before reviewing a return.';
+  if(state.homePhase==='Running')return 'Staged return is running.';
+  if(state.homePhase==='Enabled')return state.homeCanStart?'Route frozen. Review it, then click Start staged return.':'Waiting for fresh feedback before Start.';
+  if(state.positions?.every((n,i)=>Math.abs(n-reference[i]!)<=HOME_TOLERANCE))return 'No return needed: all readings are within ±9 of Reference A. You can review the current test start or selected joint.';
+  return [state.returnReason,!homeClear.checked?'Check the full-route clearance box in the return controls.':null].filter(Boolean).join(' ') || 'Ready: review the route, then click Enable staged return.';
+}
 function retain() {
   if (test?.snapshot().attempted) {
     const result=test.report(); reports.set(selected,result);
@@ -48,10 +69,11 @@ const refresh = () => {
     lastConnectionState=state.connectionState;
     if(state.connectionState!=='Listening'){
       manualSupport.checked=false;manualHeld.checked=false;recoveryReviewed.checked=false;
+      testStartClear.checked=false;holdingConfirmedThisSession=false;
     }
   }
   if (state.attempted && ['Complete','Fault','Stopped'].includes(state.phase) && terminal !== `${selected}:${state.phase}`) { retain(); terminal = `${selected}:${state.phase}`; }
-  connect.disabled = !setup.checked || !state.canConnect;
+  connect.disabled = !state.canConnect;
   enable.disabled = !setup.checked || !state.canEnable || (selected === 6 && !grip.checked);
   send.disabled = !setup.checked || !state.canSend || (selected === 6 && !grip.checked);
   choose.disabled = !state.canSelect;
@@ -61,17 +83,25 @@ const refresh = () => {
   node('recovery-return-status').textContent=`Return recovery: ${state.retryReturnReason??'Ready for teacher review.'}`;
   node('recovery-joint-status').textContent=`Selected-joint recovery: ${state.retryJointReason??'Ready for teacher review.'}`;
   node('home-state').textContent=`${state.homePhase}: ${state.homeMessage??''}`;
+  const jointStatus=jointReadiness(state),returnStatus=returnReadiness(state);
+  node('next-joint-status').textContent=jointStatus;node('next-return-status').textContent=returnStatus;
+  node('home-gate').textContent=returnStatus;
+  node('commissioning-next-status').textContent=state.manualPhase!=='Normal'?`Manual setup: ${state.manualPhase}. Finish it before movement tests.`:
+    holdingConfirmedThisSession?'Holding confirmed. Movement-clearance boxes were cleared. Choose a next step below; you do not need to repeat release/restore.':
+    state.connectionState==='Listening'?'Connected. Each action below explains what is needed before it can be enabled.':'Connect to inspect readiness. No navigation link starts movement.';
+  testStartReview.disabled=!testStartClear.checked||state.testStartReason!==null;
+  node('test-start-status').textContent=state.testStartReason??(state.testStartReview?`Active test start: ${state.testStartReview.positions.join(', ')}. Reconfirm joint clearance, then Enable/Send. Consumed tests still need retry review.`:'Readings are ready. Inspect the pose and check the review box, then click Review current test start.');
   node<HTMLButtonElement>('manual-enable').disabled=!manualSupport.checked||!state.canEnableManual;
   node<HTMLButtonElement>('manual-release').disabled=!manualSupport.checked||!state.canRelease;
   node<HTMLButtonElement>('manual-restore').disabled=!manualSupport.checked||!state.canRestore;
   node<HTMLButtonElement>('manual-confirm').disabled=!manualHeld.checked||!state.canConfirmHolding;
   node('manual-state').textContent=`${state.manualPhase}: ${state.manualMessage}`;
-  node('manual-gate').textContent=state.manualReason??'Connection and observation checks pass. Physical holding still needs teacher verification.';
+  node('manual-gate').textContent=state.manualReason??(state.manualPhase==='Normal'?'Manual setup is inactive. Continue to Review current test start, or the joint controls if already reviewed.':'Connection and observation checks pass. Complete the remaining manual-setup steps.');
   node('mapping-gripper-warning').hidden = selected !== 6;
   send.textContent = `Send single test: servo ${selected} to ${plan.target}`;
   node('mapping-scope').textContent = `Servo ${selected}: start ${plan.startMin}–${plan.startMax} → ${state.phase==='Enabled'?'frozen':'preview'} target ${plan.target}. At Enable: current reading +20; Send permits 15–25 raw units positive. Physical joint: ${plan.hypothesis}, to be verified.`;
   node('mapping-packet').textContent = plan.target<=4095?[...encodeGoalPosition(selected,plan.target)].map(n => n.toString(16).padStart(2,'0').toUpperCase()).join(' '):'No valid target at the current pose.';
-  node('mapping-message').textContent = state.message; node('mapping-gate').textContent = state.reason ?? 'Starting-state checks pass.';
+  node('mapping-message').textContent = state.message; node('mapping-gate').textContent = jointStatus;
   node('mapping-phase').textContent = `${state.connectionState} · ${state.phase}`;
   let outside = 0;
   values.forEach((card, i) => {
@@ -80,12 +110,14 @@ const refresh = () => {
     card.difference.textContent = delta === null ? `Reference A: ${reference[i]}` : `Reference A: ${reference[i]} · difference ${delta >= 0 ? '+' : ''}${delta}`;
     if (delta !== null && Math.abs(delta) > HOME_TOLERANCE) outside++;
   });
-  node('mapping-home-status').textContent = !state.positions ? 'Connect to compare reported values with Reference A.' : outside ? `${outside} joint(s) differ from Reference A by more than 9 raw units. Review the route before enabling.` : 'All readings are within ±9 of Reference A. No return is needed. Inspect the physical pose before joint tests.';
+  node('mapping-home-status').textContent = !state.positions ? 'Connect to compare reported values with Reference A.' : outside ? `${outside} joint(s) differ from Reference A by more than 9 raw units. A home return is optional; current-pose review is above.` : 'All readings are within ±9 of Reference A. No return is needed. Inspect the physical pose before joint tests.';
   if (state.positions) {
     try { const frozen=test.returnReport();const steps=frozen?.phase==='Enabled'||frozen?.phase==='Running'?frozen.steps:referenceReturnProposal(state.positions); node('mapping-home-proposal').textContent = steps.length?steps.map((step,index)=>`${index+1}. Servo ${step.servo} → ${step.target} (${step.delta>=0?'+':''}${step.delta} nominal raw) · ${step.packet}`).join('\n'):'No movement needed: all joints already within ±9 of Reference A.'; }
     catch (error) { node('mapping-home-proposal').textContent = error instanceof Error ? error.message : 'Return route needs review.'; }
   }
   for (const row of tableRows) {
+    if(state.testStartReview){const i=row.servo-1,low=Math.max(0,state.testStartReview.positions[i]!-12),high=Math.min(4095-20,state.testStartReview.positions[i]!+12);row.start.textContent=low<=high?`${low}–${high} (reviewed start)`:'Positive target needs review';}
+    else {const plan=jointPlan(row.servo);row.start.textContent=`${Math.min(plan.startMin,reference[row.servo-1]!-HOME_TOLERANCE)}–${Math.max(plan.startMax,reference[row.servo-1]!+HOME_TOLERANCE)}`;}
     try { row.result.textContent = reports.get(row.servo)?.phase ?? (localStorage.getItem(jointPlan(row.servo).key) ? 'Attempt consumed · report separately if not exported' : 'Not attempted'); }
     catch { row.result.textContent = 'Storage unavailable'; }
   }
@@ -107,9 +139,9 @@ choose.onchange = () => {
     refresh();
   } catch (error) { choose.value = String(selected); node('mapping-message').textContent = String(error); }
 };
-setup.onchange = () => { if (!setup.checked) test?.stop(); refresh(); };
+setup.onchange = () => { if (!setup.checked && ['Enabled','Observing result'].includes(test?.snapshot().phase??'')) test?.stop(); refresh(); };
 grip.onchange = () => { if (!grip.checked && selected === 6 && test?.snapshot().phase === 'Enabled') test.stop(); refresh(); };
-connect.onclick = () => { if (setup.checked && serial) test?.connect(() => serial.requestPort()); };
+connect.onclick = () => { if (serial) test?.connect(() => serial.requestPort()); };
 enable.onclick = () => { try { test?.enable(setup.checked,grip.checked); } catch (error) { node('mapping-message').textContent = String(error); } };
 homeClear.onchange=()=>{if(!homeClear.checked&&['Enabled','Running'].includes(test?.returnReport()?.phase??''))test?.stop();refresh();};
 homeEnable.onclick=()=>{try{retain();test?.enableReturn(homeClear.checked,homeClear.checked);}catch(error){node('home-state').textContent=String(error);}};
@@ -144,13 +176,22 @@ function manualAction(action:'enable'|'release'|'restore'|'confirm') {
     else if(action==='confirm')test?.confirmHolding(manualHeld.checked);
     else test?.sendHolding(action==='restore',manualSupport.checked);
     manualHeld.checked=false;recoveryReviewed.checked=false;
-    if(action==='enable'||action==='confirm'){setup.checked=false;homeClear.checked=false;grip.checked=false;}
+    if(action==='enable'||action==='confirm'){setup.checked=false;homeClear.checked=false;grip.checked=false;testStartClear.checked=false;}
+    if(action==='enable')holdingConfirmedThisSession=false;
     if(action==='confirm')manualSupport.checked=false;
+    if(action==='confirm'&&test?.snapshot().manualPhase==='Normal'&&test.snapshot().phase==='Observing'){
+      holdingConfirmedThisSession=true;node('next-actions-heading').focus();
+    }
     refresh();
   } catch(error) { node('manual-gate').textContent=error instanceof Error?error.message:String(error); }
 }
 node('manual-enable').onclick=()=>manualAction('enable');node('manual-release').onclick=()=>manualAction('release');
 node('manual-restore').onclick=()=>manualAction('restore');node('manual-confirm').onclick=()=>manualAction('confirm');
+testStartClear.onchange=refresh;
+testStartReview.onclick=()=>{
+  try{retain();test?.reviewTestStart(testStartClear.checked);testStartClear.checked=false;setup.checked=false;grip.checked=false;recoveryReviewed.checked=false;terminal='';node('test-start-message').textContent='Current test start recorded. No command sent. Check selected-joint clearance, wait for fresh readings, then Enable and Send.';refresh();}
+  catch(error){node('test-start-message').textContent=error instanceof Error?error.message:String(error);}
+};
 for (const id of ['observed-joint','observed-direction','observed-other']) node(id).addEventListener('input', () => {
   notes.set(selected, { joint: node<HTMLInputElement>('observed-joint').value, direction: node<HTMLInputElement>('observed-direction').value, other: node<HTMLTextAreaElement>('observed-other').value });
 });
@@ -158,7 +199,7 @@ node('mapping-export').onclick = () => {
   if (!test) return; retain();
   const output = { format: 'nexarm-joint-suite-report', schemaVersion: 2, capturedAt: new Date().toISOString(),
     confirmedBase: { servo: 1, before: 2051, latest: 2066, physicalJoint: 'Base turn', observedDirection: 'Increasing raw value turns clockwise viewed directly from above', source: 'Prior teacher-confirmed test; not repeated by this suite' },
-    stagedReturn:test.returnReport(),manualPositioning:test.manualReport(),recoveryReviews:test.recoveryHistory(),attemptHistory:[...attemptHistory.values()],tests: REMAINING_TESTS.map(plan => ({ servo: plan.servo, target: reports.get(plan.servo)?.target??null, result: reports.get(plan.servo) ?? null, observation: notes.get(plan.servo) ?? null })) };
+    stagedReturn:test.returnReport(),manualPositioning:test.manualReport(),testStartReview:test.snapshot().testStartReview,recoveryReviews:test.recoveryHistory(),attemptHistory:[...attemptHistory.values()],tests: REMAINING_TESTS.map(plan => ({ servo: plan.servo, target: reports.get(plan.servo)?.target??null, result: reports.get(plan.servo) ?? null, observation: notes.get(plan.servo) ?? null })) };
   const json = JSON.stringify(output,null,2); node('mapping-report').textContent = json;
   const url = URL.createObjectURL(new Blob([json],{type:'application/json'})); const link = document.createElement('a'); link.href = url; link.download = 'nexarm-joint-suite-report.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url),1000);
 };

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('manual positioning releases and restores without a position command and retains its interlock on reload',async({page})=>{
+for(const start of [2018,2108,4080])test(`manual positioning and current-pose review at servo 2 = ${start} retain the reload interlock`,async({page})=>{
   await page.addInitScript(()=>{
     const writes:number[][]=[],positions=[2066,2044,2043,2049,2043,2053];
     Object.assign(window,{mappingWrites:writes,manualPlace:(pose:number[])=>positions.splice(0,6,...pose)});
@@ -11,28 +11,40 @@ test('manual positioning releases and restores without a position command and re
           const body=[255,26,11,...Array(12).fill(0),...positions.flatMap(n=>[n&255,n>>8])];
           controller.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255]));
         },100);},cancel(){clearInterval(timer);}}),
-        writable:new WritableStream<Uint8Array>({write(bytes){writes.push([...bytes]);}})};
+        writable:new WritableStream<Uint8Array>({write(bytes){writes.push([...bytes]);if(bytes[2]!>=1&&bytes[2]!<=6&&bytes[5]===42)positions[bytes[2]!-1]=bytes[6]!+256*bytes[7]!-2;}})};
     }}});
   });
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/mapping.html');
   const writes=()=>page.evaluate(()=>(window as unknown as {mappingWrites:number[][]}).mappingWrites);
-  await page.locator('#mapping-setup').check();await page.locator('#mapping-connect').click();
+  await expect(page.locator('#mapping-setup')).not.toBeChecked();
+  expect(await page.locator('main > section[id]').evaluateAll(sections=>sections.map(section=>section.id))).toEqual(['connection-panel','manual-panel','next-actions','test-start-panel','tests-panel','observations-panel','recovery-panel','return-panel']);
+  await page.locator('#mapping-connect').click();
   await page.locator('#manual-support').check();await expect(page.locator('#manual-enable')).toBeEnabled();await page.locator('#manual-enable').click();
   expect(await writes()).toEqual([]);await expect(page.locator('#mapping-enable')).toBeDisabled();await expect(page.locator('#mapping-joint')).toBeDisabled();
   await page.locator('#manual-release').click();await expect(page.locator('#manual-state')).toContainText('Manual setup:');
   expect(await writes()).toEqual([[255,255,255,3,61,0,192]]);await expect(page.locator('#home-enable')).toBeDisabled();
-  await page.evaluate(()=>(window as unknown as {manualPlace:(pose:number[])=>void}).manualPlace([2048,2048,2047,2048,2042,2053]));
+  await page.evaluate(pose=>(window as unknown as {manualPlace:(pose:number[])=>void}).manualPlace(pose),[2046,start,1943,2048,2044,2052]);
   await expect(page.locator('#manual-restore')).toBeEnabled();await page.locator('#manual-restore').click();await expect(page.locator('#manual-state')).toContainText('Confirm holding:');
   expect(await writes()).toEqual([[255,255,255,3,61,0,192],[255,255,255,3,61,1,191]]);
   await expect(page.locator('#mapping-enable')).toBeDisabled();await page.locator('#manual-held').check();
   await expect(page.locator('#manual-confirm')).toBeEnabled();await page.locator('#manual-confirm').click();
   await expect(page.locator('#manual-state')).toContainText('Normal:');await expect(page.locator('#mapping-setup')).not.toBeChecked();
-  await page.locator('#mapping-setup').check();await expect(page.locator('#mapping-enable')).toBeEnabled();
+  await expect(page.locator('#next-actions-heading')).toBeFocused();await expect(page.locator('#commissioning-next-status')).toContainText('Movement-clearance boxes were cleared');
+  await expect(page.locator('#next-joint-status')).toContainText('clearance and cutoff');await expect(page.locator('#manual-gate')).not.toContainText('still needs teacher verification');
+  await page.locator('#test-start-clear').check();
+  if(start===4080){await expect(page.locator('#test-start-status')).toContainText('4100');await expect(page.locator('#test-start-review')).toBeDisabled();}
+  else {
+    await expect(page.locator('#test-start-review')).toBeEnabled();await page.locator('#test-start-review').click();expect(await writes()).toHaveLength(2);
+    await expect(page.locator('#mapping-enable')).toBeDisabled();await page.locator('#mapping-setup').check();await expect(page.locator('#mapping-enable')).toBeEnabled();
+    await expect(page.locator('#mapping-send')).toHaveText(`Send single test: servo 2 to ${start+20}`);
+    await page.locator('#mapping-enable').click();await expect(page.locator('#mapping-stop')).toBeInViewport();await page.locator('#mapping-send').click();await expect(page.locator('#mapping-phase')).toContainText('Complete');
+    expect((await writes()).map(frame=>frame[2])).toEqual([255,255,2]);
+  }
   await page.locator('#manual-support').check();await page.locator('#manual-enable').click();await page.locator('#manual-release').click();
   await expect(page.locator('#manual-state')).toContainText('Manual setup:');await page.locator('#mapping-stop').click();
   page.on('dialog',dialog=>dialog.accept());await page.reload();expect(await writes()).toEqual([]);
-  await expect(page.locator('#manual-state')).toContainText('Recovery required:');await page.locator('#mapping-setup').check();await page.locator('#mapping-connect').click();
+  await expect(page.locator('#manual-state')).toContainText('Recovery required:');await page.locator('#mapping-connect').click();
   await expect(page.locator('#mapping-enable')).toBeDisabled();await expect(page.locator('#home-enable')).toBeDisabled();
   await page.locator('#manual-held').check();await expect(page.locator('#manual-confirm')).toBeEnabled();
   // Teacher reports factory holding was restored externally: confirmation sends nothing.
@@ -148,6 +160,7 @@ test('one connection supports five deliberate tests with per-joint observations 
   await expect(page.locator('#mapping-report')).toContainText('Observed joint 6');
   await page.getByRole('button',{name:'Stop / Disconnect'}).click();
   page.on('dialog',dialog=>dialog.accept());await page.reload();
-  await expect(page.locator('#mapping-gate')).toContainText('Teacher recovery');
-  await expect(page.getByRole('button',{name:'Enable one attempt'})).toBeDisabled();expect(await writes()).toEqual([]);expect(errors).toEqual([]);
+  await expect(page.locator('#mapping-gate')).toContainText('Connect');
+  await setup.check();await page.locator('#mapping-connect').click();await expect(page.locator('#mapping-gate')).toContainText('Teacher recovery');
+  await expect(page.getByRole('button',{name:'Enable one attempt'})).toBeDisabled();expect(await writes()).toEqual([]);expect(errors).toEqual([]);await page.locator('#mapping-stop').click();
 });

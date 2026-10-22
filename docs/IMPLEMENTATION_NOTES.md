@@ -1,4 +1,4 @@
-# Simulation and teacher mapping preview 0.7.0-dev.8
+# Simulation and teacher mapping preview 0.7.0-dev.10
 
 This preview starts architecture packages A/B/C. It is not a complete safety
 controller, full programming curriculum, or student live-robot release.
@@ -9,6 +9,58 @@ version in their headers. Vite fills these labels and the simulator footer from
 need only one application version source.
 The development server reads that source for each HTML response; a running server
 does not retain an older label after the package version changes.
+
+## This update: teacher-reviewed starts and a usable page order
+
+The teacher reported that Review current test start stayed unavailable and the
+page order made testing difficult. The reported servo-2 value was first 2018,
+then corrected to possibly 2108. The latter is outside the old 2004-2076 return
+region. The underlying defect was applying a historical Home-route envelope to
+the teacher's review of a small single-joint test. Those bounds were never
+established as mechanical travel limits. Following the teacher's request, that
+inherited restriction now applies only to the automatic staged-return route.
+
+The page follows this workflow:
+
+1. **Connect and inspect readings.** Connect is independent of the joint-test
+   clearance checkbox and sends no application command. Stop stays visible when
+   scrolling. Stable feedback still takes about one second after an action.
+2. **Position the arm if needed.** Skip release/restore if already holding a
+   suitable pose. If used, finish physical holding confirmation first.
+3. **Review current test start.** Inspect holding, the physical pose, clearance
+   for small positive tests, and cutoff access; check the box and click Review.
+4. **Test one joint.** Select a joint, confirm clearance, Enable, then Send.
+   Record its physical joint/direction and export observations just below.
+5. **Teacher recovery** permits one more selected-joint attempt after inspection
+   if a previous test is consumed. Review the current start first if needed.
+   **Optional staged return** is at the bottom and is not a prerequisite.
+
+The on-site teacher's review records the current stable six readings without
+redefining Reference A. Single tests use relative start windows within 12 raw
+units of the review; at Enable, target freezes at the latest selected reading
++20. Send still allows only 15-25 raw units of positive command from feedback.
+Targets must be encodable (0-4095); that is a protocol validity check, not a
+claim that the whole range is mechanically safe. The teacher reviews actual
+clearance for this supervised test. There is no arbitrary target input,
+automatic reverse direction, student hardware access, or expanded Home route.
+The historical base test remains consumed and cannot be repeated here.
+
+Joint retry review no longer inherits the Home-route envelope either. Return
+retry still requires its original route bounds. Reviewing a pose never renews
+a consumed test; the separate retry action preserves prior records. Selected
+start drift, uncommanded-joint drift, full-checksum fresh stable telemetry,
+command spacing, exclusive writer, feedback deadline, and manual-setup interlock
+remain enforced. Unchecking joint clearance while idle no longer disconnects;
+it still stops an enabled or running joint test.
+
+Active pose reviews remain connection-only and expire on Stop, fault, manual
+setup, return enable, disconnect, and reload. Local audit evidence persists in
+the bounded review history and reports, including faulted attempt snapshots.
+No new accounts, dependencies, uploads, or runtime network requests were added.
+
+A prior browser regression also exposed a staged-return timing race. Scheduling
+now waits for the shared 900 ms interval before dispatch, measured from write
+completion. The interval remains enforced; it was not shortened.
 
 ## This build: joint suite and staged return
 
@@ -31,7 +83,8 @@ student live control. Each attempt is consumed before its first write; reload
 does not restore it. Teacher recovery now records an explicit review permitting
 one more return or selected-joint attempt, with renewed clearance, fresh evidence,
 and separate Enable/Send or Start. Original records remain. A pending write, fault
-without reconnect, stale feedback, or out-of-region pose cannot be bypassed.
+without reconnect, or stale feedback cannot be bypassed. Only the automatic
+return remains confined to its historical start region.
 Joint targets now freeze at current reading +20 at Enable, with <=5 drift before
 Send, and starting windows accept Reference A +/-9. This fixes the mismatch
 between the return's arrival readings and historical test starting values. The
@@ -42,8 +95,8 @@ local commissioning guards, not verified mechanical/collision limits. Physical
 clearance, speed, force, and stopping behavior still require teacher validation.
 See [exact bounds, targets, failure rules, and operating steps](./JOINT_SUITE_AND_HOME.md).
 
-Verification: 90 unit tests, production TypeScript/Vite build, and 11 mocked
-Chrome tests pass for manual positioning, recovery, joint tests, staged return,
+Verification: 101 unit tests, production TypeScript/Vite build, and 13 mocked
+Chrome tests pass for manual positioning, current-pose review, recovery, joint tests, staged return,
 simulation, and passive inspection. The assistant has not accessed real hardware. The
 existing Blockly bundle-size warning remains; Chromebook performance is unverified.
 
@@ -62,8 +115,9 @@ setup ends with physical confirmation and new fresh evidence. An interlock saved
 before torque writes survives reload and is refreshed at each connection, including
 pages opened before a different tab released the arm. Interruption leaves holding
 unverified; late writes cannot resume setup. Physical support, cutoff access,
-clear pinch areas, and adult supervision remain necessary. These browser buttons
-need a supervised physical check; the assistant tested only synthetic USB streams.
+clear pinch areas, and adult supervision remain necessary. The teacher passed the
+browser manual-positioning steps through holding confirmation; the assistant has
+tested only synthetic USB streams. The revised current-pose flow needs teacher testing.
 
 Local storage adds `nexarm.commissioning.manual-positioning.v1`: a durable holding-
 verification interlock and the last50 command/confirmation events with times and

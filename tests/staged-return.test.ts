@@ -6,7 +6,8 @@ describe('staged return scheduling',()=>{
     expect(run.next(0)?.target).toBe(2022);expect(run.next(1)).toBeNull();
     const after=[2046,2022,1943,2048,2044,2052];for(const at of [100,200,300])run.observe(after,at);
     expect(run.index).toBe(0);run.written(300);expect(run.index).toBe(1);
-    run.observe(after,600);expect(run.next(899)).toBeNull();expect(run.next(900)?.target).toBe(2035);
+    run.observe(after,600);expect(run.next(899)).toBeNull();expect(run.next(900)).toBeNull();
+    run.observe(after,1100);expect(run.next(1199)).toBeNull();expect(run.next(1200)?.target).toBe(2035);
   });
   it('does not chase residual error or accept a late write as completion',()=>{
     const before=[2066,2044,2043,2049,2043,2053],run=new StagedReferenceReturn(before,0);run.start(before,0);run.next(0);
