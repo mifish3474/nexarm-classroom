@@ -1,4 +1,22 @@
-# Simulation and teacher mapping preview 0.7.0-dev.10
+# Simulation and teacher control preview 0.7.0-dev.12
+
+## Current update: half-second jog recovery and speed-control research
+
+Jog controls can accept the next click 500 ms after the preceding write completes,
+provided the preceding move has settled and the last three fresh readings span
+at least 200 ms with spread no greater than three. They no longer wait for a new
+full one-second capture after each jog. Initial arming, manual setup, and fault
+recovery retain their full observation window; Home retains its existing pacing.
+No clicks queue while movement or a write is unresolved.
+
+The factory app and manufacturer documentation agree on an atomic command carrying
+acceleration, target position, and speed. An offline-only encoder and a concrete
+[one-joint test proposal](./SPEED_CONTROL_REVIEW.md) are ready for approval. There
+is no live caller for the new command. Speed-controlled Home is pending that
+physical test and review of cancellation during a longer in-flight move.
+
+Verification: 125 unit tests and the TypeScript/Vite build pass. Chrome directly
+exercises all twelve jog buttons at 500 ms intervals with synthetic USB data.
 
 This preview starts architecture packages A/B/C. It is not a complete safety
 controller, full programming curriculum, or student live-robot release.
@@ -10,7 +28,43 @@ need only one application version source.
 The development server reads that source for each HTML response; a running server
 does not retain an older label after the package version changes.
 
-## This update: teacher-reviewed starts and a usable page order
+## This update: direct +/-20 controls and the requested Home
+
+The teacher requested more direct control: reusable -20/+20 buttons on all six
+servos, Home `[2050,2150,2100,2200,2000,1080]`, and a slow return. The main
+`/mapping.html` now provides those controls. Connect, one per-session setup
+confirmation, and Enable are followed by direct reusable jog buttons and Home.
+No test-start review or consumed-attempt renewal is required for these actions.
+The historical base approval and all old attempt markers remain unchanged.
+
+Home uses a finite frozen route, one joint at a time in order 2,3,4,5,1,6.
+Nominal increments are at most 10 raw units, completed writes are at least 1200 ms
+apart, actual command delta is at most 20, and each step needs settled feedback.
+No new firmware speed command is used; this paces the return rather than setting
+the physical velocity of each step. Final feedback within nine raw units is
+accepted. Stop cancels remaining steps and leaves USB connected; inspect and
+Enable to jog or start a newly calculated return. There is no automatic restart.
+
+Fresh stable full-checksum readings, single-writer ownership, command spacing,
+step supervision, timeouts, and the durable manual holding interlock remain.
+Healthy connections can recover from a fault with inspection, stable readings,
+and deliberate Enable; outstanding writes still block new commands. The optional
+release/restore section uses the existing factory commands and physical holding
+confirmation. Reports export locally. No student hardware execution was enabled.
+
+The earlier workflow is preserved at `/mapping-tests.html`; its Reference A stays
+separate from the newly requested Home. Its page and regression tests retain the
+prior one-shot approvals. The root prototype remains unchanged.
+
+See [direct-control testing steps and exact behavior](./TEACHER_CONTROLS.md).
+Verification: **122 unit tests, 18 Chrome browser tests, and the TypeScript/Vite
+build pass**. Browser tests use synthetic USB data; the long gripper return is
+tested with an accelerated clock. The final layout was visually inspected and
+the running local server reports version 0.7.0-dev.11 with all six requested Home
+values. Real hardware speed and clearance remain teacher validation.
+The following sections describe the earlier commissioning workflow and history.
+
+## Earlier update: teacher-reviewed starts and a usable page order
 
 The teacher reported that Review current test start stayed unavailable and the
 page order made testing difficult. The reported servo-2 value was first 2018,

@@ -1,5 +1,15 @@
 export type ServoId = 1 | 2 | 3 | 4 | 5 | 6;
 
+// Research/review only: no live caller until the teacher approves a speed test.
+// Factory ServoTab.send_servo_cmd and manufacturer continuous-write layout.
+export function encodeSpeedPosition(id:number,position:number,speed:number,acceleration:number):Uint8Array {
+  encodeGoalPosition(id,position);
+  if(!Number.isInteger(speed)||speed<1||speed>3400)throw new RangeError('Speed must be 1-3400; zero semantics are unverified.');
+  if(!Number.isInteger(acceleration)||acceleration<1||acceleration>254)throw new RangeError('Acceleration must be 1-254.');
+  const data=[id,10,3,0x29,acceleration,position&255,position>>8,0,0,speed&255,speed>>8];
+  return Uint8Array.from([255,255,...data,(~data.reduce((sum,n)=>sum+n,0))&255]);
+}
+
 // Factory NexArm All Off / All On, recovered from supplied CommManager/ServoTab.
 // This is system command61, not the unverified LeRobot bridge command98.
 export function encodeFactoryHolding(enabled: boolean): Uint8Array {

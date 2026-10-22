@@ -15,7 +15,7 @@ for(const start of [2018,2108,4080])test(`manual positioning and current-pose re
     }}});
   });
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/mapping.html');
+  await page.goto('/mapping-tests.html');
   const writes=()=>page.evaluate(()=>(window as unknown as {mappingWrites:number[][]}).mappingWrites);
   await expect(page.locator('#mapping-setup')).not.toBeChecked();
   expect(await page.locator('main > section[id]').evaluateAll(sections=>sections.map(section=>section.id))).toEqual(['connection-panel','manual-panel','next-actions','test-start-panel','tests-panel','observations-panel','recovery-panel','return-panel']);
@@ -69,7 +69,7 @@ test('teacher recovery renews individual attempts with fresh evidence and preser
     }}});
   });
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/mapping.html');
+  await page.goto('/mapping-tests.html');
   const writes=()=>page.evaluate(()=>(window as unknown as {mappingWrites:number[][]}).mappingWrites);
   const setup=page.locator('#mapping-setup');await setup.check();await page.locator('#mapping-connect').click();
   await expect(page.locator('#mapping-enable')).toBeDisabled();await page.locator('#recovery-reviewed').check();
@@ -103,7 +103,7 @@ test('staged return previews without writing, then settles ten waypoints and exp
     }}});
   });
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/mapping.html');
+  await page.goto('/mapping-tests.html');
   const writes=()=>page.evaluate(()=>(window as unknown as {mappingWrites:number[][]}).mappingWrites);
   await page.locator('#mapping-setup').check();await page.getByRole('button',{name:'Connect for joint tests'}).click();
   await page.locator('#home-clear').check();
@@ -140,7 +140,7 @@ test('one connection supports five deliberate tests with per-joint observations 
     }}});
   });
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/mapping.html');
+  await page.goto('/mapping-tests.html');
   const writes=()=>page.evaluate(()=>(window as unknown as {mappingWrites:number[][]}).mappingWrites);
   const setup=page.getByRole('checkbox',{name:'I reviewed clearance and cutoff conditions for this selected joint.'});
   await setup.check();await page.getByRole('button',{name:'Connect for joint tests'}).click();

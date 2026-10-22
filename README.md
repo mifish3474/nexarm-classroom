@@ -12,16 +12,15 @@ six virtual joints, an animated arm illustration, a Blockly repeat-loop lesson,
 manual simulation jogging, Stop, and Reset Simulation. It has no USB connection
 or live movement capability. A separate teacher page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from the footer.
-That page links to the teacher-requested joint mapping suite and a bounded staged
-return to Reference A. Follow [the scope and operating steps](docs/JOINT_SUITE_AND_HOME.md)
-before using them. Tests are individual deliberate actions; the return has its own
-route preview, Enable, and Start. The prior base test remains consumed.
-Teacher recovery permits a separately reviewed retry while preserving earlier
-records. Guarded manual positioning provides separate release, holding restore,
-and physical confirmation controls; unfinished setup blocks movement across reload.
-Teachers can review a stable current test start within the existing local region,
-so joint tests need no precise manual Home placement. The page explains remaining
-feedback, clearance, pose, and retry requirements in its Next steps panel.
+That page links to direct teacher controls at `/mapping.html`: reusable +/-20
+buttons on every servo and a slow return to the teacher-requested Home
+`[2050,2150,2100,2200,2000,1080]`. Follow [the operating and testing steps](docs/TEACHER_CONTROLS.md).
+Home moves one joint at a time in nominal steps of at most 10 raw units, at least
+1.2 seconds apart, with settled feedback. Stop cancels future steps and permits
+explicit re-enabling on the same connection. Optional manual release/restore
+retains the physical-holding confirmation and durable interrupted-setup interlock.
+The earlier mapping suite and Reference A return remain at `/mapping-tests.html`,
+with their original approval history; see [the earlier scope](docs/JOINT_SUITE_AND_HOME.md).
 Project saving is not implemented yet. The arm is an illustration, not a calibrated
 NexArm model. See the calibration plan before connecting hardware.
 

@@ -1,5 +1,10 @@
 # Joint tests, staged return, and teacher recovery
 
+Historical commissioning workflow, now at **`/mapping-tests.html`**. For the
+current reusable +/-20 controls and the teacher's new Home values, use
+[`/mapping.html` and these instructions](./TEACHER_CONTROLS.md). Reference A below
+is the earlier pose; its approvals and bounds remain separate.
+
 Updated for 0.7.0-dev.10. Supervised teacher commissioning only; this is not student
 live control or calibrated general homing. The teacher requested the remaining
 joint tests, a return for all servos, and subsequently a practical retry/manual
@@ -84,7 +89,7 @@ current setup workflow; it is not a guarantee of torque behavior at every pose.
 The earlier unchanged factory number was resolved by Read Pos, not by changing
 servo calibration or weakening the browser's packet checks.
 
-On `/mapping.html`, connect and collect fresh stable readings, then:
+On `/mapping-tests.html`, connect and collect fresh stable readings, then:
 
 1. Support the arm, empty the gripper, clear all pinch areas and the possible
    sweep, and check cutoff access. Check the manual-support confirmation.

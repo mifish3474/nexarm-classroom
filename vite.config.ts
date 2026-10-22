@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 export default defineConfig({
   root: 'app',
   base: './',
-  build: { outDir: '../dist', emptyOutDir: true, rolldownOptions: { input: ['app/index.html', 'app/commissioning.html', 'app/mapping.html'] } },
+  build: { outDir: '../dist', emptyOutDir: true, rolldownOptions: { input: ['app/index.html', 'app/commissioning.html', 'app/mapping.html', 'app/mapping-tests.html'] } },
   plugins: [{
     name: 'app-version',
     transformIndexHtml(html) {
