@@ -14,7 +14,7 @@ export function createArmIllustration(container: HTMLElement) {
   svgNode('rect', { x: '240', y: '280', width: '80', height: '24', rx: '8', fill: '#29485b' }, svg);
   const base = svgNode('g', { transform: 'translate(70 78)' }, svg);
   svgNode('circle', { r: '36', fill: '#e1eff2', stroke: '#8ab2bd' }, base);
-  const yaw = svgNode('path', { d: 'M0 0 L28 0', stroke: '#086b73', 'stroke-width': '7', 'stroke-linecap': 'round' }, base);
+  const yaw = svgNode('path', { d: 'M0 0 L28 0', stroke: '#086b73', 'stroke-width': '7', 'stroke-linecap': 'round', 'data-joint': '1' }, base);
   const baseLabel = svgNode('text', { x: '25', y: '138', fill: '#476075', 'font-size': '14' }, svg); baseLabel.textContent = 'J1 · base turn';
   const links = Array.from({ length: 3 }, () => svgNode('line', { stroke: '#168c97', 'stroke-width': '20', 'stroke-linecap': 'round' }, svg));
   const joints = Array.from({ length: 4 }, () => svgNode('circle', { r: '12', fill: '#fff', stroke: '#29485b', 'stroke-width': '5' }, svg));
@@ -26,10 +26,21 @@ export function createArmIllustration(container: HTMLElement) {
   toolLabel.textContent = 'J5 · roll / J6 · grip';
   container.append(svg);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const controls = document.createElement('div'); controls.className = 'animation-controls';
+  const label = document.createElement('label');
+  const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = !reduced.matches;
+  label.append(toggle, ' Animate arm illustration');
+  const notice = document.createElement('p'); notice.className = 'note'; notice.setAttribute('role', 'status');
+  controls.append(label, notice); container.before(controls);
+  let userSelected = false;
+  const explain = () => {
+    notice.textContent = toggle.checked ? 'Animation on. The drawing follows the simulated joint readings.' : reduced.matches && !userSelected ? 'Your device requests reduced motion, so animation is off. Readings still update; a program ending at its starting pose may look unchanged. Select the checkbox to animate.' : 'Animation off. The drawing updates only when movement stops or completes.';
+  };
+  explain();
   let last = Array<number>(6).fill(2048);
   const draw = (positions: readonly number[], running: boolean) => {
     last = [...positions];
-    if (reduced.matches && running) return;
+    if (!toggle.checked && running) return;
     // Deliberately illustrative scaling, never forward kinematics or real angles.
     const offset = (i: number) => Math.max(-75, Math.min(75, (positions[i]! - 2048) * .25));
     yaw.setAttribute('transform', `rotate(${offset(0)})`);
@@ -53,6 +64,10 @@ export function createArmIllustration(container: HTMLElement) {
     fingers.forEach((finger, i) => { const sign = i === 0 ? -1 : 1; finger.setAttribute('d', `M8 ${sign * gap} H29 L35 ${sign * (gap - 4)}`); });
     toolLabel.setAttribute('x', String(Math.min(x - 40, 380))); toolLabel.setAttribute('y', String(y + 48));
   };
-  reduced.addEventListener('change', () => draw(last, false));
+  toggle.addEventListener('change', () => { userSelected = true; explain(); draw(last, false); });
+  reduced.addEventListener('change', () => {
+    if (!userSelected) toggle.checked = !reduced.matches;
+    explain(); draw(last, false);
+  });
   return draw;
 }

@@ -12,7 +12,9 @@ controller, full programming curriculum, or student live-robot release.
 - An SVG arm illustration with base turn, three bending joints, wrist roll, and
   gripper opening. Scaling is exaggerated for visibility and never used to plan
   physical movement. Reduced-motion preference freezes the drawing until settling
-  or Stop while readings continue updating.
+  or Stop while readings continue updating. An explicit Animate arm illustration
+  checkbox shows whether animation is enabled and allows a session-only override.
+  Reduced-motion users see why a round-trip program can otherwise look motionless.
 - A restricted interpreter worker expands validated instructions to at most 100
   movement steps, with nesting/visit limits and a main-thread preparation timeout.
   Main-thread validation and the simulator's duration budget check the resulting

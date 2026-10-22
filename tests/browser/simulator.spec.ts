@@ -54,9 +54,25 @@ test('keyboard lesson fields change the Blockly program and loop execution', asy
 
 test('reduced-motion illustration waits until simulation ends', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' }); await page.goto('/');
+  await expect(page.getByRole('checkbox', { name: 'Animate arm illustration' })).not.toBeChecked();
+  await expect(page.getByText(/Your device requests reduced motion/)).toBeVisible();
   const before = await page.locator('#arm-illustration line').first().getAttribute('x2');
   await page.getByRole('button', { name: 'Simulate joint 2 plus 20 raw units' }).click();
   expect(await page.locator('#arm-illustration line').first().getAttribute('x2')).toEqual(before);
   await expect(page.locator('#state')).toHaveText('Completed');
   expect(await page.locator('#arm-illustration line').first().getAttribute('x2')).not.toEqual(before);
+});
+
+test('a reduced-motion user can explicitly enable visible animation during the starter', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' }); await page.goto('/');
+  await page.getByRole('checkbox', { name: 'Animate arm illustration' }).check();
+  const base = page.locator('#arm-illustration [data-joint="1"]');
+  const initial = await base.getAttribute('transform');
+  await page.getByRole('button', { name: 'Run program' }).click();
+  await expect.poll(() => base.getAttribute('transform')).not.toEqual(initial);
+  await expect(page.locator('#state')).toHaveText('Running');
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  const stopped = await base.getAttribute('transform');
+  await page.waitForTimeout(150);
+  expect(await base.getAttribute('transform')).toEqual(stopped);
 });
