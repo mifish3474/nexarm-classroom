@@ -89,6 +89,13 @@ technology, or hardware validation.
 
 ## Next work
 
+[Factory software findings](./FACTORY_SOFTWARE_FINDINGS.md) provide the next
+non-motion route: the supplied controller contains a URDF, arm meshes, and the
+3D viewer's joint-specific offsets/scales. Build and validate a simulation-only
+candidate model from those facts before resuming physical mapping tests.
+[Servo 2 mapping proposal](./SERVO_2_TEST_PROPOSAL.md) is deferred, remains
+unapproved, and is not implemented. The base stays where it is.
+
 The first supplied reference and two photographs are summarized in
 [Reference A review](./REFERENCE_A_REVIEW.md), including the exact proposed
 single-axis command, preconditions, and observation/failure plan. The teacher has

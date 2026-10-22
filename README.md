@@ -50,6 +50,7 @@ Project documents:
 - [Proposed architecture and implementation outline](docs/ARCHITECTURE.md)
 - [First implementation scope and teacher review](docs/IMPLEMENTATION_NOTES.md)
 - [Read-only reference capture and calibration plan](docs/CALIBRATION_PLAN.md)
+- [Factory software inspection and candidate model findings](docs/FACTORY_SOFTWARE_FINDINGS.md)
 
 The architecture covers module boundaries, execution and fault handling,
 local project storage, privacy, testing, and incremental delivery. New physical

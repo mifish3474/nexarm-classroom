@@ -3,6 +3,10 @@
 Status: passive observation implemented; one Reference A servo-1 positive test
 has been explicitly approved. All other physical movement tests remain gated.
 
+Update: [static inspection of the factory control software](./FACTORY_SOFTWARE_FINDINGS.md)
+recovered candidate geometry and the viewer's raw-to-angle conversions. Pursue
+that simulation/read-only validation route before further physical mapping.
+
 The first teacher-supplied export and photographs are reviewed in
 [Reference A and the first mapping-test proposal](./REFERENCE_A_REVIEW.md).
 That single test is approved and implemented on a separate teacher page. Passive
