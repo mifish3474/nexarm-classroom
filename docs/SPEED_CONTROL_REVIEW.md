@@ -1,5 +1,10 @@
 # Speed-controlled movement review — pending teacher approval
 
+**Superseded by the teacher's request to rebuild smooth jogging and Home.**
+Dev.13 enables combined position/speed/acceleration commands for those controls.
+See IMPLEMENTATION_NOTES.md for the current implementation. The proposal below
+records the earlier research and is no longer the active approval gate.
+
 The existing slow Home is a paced sequence, not velocity control. Do not make
 that sequence faster and describe it as a speed-controlled return.
 

@@ -10,3 +10,10 @@ it('rejects invalid motion parameters and unverified zero speed',()=>{
   for(const args of [[0,2070,20,10],[1,4096,20,10],[1,2070,0,10],[1,2070,3401,10],[1,2070,20,0],[1,2070,20,255],[1,2070,1.5,10]])
     expect(()=>encodeSpeedPosition(args[0]!,args[1]!,args[2]!,args[3]!)).toThrow();
 });
+it('prepares the Servo 3 factory-settings comparison with the same positive target',()=>{
+  const slow=encodeSpeedPosition(3,2456,100,10);
+  const factory=encodeSpeedPosition(3,2456,2000,100);
+  expect([...factory.slice(2,-1)]).toEqual([3,10,3,41,100,152,9,0,0,208,7]);
+  expect([...factory.slice(7,9)]).toEqual([...slow.slice(7,9)]);
+  expect(factory.at(-1)).toBe((~[...factory.slice(2,-1)].reduce((sum,n)=>sum+n,0))&255);
+});

@@ -1,7 +1,8 @@
 import './styles.css';
 import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
-import { slowHomeStepCount, TEACHER_HOME, SLOW_HOME_INTERVAL_MS } from './safety/TeacherControlPlan';
+import { HOME_SPEED } from './safety/SmoothTeacherMotion';
+import { TEACHER_HOME } from './safety/TeacherControlPlan';
 
 const node = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const clearance = node<HTMLInputElement>('teacher-clearance'), support = node<HTMLInputElement>('teacher-support');
@@ -22,8 +23,18 @@ const cards = labels.map((label, i) => {
     button.addEventListener('keydown', event => { if (event.repeat) event.preventDefault(); });
     button.onclick = () => act(() => control?.jog(i + 1, delta));
   }
-  actions.append(minus, plus); card.append(title, value, home, actions); node('teacher-joints').append(card);
-  return {value, minus, plus};
+  const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='4095';slider.step='1';slider.value=String(TEACHER_HOME[i]);slider.setAttribute('aria-label',`Servo ${i+1} target slider`);
+  const fields=document.createElement('div');fields.className='servo-fields';
+  function field(name:string,start:number,min:number,max:number){const label=document.createElement('label');label.textContent=name;const input=document.createElement('input');input.type='number';input.required=true;input.min=String(min);input.max=String(max);input.step='1';input.value=String(start);input.setAttribute('aria-label',`Servo ${i+1} ${name.toLowerCase()}`);label.append(input);fields.append(label);return input;}
+  const target=field('Target',TEACHER_HOME[i]!,0,4095),speed=field('Speed',2000,1,3400),acceleration=field('Acceleration',100,1,254);
+  const move=document.createElement('button');move.textContent='Move';move.setAttribute('aria-label',`Move servo ${i+1} to target`);
+  const request=()=>{if(![target,speed,acceleration].every(input=>input.reportValidity()))return;act(()=>control?.moveJoint(i+1,Number(target.value),Number(speed.value),Number(acceleration.value)));};
+  slider.oninput=()=>{target.value=slider.value;};slider.onchange=request;
+  target.oninput=()=>{if(target.validity.valid)slider.value=target.value;};move.onclick=request;
+  actions.append(minus,plus);
+  const jogDetails=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Small +/-20 jogs';jogDetails.append(summary,actions);
+  card.append(title, value, home,slider,fields,move,jogDetails); node('teacher-joints').append(card);
+  return {value, minus, plus,slider,target,speed,acceleration,move,initialized:false};
 });
 function act(action: () => void) {
   error = '';
@@ -42,23 +53,31 @@ function refresh() {
   node('teacher-readiness').textContent = state.armed ? state.reason ?? 'Ready for your next jog or Home return.' : state.enableReason ?? (clearance.checked ? 'Ready: Enable teacher controls.' : 'Confirm the setup, then Enable teacher controls.');
   node('teacher-error').textContent = error; node('teacher-error').hidden = !error;
   cards.forEach((card, i) => {
-    const value = state.positions?.[i]; card.value.textContent = value === undefined ? '—' : String(value);
+    const value = state.positions?.[i];
+    if(value===undefined)card.initialized=false;
+    else if(!card.initialized){card.slider.value=card.target.value=String(value);card.initialized=true;}
+    const editable=state.canMove||state.sliderServo===i+1;
+    card.slider.disabled=card.target.disabled=card.speed.disabled=card.acceleration.disabled=card.move.disabled=!editable;
+    card.value.textContent = value === undefined ? '—' : String(value);
     card.minus.disabled = !state.canMove || value === undefined || value < 20;
     card.plus.disabled = !state.canMove || value === undefined || value > 4075;
     card.minus.title = value === undefined ? 'Wait for readings.' : `Target ${value - 20}`;
     card.plus.title = value === undefined ? 'Wait for readings.' : `Target ${value + 20}`;
   });
+  node<HTMLButtonElement>('teacher-servo3-factory').disabled=!state.canMove||!state.positions||state.positions[2]!>4075;
+  const command=state.home?.command;
+  node('teacher-motion-detail').textContent=['Fault','Settled short'].includes(state.home?.phase??'')?state.home!.message:command?`Servo ${command.servo}: start ${command.from}, target ${command.target}, reported ${command.actual}, remaining ${command.error} raw units. Speed ${state.home?.speed}, acceleration ${state.home?.acceleration}.`:'No movement command sent yet.';
   const runningHome = state.operation === 'Home' && state.home?.phase === 'Running';
-  const count = state.positions ? slowHomeStepCount(state.positions) : 0;
-  const seconds = Math.ceil(Math.max(0, count - 1) * SLOW_HOME_INTERVAL_MS / 1000);
+  const count = state.positions ? state.positions.filter((n,i)=>Math.abs(n-TEACHER_HOME[i]!)>9).length : 0;
+  const seconds = Math.ceil(state.positions?.reduce((sum,n,i)=>sum+Math.abs(n-TEACHER_HOME[i]!)/HOME_SPEED,0)??0);
   const duration = seconds >= 60 ? `about ${Math.ceil(seconds / 60)} minutes` : `about ${Math.max(1, seconds)} seconds`;
-  node('teacher-home-preview').textContent = !state.positions ? 'Connect for a route estimate.' : runningHome ? 'Home is running. Jog buttons are paused until it finishes or you Stop.' : count ? `${count} small steps; ${duration} plus any feedback waits. Review the joint order and clearance before clicking Return.` : 'Already within 9 raw units of your Home values; no return is needed.';
+  node('teacher-home-preview').textContent = !state.positions ? 'Connect for a route estimate.' : runningHome ? 'Home is running. Jog buttons are paused until it finishes or you Stop.' : count ? `${count} joint movements; ${duration} plus any feedback waits. Review the joint order and clearance before clicking Return.` : 'Already within 9 raw units of your Home values; no return is needed.';
   node<HTMLButtonElement>('teacher-home').disabled = !state.canMove || !count;
   const progress = node<HTMLProgressElement>('teacher-home-progress');
   progress.max = state.operation === 'Home' ? Math.max(1, state.home?.totalSteps ?? 0) : 1;
   progress.value = state.operation === 'Home' ? state.home?.completedWaypoints ?? 0 : 0;
   const report = state.operation === 'Home' ? state.home : null, next = report?.next;
-  node('teacher-home-status').textContent = report ? `${report.phase} · ${report.completedWaypoints}/${report.totalSteps} steps${runningHome && next ? ` · Servo ${next.servo} toward ${next.target}` : ''}` : 'No return started.';
+  node('teacher-home-status').textContent = report ? `${report.phase} · ${report.completedWaypoints}/${report.totalSteps} joints${runningHome && next ? ` · Servo ${next.servo} toward ${next.target}` : ''}` : 'No return started.';
   node<HTMLButtonElement>('teacher-release').disabled = !support.checked || !state.canRelease;
   node<HTMLButtonElement>('teacher-restore').disabled = !support.checked || !state.canRestore;
   node<HTMLButtonElement>('teacher-confirm-holding').disabled = !held.checked || !state.canConfirmHolding;
@@ -75,6 +94,7 @@ if (serial && navigator.locks) {
 node('teacher-connect').onclick = () => act(() => control?.connect(() => serial!.requestPort()));
 node('teacher-disconnect').onclick = () => act(() => { clearance.checked = false; control?.disconnect(); });
 node('teacher-enable').onclick = () => act(() => control?.enable(clearance.checked));
+node('teacher-servo3-factory').onclick=()=>act(()=>control?.compareServo3Factory());
 node('teacher-home').onclick = () => act(() => control?.returnHome());
 node('teacher-stop').onclick = () => act(() => { clearance.checked = false; control?.stop(); });
 clearance.onchange = () => act(() => { if (!clearance.checked) control?.stop(); });
@@ -88,6 +108,7 @@ node('teacher-export').onclick = () => {
   const link = document.createElement('a'); link.href = url; link.download = 'nexarm-teacher-control-session.json'; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
+node('teacher-diagnostic-export').onclick=()=>node<HTMLButtonElement>('teacher-export').click();
 const disconnect = () => { clearance.checked = false; control?.disconnect(); };
 document.addEventListener('visibilitychange', () => { if (document.hidden) disconnect(); });
 window.addEventListener('pagehide', disconnect); window.addEventListener('error', disconnect); window.addEventListener('unhandledrejection', disconnect);

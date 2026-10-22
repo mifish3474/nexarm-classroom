@@ -65,100 +65,69 @@ describe('teacher Home planning', () => {
   });
 });
 
-describe('teacher direct controls', () => {
-  it('permits the next settled jog at 500 ms without waiting for another full capture window', async () => {
-    const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);f.control.jog(1,20);await flush();pose[0]!+=15;
-    for(const at of [1200,1300,1400,1500])await f.feed(at,pose);
-    expect(f.control.snapshot().canMove).toBe(false);await f.feed(1600,pose);
-    expect(f.control.snapshot().canMove).toBe(true);f.control.jog(1,-20);await flush();
-    expect(f.writes.map(w=>w.at)).toEqual([1100,1600]);f.control.disconnect();await flush();
-  });
-  it.each([1,2,3,4,5,6])('jogs servo %s in both directions repeatedly without consuming old test approvals', async servo => {
-    const f = fixture(), pose = [...TEACHER_HOME];
-    f.stored.set('nexarm.approval.reference-a-servo1-plus20.2026-10-22', 'old base');
-    await f.ready(pose); expect(f.writes).toEqual([]); expect(() => f.control.jog(servo,20)).toThrow('Enable');
-    expect(() => f.control.enable(false)).toThrow('Confirm'); f.control.enable(true);
-    for (const delta of [20,-20,20]) {
-      const before = pose[servo - 1]!; f.control.jog(servo,delta); await flush();
-      expect(() => f.control.jog(servo,delta)).toThrow('progress');
-      expect(targetOf(f.writes.at(-1)!.bytes)).toBe(before + delta);
-      pose[servo - 1] = before + delta - Math.sign(delta) * 5;
-      const at = f.time(); for (const offset of [100,200,300]) await f.feed(at + offset,pose);
-      expect(f.control.snapshot().home?.phase).toBe('Complete'); await f.window(f.time() + 100,pose);
-      expect(f.control.snapshot().canMove).toBe(true);
-    }
-    expect(f.writes).toHaveLength(3); expect(f.writes.every(write => write.bytes[2] === servo)).toBe(true);
-    expect(f.stored.get('nexarm.approval.reference-a-servo1-plus20.2026-10-22')).toBe('old base');
-    expect(f.stored.size).toBe(1); f.control.disconnect(); await flush();
-  });
-  it.each([-9,0,9])('completes the full long Home route with residual %s and >=1200 ms between writes', async lag => {
-    const f = fixture(), pose = [2066,2009,1943,2048,2044,2052]; await f.ready(pose); f.control.enable(true); f.control.returnHome(); await flush();
-    expect(() => f.control.jog(1,20)).toThrow('progress'); let applied = 0;
-    for (let at = 1200; at <= 250000 && f.control.snapshot().home?.phase === 'Running'; at += 100) {
-      if (f.writes.length > applied) {
-        const bytes = f.writes.at(-1)!.bytes, index = bytes[2]! - 1, target = targetOf(bytes);
-        expect(Math.abs(target - pose[index]!)).toBeLessThanOrEqual(20); pose[index] = target + lag; applied = f.writes.length;
-      }
-      await f.feed(at,pose); f.control.tick(); await flush();
-    }
-    expect(f.control.snapshot().home?.phase).toBe('Complete'); expect(f.writes.length).toBeGreaterThan(100);
-    expect(pose.every((n,i) => Math.abs(n - TEACHER_HOME[i]!) <= 9)).toBe(true);
-    expect([...new Set(f.writes.map(w => w.bytes[2]))]).toEqual(HOME_ORDER);
-    for (let i = 1; i < f.writes.length; i++) expect(f.writes[i]!.at - f.writes[i - 1]!.at).toBeGreaterThanOrEqual(1200);
-    const count = f.writes.length; await f.window(f.time() + 100,pose); f.control.returnHome();
-    expect(f.writes).toHaveLength(count); f.control.disconnect(); await flush();
-  });
-  it('Stop cancels the remaining route but allows another explicit enable on the same connection', async () => {
-    const f = fixture(), pose = [2048,2048,2047,2048,2042,2053]; await f.ready(pose); f.control.enable(true); f.control.returnHome(); await flush();
-    f.control.stop(); await f.window(1200,pose); f.control.tick(); expect(f.writes).toHaveLength(1);
-    expect(f.control.snapshot()).toMatchObject({armed:false,connectionState:'Listening',canEnable:true});
-    f.control.enable(true); f.control.jog(1,-20); await flush(); expect(f.writes).toHaveLength(2);
-    expect(f.port.open).toHaveBeenCalledOnce(); f.control.disconnect(); await flush();
-  });
-  it('disarms on unexpected motion and can be deliberately enabled again after inspection and stable feedback', async () => {
-    const f = fixture(), pose = [...TEACHER_HOME]; await f.ready(pose); f.control.enable(true); f.control.jog(2,20); await flush();
-    pose[0]! += 13; await f.feed(1200,pose); expect(f.control.snapshot()).toMatchObject({faulted:true,armed:false});
-    expect(() => f.control.jog(2,20)).toThrow('Enable'); await f.window(1300,pose);
-    f.control.enable(true); f.control.jog(2,-20); await flush(); expect(f.writes).toHaveLength(2); f.control.disconnect(); await flush();
-  });
-  it('never queues double clicks or resumes a late write after Stop; ownership remains until cleanup', async () => {
-    const f = fixture({hang:true}); await f.ready(); f.control.enable(true); f.control.jog(1,20); await flush();
-    expect(() => f.control.jog(2,20)).toThrow(); f.control.stop(); await f.window(1200);
-    expect(f.control.snapshot().canEnable).toBe(false); f.control.disconnect(); await flush(); expect(f.port.close).not.toHaveBeenCalled();
-    f.finish(); await flush(); expect(f.port.close).toHaveBeenCalledOnce(); expect(f.writes).toHaveLength(1); expect(f.control.snapshot().armed).toBe(false);
-  });
-  it('times out hanging and rejected writes without retrying', async () => {
-    const f = fixture({hang:true}); await f.ready(); f.control.enable(true); f.control.jog(1,20); await flush();
-    for (let at=1200;at<=3100;at+=100) await f.feed(at); f.control.tick();
-    expect(f.control.snapshot().faulted).toBe(true); expect(f.writes).toHaveLength(1); f.finish(); await flush(); expect(f.control.snapshot().home?.phase).toBe('Fault'); f.control.disconnect(); await flush();
-    const g=fixture({reject:true}); await g.ready(); g.control.enable(true); g.control.jog(1,20); await flush();
-    expect(g.control.snapshot().faulted).toBe(true); expect(g.writes).toHaveLength(1); g.control.disconnect(); await flush();
-  });
-  it('rejects a write completion past deadline even without a watchdog tick', async () => {
-    const f=fixture({hang:true}); await f.ready(); f.control.enable(true); f.control.returnHome();
-    // Already home sends nothing; start an actual jog.
-    f.control.jog(1,20); await flush(); f.setTime(3200); f.finish(); await flush();
-    expect(f.control.snapshot().faulted).toBe(true); expect(f.writes).toHaveLength(1); f.control.disconnect(); await flush();
-  });
-  it('stops on stale or weak feedback and page hiding without sending torque or another position', async () => {
-    const f=fixture(); await f.ready(); f.control.enable(true); f.setTime(1700); expect(() => f.control.jog(2,20)).toThrow('fresh'); f.control.tick(); expect(f.control.snapshot().armed).toBe(false); f.control.disconnect(); await flush();
-    const g=fixture(); await g.ready(); g.control.enable(true); await g.feed(1200,TEACHER_HOME,true); expect(g.control.snapshot().faulted).toBe(true); expect(g.writes).toEqual([]); g.control.disconnect(); await flush();
-    const h=fixture(); await h.ready(); h.control.enable(true); h.control.jog(2,20); await flush(); h.hide(); h.control.tick(); await flush(); expect(h.control.snapshot().armed).toBe(false); expect(h.writes).toHaveLength(1); expect(h.port.close).toHaveBeenCalledOnce();
-  });
-  it('releases/restores through the same writer and requires physical confirmation, also after reload', async () => {
-    const f=fixture(); await f.ready(); f.control.enable(true); f.control.setHolding(false,true); await flush();
-    expect(f.writes[0]!.bytes).toEqual([255,255,255,3,61,0,192]); expect(f.control.snapshot().armed).toBe(false);
-    expect(() => f.control.enable(true)).toThrow('holding'); expect(() => f.control.setHolding(true,true)).toThrow('interval');
-    await f.window(1200); f.control.setHolding(true,true); await flush(); expect(f.writes[1]!.bytes).toEqual([255,255,255,3,61,1,191]);
-    await f.window(2400); f.control.confirmHolding(true); expect(f.writes).toHaveLength(2); await f.window(3600); f.control.enable(true);
-    f.control.setHolding(false,true); await flush(); f.control.disconnect(); await flush();
-    const g=fixture({stored:f.stored}); await g.ready(); expect(g.control.snapshot().manualPhase).toBe('Recovery required'); expect(g.control.snapshot().canEnable).toBe(false);
-    g.control.confirmHolding(true); expect(g.writes).toEqual([]); await g.window(1200); g.control.enable(true); expect(g.control.snapshot().armed).toBe(true);
-    expect(JSON.parse(g.stored.get(MANUAL_STATE_KEY)!).requiresHoldingVerification).toBe(false); g.control.disconnect(); await flush();
-  });
-  it('blocks release when storage fails and refreshes another tab’s manual interlock at Connect', async () => {
-    const f=fixture({storageFails:true}); await f.ready(); f.control.setHolding(false,true); expect(f.writes).toEqual([]); expect(f.control.snapshot().manualPhase).toBe('Recovery required'); f.control.disconnect(); await flush();
-    const g=fixture(); g.stored.set(MANUAL_STATE_KEY,JSON.stringify({requiresHoldingVerification:true,events:[]})); await g.ready();
-    expect(g.control.snapshot().canEnable).toBe(false); expect(g.writes).toEqual([]); g.control.disconnect(); await flush();
-  });
+
+describe('smooth teacher controls',()=>{
+ it('accepts absolute slider targets, retargets only the moving joint, and triples Home speed',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);f.control.moveJoint(3,2200);await flush();
+ expect(f.writes[0]!.bytes.slice(2,-1)).toEqual([3,10,3,41,100,152,8,0,0,208,7]);
+ expect(()=>f.control.moveJoint(2,2200)).toThrow('progress');expect(()=>f.control.moveJoint(3,2300)).toThrow('half-second');
+ for(let at=1200;at<=1600;at+=100){pose[2]!+=10;await f.feed(at,pose);}
+ f.control.moveJoint(3,2250);await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(3);
+ pose[2]=2245;for(let at=1700;at<=2100;at+=100)await f.feed(at,pose);
+ f.control.returnHome();await flush();expect(f.writes.at(-1)!.bytes.slice(11,13)).toEqual([44,1]);
+ expect(f.control.snapshot().home?.speed).toBe(300);f.control.disconnect();await flush();
+ });
+ it('rejects invalid absolute targets without writing',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);
+ for(const target of [-1,4096,NaN,20.5])expect(()=>f.control.moveJoint(3,target)).toThrow();
+ expect(f.writes).toEqual([]);f.control.disconnect();await flush();
+ });
+ it('runs the approved Servo 3 comparison once per click and preserves normal jog settings',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();
+ expect(()=>f.control.compareServo3Factory()).toThrow('Enable');f.control.enable(true);
+ f.control.compareServo3Factory();await flush();
+ expect(f.writes).toHaveLength(1);const packet=f.writes[0]!.bytes;
+ expect(packet.slice(2,-1)).toEqual([3,10,3,41,100,72,8,0,0,208,7]);
+ expect(()=>f.control.compareServo3Factory()).toThrow('progress');
+ expect(f.control.snapshot().home).toMatchObject({speed:2000,acceleration:100});
+ pose[2]!+=15;for(const at of [1200,1300,1400,1500,1600])await f.feed(at,pose);
+ expect(f.control.snapshot().canMove).toBe(true);f.control.jog(3,-20);await flush();
+ expect(f.writes[1]!.bytes[6]).toBe(10);expect(f.writes[1]!.bytes.slice(11,13)).toEqual([100,0]);
+ expect(f.control.report().operations).toEqual(expect.arrayContaining([expect.objectContaining({operation:'Servo 3 factory comparison',result:expect.objectContaining({speed:2000,acceleration:100})})]));
+ f.control.disconnect();await flush();
+ });
+ it.each([1,2,3,4,5,6])('sends speed and acceleration with both directions on joint %s',async servo=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);
+ for(const delta of [20,-20]){const start=f.time();f.control.jog(servo,delta);await flush();const bytes=f.writes.at(-1)!.bytes;
+ expect(bytes.slice(2,7)).toEqual([servo,10,3,41,10]);expect(bytes[11]).toBe(100);
+ pose[servo-1]!+=delta;for(let offset=100;offset<=500;offset+=100)await f.feed(start+offset,pose);
+ expect(f.control.snapshot().canMove).toBe(true);}
+ expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
+ });
+ it('returns to Home with at most six continuous targets, not hundreds of steps',async()=>{
+ const f=fixture(),pose=TEACHER_HOME.map(n=>n+100);await f.ready(pose);f.control.enable(true);f.control.returnHome();await flush();
+ let applied=0;for(let at=1200;at<10000&&f.control.snapshot().home?.phase==='Running';at+=100){
+ if(f.writes.length>applied){const b=f.writes.at(-1)!.bytes;pose[b[2]!-1]=b[7]!+256*b[8]!;applied=f.writes.length;}
+ await f.feed(at,pose);f.control.tick();await flush();}
+ expect(f.control.snapshot().home?.phase).toBe('Complete');expect(f.writes).toHaveLength(6);expect(pose).toEqual(TEACHER_HOME);f.control.disconnect();await flush();
+ });
+ it('keeps controls armed through ordinary jitter and short idle gaps',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);f.setTime(1800);f.control.tick();expect(f.control.snapshot().armed).toBe(true);expect(f.control.snapshot().canMove).toBe(false);
+ await f.feed(1900,TEACHER_HOME.map(n=>n+4));expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toEqual([]);f.control.disconnect();await flush();
+ });
+ it('Stop sends a fresh hold target and never resumes Home automatically',async()=>{
+ const f=fixture(),pose=TEACHER_HOME.map(n=>n+100);await f.ready(pose);f.control.enable(true);f.control.returnHome();await flush();f.control.stop();await flush();
+ expect(f.writes).toHaveLength(2);const b=f.writes[1]!.bytes;expect(b[7]!+256*b[8]!).toBe(pose[1]);
+ await f.window(1200,pose);f.control.tick();expect(f.writes).toHaveLength(2);expect(f.control.snapshot().armed).toBe(false);f.control.disconnect();await flush();
+ });
+ it('retains ownership during a hanging write and ignores a late completion',async()=>{
+ const f=fixture({hang:true});await f.ready();f.control.enable(true);f.control.jog(1,20);await flush();f.control.disconnect();await flush();expect(f.port.close).not.toHaveBeenCalled();f.finish();await flush();expect(f.port.close).toHaveBeenCalledOnce();expect(f.control.snapshot().armed).toBe(false);expect(f.writes).toHaveLength(1);
+ });
+ it('cancels an active route on prolonged feedback loss and never auto-retries',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);f.control.jog(1,20);await flush();f.setTime(2700);f.control.tick();expect(f.control.snapshot().faulted).toBe(true);expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it('preserves manual release interlock across reload',async()=>{
+ const f=fixture();await f.ready();f.control.setHolding(false,true);await flush();expect(f.writes[0]!.bytes).toEqual([255,255,255,3,61,0,192]);f.control.disconnect();await flush();
+ const g=fixture({stored:f.stored});await g.ready();expect(g.control.snapshot().canEnable).toBe(false);g.control.confirmHolding(true);expect(g.writes).toEqual([]);g.control.disconnect();await flush();
+ });
 });

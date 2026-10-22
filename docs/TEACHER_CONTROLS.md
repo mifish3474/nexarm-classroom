@@ -1,4 +1,38 @@
-# Direct teacher controls: 0.7.0-dev.12
+# Teacher slider testing: 0.7.0-dev.16
+
+Current workflow:
+
+1. Open /mapping.html, confirm dev.16, Connect, confirm clearance, and Enable.
+2. Review the actual reading and target for one joint. Release its slider to send
+   the selected target, or enter a numeric target and click Move. Slider defaults
+   are factory speed 2000 / acceleration 100; both fields can be edited.
+3. Test both directions, one joint at a time. The active joint can accept a new
+   target after half a second. A target that settles short is reported honestly
+   and permits a new manual target; it is not called a successful arrival.
+4. Test Stop, then re-enable. Release/restore controls remain in Manual positioning.
+5. Review the Home sweep and click Return slowly to Home. Speed is now 300,
+   three times the old 100, with acceleration still 10. Home values are unchanged.
+6. Export diagnostics for unexpected behavior. Student live control remains off.
+
+The remaining sections describe earlier versions and are historical.
+
+**Current workflow:** Connect, confirm clearance, Enable, then use the +/-20
+buttons or Return slowly to Home. Each command sets speed 100 raw units/second
+and acceleration 10. Home sends one continuous target per joint, at most six
+commands. Your Home remains `[2050,2150,2100,2200,2000,1080]`.
+
+Buttons pause while a move finishes or readings are briefly unavailable; this
+does not switch teacher controls off. A 500 ms command interval remains, with
+no new capture window between moves. A prolonged feedback loss during movement
+or unexpected deviation disarms with a visible reason. Stop attempts a hold at
+the moving joint's freshly measured position and cancels remaining Home joints.
+Verify stopping physically; use the cutoff if necessary. Reconfirm clearance
+and Enable to continue. Test one +/-20 pair first, then try Home and Stop.
+
+The speed and acceleration settings need physical teacher validation. Longer
+movement deadlines depend on distance rather than the former two-second step
+timeout. The sections below document the previous stepped implementation and
+are historical; their step sizes, pacing, and capture waits no longer apply.
 
 Jog recovery now allows presses about 500 ms apart after settled feedback,
 without a fresh one-second capture after every jog. Initial Enable and manual/

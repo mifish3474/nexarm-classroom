@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="./favicon.svg"><title>NexArm · Teacher robot controls</title></head>
 <body><main class="shell teacher-control">
-  <header class="masthead"><div><h1>Teacher robot controls</h1><p class="app-version" data-app-version>Version %APP_VERSION%</p></div><nav><a href="./">Simulator</a> · <a href="./commissioning.html">Read-only inspection</a></nav></header>
+  <header class="masthead"><div><h1>Teacher robot controls</h1><p>Hardware testing only</p><p class="app-version" data-app-version>Version %APP_VERSION%</p></div><nav><a href="./">Simulator</a> · <a href="./commissioning.html">Read-only inspection</a></nav></header>
   <section class="panel teacher-connection"><h2>Connect and enable</h2>
     <p>Teacher use: secure the base, keep the arm’s sweep and gripper clear, and keep the physical power cutoff within reach. Connect reads positions and sends no movement.</p>
     <div class="actions"><button id="teacher-connect">Connect</button><button id="teacher-disconnect" class="secondary" disabled>Disconnect</button></div>
@@ -9,16 +9,16 @@
     <div class="actions"><button id="teacher-enable" disabled>Enable teacher controls</button></div>
     <p id="teacher-status" role="status">Disconnected.</p><p id="teacher-readiness"></p><p id="teacher-error" role="alert" hidden></p>
   </section>
-  <section class="panel"><h2>Move one joint</h2><p>Each click targets the current reported value −20 or +20. Wait for that move to finish before the next click. Buttons remain reusable; there is no attempt counter. Raw values are servo units.</p>
-    <div id="teacher-joints" class="joint-grid"></div>
+  <section class="panel"><h2>Joint sliders</h2><p>Release a slider to send its selected position, or enter a target and click Move. Slider moves use the displayed speed and acceleration, initially factory settings 2000 / 100. Only one joint moves at a time. Small jog controls remain available below each slider.</p>
+    <div id="teacher-joints" class="joint-grid"></div><p id="teacher-motion-detail" role="status"></p><details><summary>Earlier Servo 3 test</summary><p>Approved comparison: one Servo 3 +20 move at factory speed 2000 / acceleration 100, starting from the current reading. Small jogs stay at 100 / 10; Home now uses 300 / 10.</p><button id="teacher-servo3-factory" disabled>Servo 3 +20 at factory settings</button></details><button id="teacher-diagnostic-export" class="secondary">Export movement diagnostics</button>
     <p class="note">Increasing values may raise or lower a joint, or open or close the gripper. Keep its pinch area clear. These teacher controls rely on your view of the arm; mechanical and collision limits are not calibrated.</p>
   </section>
   <section class="panel" id="teacher-home-panel"><h2>Your Home position</h2>
     <p class="home-values">S1 <strong>2050</strong> · S2 <strong>2150</strong> · S3 <strong>2100</strong> · S4 <strong>2200</strong> · S5 <strong>2000</strong> · S6 <strong>1080</strong></p>
-    <p>Return moves one joint at a time: <strong>S2 → S3 → S4 → S5 → S1 → S6</strong>. Inspect that sweep before starting. Small target increments of up to 10 raw units are spaced at least 1.2 seconds apart, with feedback between steps. The firmware controls the speed of each small movement.</p>
+    <p>Return moves one joint at a time: <strong>S2 → S3 → S4 → S5 → S1 → S6</strong>. Inspect that sweep before starting. Each joint receives one target with speed 300 raw units per second and acceleration 10. The servo performs the movement continuously; there are no small target steps or long pauses.</p>
     <p id="teacher-home-preview"></p><div class="actions"><button id="teacher-home" disabled>Return slowly to Home</button></div>
     <progress id="teacher-home-progress" value="0" max="1" aria-label="Home return progress"></progress><p id="teacher-home-status" role="status">No return started.</p>
-    <p class="note">Home is this target pose; it does not reset servo calibration. A difference of up to 9 raw units is accepted without repeated corrections. Stop cancels future steps and leaves the USB connection open; a command already sent cannot be recalled.</p>
+    <p class="note">Home is this target pose; it does not reset servo calibration. A difference of up to 9 raw units is accepted without repeated corrections. Stop cancels remaining joints and attempts a hold at the latest measured position. Verify the physical result; use the power cutoff if necessary. USB remains connected.</p>
   </section>
   <section class="panel"><details id="teacher-manual-details"><summary>Manual positioning: release and restore holding</summary>
     <p><strong>Support the arm before releasing; it can fall.</strong> Keep fingers out of joint and jaw pinch areas. Gently place it only after confirming release; never force resistance. Continue supporting it during restore and verify that it holds the placed pose.</p>

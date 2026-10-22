@@ -1,4 +1,137 @@
-# Simulation and teacher control preview 0.7.0-dev.12
+# Simulation and teacher control preview 0.7.0-dev.16
+
+## Current focus: factory-style sliders and faster Home
+
+Our goal remains a privacy-first Blockly classroom: program, simulate, observe,
+then run teacher-approved hardware. We have established USB communication,
+holding release/restore, individual movement, and Home under tested conditions.
+The teacher requested a simpler hardware test milestone instead of continuing
+small-jog commissioning: operate all joints through sliders and return Home.
+
+Each joint now has a live reading, target slider, numeric target, speed,
+acceleration, and Move button. Slider changes preview locally and send on release;
+numeric entry sends on Move. Sliders initialize from actual readings, and retain
+selected targets while feedback updates separately. Defaults match the factory
+fields: speed 2000 and acceleration 100. Encoding range 0-4095 is not a verified
+mechanical range. This is supervised teacher testing, not student live control.
+
+Home retains the requested pose and order, with speed 300 (three times its former
+100) and acceleration 10. Its estimate and deadlines use that profile. Actual
+travel time is not guaranteed to scale exactly threefold. Small +/-20 jogs remain
+inside collapsed details in each card as secondary controls.
+
+Only one joint moves at a time. A running slider joint can be retargeted after
+500 ms with fresh feedback and an idle writer; that explicit command replaces
+its old target. Other joints and Home wait. There is no queued future click.
+Invalid targets do not cancel the existing move. Stop cancels future Home joints
+and attempts the existing fresh-position hold.
+
+Manual moves that settle short are labeled Settled short with the remaining
+error, without claiming arrival, repeated correction, or a lockout. The teacher
+can request a new target. Home retains arrival checks and does not silently skip
+a joint. Unexpected deviation, missing feedback, and USB failures still fault.
+
+Acceptance: operate each slider both ways, verify release/restore, Stop a move,
+and complete Home at speed 300. Then use the observations to define the hardware
+profile and resume Blockly work. The root prototype and simulator are preserved;
+no new dependency, login, upload, deployment, or simulator USB access was added.
+
+Earlier updates below are historical.
+
+Validation for dev.16: 126 unit tests, 20 Chrome browser tests, and the
+TypeScript/Vite build pass. Targeted browser checks were repeated after collapsing
+the earlier comparison and requiring numeric fields; blank fields send nothing.
+The slider layout was visually inspected. All motion tests used synthetic USB;
+actual smoothness and the faster Home return remain teacher hardware checks.
+
+## Current update: approved Servo 3 comparison
+
+The teacher approved enabling **Servo 3 +20 at factory settings**. This separate
+button below the joint controls sends one target from the current reading +20,
+with speed 2000 / acceleration 100. Existing Enable, holding confirmation,
+freshness, encoder boundaries, serialized writes, feedback, and Stop checks apply.
+Extra clicks during movement are not queued. No return or retry runs automatically.
+
+Each motion plan carries its explicit profile through packet dispatch, deadlines,
+visible diagnostics, and export. Normal jog and Home retain 100/10 and send those
+values on every command. Stop retains its normal-profile current-position hold.
+
+Refresh `/mapping.html`, confirm dev.15, close the factory app, Connect and Enable.
+Click the separate comparison once. Report whether Servo 3 physically moved,
+the displayed start/target/actual readings, and any fault. Export movement
+diagnostics if needed. Hardware success is not assumed.
+
+Validation: 123 unit tests, six synthetic-USB Chrome tests, and TypeScript/Vite
+build pass. Tests cover the comparison packet, blocked overlapping clicks, visible
+profile, and a following jog returning to the normal profile.
+
+The following sections record previous updates.
+
+## Current update: Servo 3 diagnostics
+
+Follow-up: the teacher confirms actual bidirectional factory movement at displayed
+2000 / 100 and no physical movement on browser +20. A concrete
+[factory-settings comparison](./SERVO3_FACTORY_COMPARISON.md) is prepared and its
+packet is unit-tested. Enabling that comparison awaits approval of the parameter
+change. No current speed, acceleration, Home route, or other movement is changed.
+
+The teacher reports Home stopping at Servo 3 and +20 becoming grey after a press,
+while negative presses work. Controls intentionally disable during an outstanding
+move; this does not establish whether the positive move stalls or triggers another
+fault. The code has no Servo-3-specific positive-direction restriction except the
+generic 4095 encoder ceiling. Synthetic tests accept both signs. The physical
+cause is not established.
+
+Dev.14 displays the commanded joint, initial reading, target, actual reading, and
+remaining distance directly under the jog controls. Fault messages identify a
+timeout/no reported progress, the specific companion joint drifting, or a reading
+outside the commanded path. Local export preserves the failure-time readings and
+command even when later feedback changes. Export movement diagnostics is now
+visible beside the controls. No motion limits, Home values, speed, acceleration,
+retries, or force settings are changed in this diagnostic update.
+
+The teacher's factory screenshot displays speed 2000 / acceleration 100 for all
+six joints, compared with our explicit 100 / 10. This is a potential lead, not
+proof of a firmware or mechanical cause. The factory UI has previously shown
+cached values, so distinguish displayed fields from confirmed applied settings.
+Do not silently increase app speed twentyfold based on the screenshot. Await
+observations of actual Servo 3 movement and the new fault details before choosing
+a parameter-change test.
+
+Validation: 121 unit tests and build pass, including Servo 3 positive-stall and
+negative-success diagnostic cases. Browser checks exercise synthetic motion.
+
+## Current rebuild: continuous speed-controlled movement
+
+The teacher requested a rebuild for smooth joint control and smooth Home. This
+authorizes the combined speed/acceleration/position packet researched in the
+previous update. Every new jog and Home command explicitly sets speed 100 raw
+units/second and acceleration 10. Home sends at most one destination per joint,
+in order 2,3,4,5,1,6, rather than a chain of small waypoints. The requested Home
+values remain unchanged. These are initial physical-test settings, not measured
+velocity or acceleration guarantees.
+
+The old narrow sample-window gates and repeated capture waits are removed from
+direct controls. Valid readings within 500 ms permit commands; shorter feedback
+gaps pause buttons without disarming. Idle gaps do not revoke Enable. During
+movement, a 1.5-second feedback loss cancels future commands and disarms. Weak
+frames are ignored while waiting for valid feedback. Actual failure reasons stay
+visible. USB writes have a two-second deadline and retain ownership if unresolved.
+
+Home completion is supervised per joint, with distance-based deadlines and
+deviation checks. Stop cancels future targets and attempts a speed-controlled
+hold at the latest measured position on the moving servo, when fresh readings
+and an idle writer permit it. A pending write or stale reading can prevent this;
+the page reports that condition. A hold request is not a certified physical stop.
+Disconnect and page hiding also cancel and attempt that hold before cleanup.
+
+Tests now model gradual servo movement for the browser workflow. The simulated
+robot demonstrates the packet sequence and responsiveness, not real-arm smoothness.
+Validation: 119 unit tests, 18 Chrome browser tests, and the TypeScript/Vite build
+pass. The running local page reports 0.7.0-dev.13. No physical robot was connected
+by the assistant; verify the feel of speed 100 / acceleration 10 on a single jog
+before trying the complete Home return.
+Earlier sections below describe superseded implementations.
 
 ## Current update: half-second jog recovery and speed-control research
 

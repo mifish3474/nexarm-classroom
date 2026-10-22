@@ -1,6 +1,6 @@
 export type ServoId = 1 | 2 | 3 | 4 | 5 | 6;
 
-// Research/review only: no live caller until the teacher approves a speed test.
+// Teacher-authorized smooth controls use this atomic speed/position command.
 // Factory ServoTab.send_servo_cmd and manufacturer continuous-write layout.
 export function encodeSpeedPosition(id:number,position:number,speed:number,acceleration:number):Uint8Array {
   encodeGoalPosition(id,position);

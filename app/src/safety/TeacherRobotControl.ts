@@ -1,22 +1,20 @@
 import { PassiveConnection } from '../serial/PassiveConnection';
 import type { ReadOnlyPort } from '../serial/PassiveConnection';
 import { FrameParser, decodePositions } from '../protocol/FrameParser';
-import { encodeFactoryHolding, encodeGoalPosition } from '../protocol/NexArmCodec';
-import { ReferenceCapture } from '../robot/ReferenceCapture';
+import { encodeFactoryHolding, encodeSpeedPosition } from '../protocol/NexArmCodec';
 import { ManualPositioning } from './ManualPositioning';
-import { StagedReferenceReturn } from './StagedReferenceReturn';
-import type { StagedRoute } from './StagedReferenceReturn';
-import { jogPlan, slowHomePlan, TEACHER_HOME } from './TeacherControlPlan';
+import { SmoothTeacherMotion, smoothPlan, MOTION_SPEED, MOTION_ACCELERATION, HOME_SPEED, absoluteJointPlan } from './SmoothTeacherMotion';
+
+import { TEACHER_HOME } from './TeacherControlPlan';
 
 export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableStream<Uint8Array> | null; }
-type Operation = 'Jog' | 'Home';
+type Operation = 'Jog' | 'Home' | 'Servo 3 factory comparison' | 'Slider';
 
 // Teacher-only direct controls. All jog, Home, and holding writes pass through
 // the same executor and exclusive USB lease. No click is queued for later.
 export class TeacherRobotControl {
   private readonly connection: PassiveConnection;
   private readonly parser = new FrameParser();
-  private readonly evidence = new ReferenceCapture();
   private manual: ManualPositioning;
   private port: TeacherPort | null = null;
   private connectionState = 'Disconnected';
@@ -30,8 +28,9 @@ export class TeacherRobotControl {
   private pending: Promise<void> | null = null;
   private lastCommandAt = -Infinity;
   private generation = 0;
-  private recent: {at:number; positions:readonly number[]}[] = [];
-  private route: StagedReferenceReturn | null = null;
+  private writeStartedAt=-Infinity;
+  private lastMovingServo:number|null=null;
+  private route: SmoothTeacherMotion | null = null;
   private operation: Operation | null = null;
   private history: unknown[] = [];
 
@@ -47,7 +46,7 @@ export class TeacherRobotControl {
         this.armed = false; this.generation++;
         this.manual.interrupt('Connection ended.', this.positions ?? []);
         if (this.route?.activeRun) this.route.fail('Connection lost. Future steps canceled.');
-        this.evidence.clear();
+
         if (!this.faulted) this.message = message;
       }
       this.changed();
@@ -58,7 +57,7 @@ export class TeacherRobotControl {
     if (this.connectionState !== 'Disconnected' || !this.visible()) return;
     this.manual = new ManualPositioning(this.storage);
     this.armed = false; this.faulted = false; this.route = null; this.operation = null;
-    this.recent=[]; this.parser.reset(); this.evidence.clear(); this.positions = null; this.receivedAt = -Infinity;
+     this.parser.reset();  this.positions = null; this.receivedAt = -Infinity;
     this.connection.connect(async () => {
       const port = await select(); this.port = port;
       return {get readable() { return port.readable; }, open: options => port.open(options),
@@ -66,20 +65,14 @@ export class TeacherRobotControl {
     });
   }
 
-  private idleReason(fastJog = true): string | null {
+  private idleReason(): string | null {
     if (this.connectionState !== 'Listening') return 'Connect to the robot.';
     if (!this.visible()) return 'Keep this page visible.';
     if (this.writeInFlight || this.manual.pending) return 'Waiting for the current write to finish.';
     if (this.route?.activeRun) return 'Movement is in progress. Other clicks are not queued.';
-    const quick = fastJog && this.armed && this.operation === 'Jog' && this.route?.phase === 'Complete' && !this.manual.blocked;
-    if (this.now() - this.lastCommandAt < (quick ? 500 : 900)) return 'Waiting for the command interval.';
-    if (quick) {
-      const samples = this.recent.filter(s => s.at >= this.now() - 300);
-      if (samples.length < 3 || this.now() - samples.at(-1)!.at > 150 || samples.at(-1)!.at - samples[0]!.at < 200) return 'Waiting for fresh settled readings.';
-      for (let i=0;i<6;i++) if (Math.max(...samples.map(s=>s.positions[i]!))-Math.min(...samples.map(s=>s.positions[i]!))>3) return 'Waiting for readings to settle.';
-      return null;
-    }
-    return this.evidence.reason(this.now());
+    if (this.now()-this.receivedAt>500) return 'Waiting for current position feedback; controls remain enabled.';
+    if (this.now()-this.lastCommandAt<500) return 'Finishing the half-second command interval.';
+    return null;
   }
   private enableReason(): string | null {
     if (this.manual.blocked) return 'Restore and physically confirm holding in Manual positioning below.';
@@ -95,6 +88,7 @@ export class TeacherRobotControl {
       armed: this.armed, faulted: this.faulted, message: this.message, reason,
       canConnect: this.connectionState === 'Disconnected', canEnable: !this.armed && this.enableReason() === null,
       enableReason: this.enableReason(), canMove: reason === null,
+      sliderServo:this.operation==='Slider'&&this.route?.phase==='Running'&&this.armed&&!this.manual.blocked&&this.visible()&&!this.writeInFlight&&this.now()-this.receivedAt<=500&&this.now()-this.lastCommandAt>=500?this.route.status().next?.servo:null,
       home: this.route?.status() ?? null, operation: this.operation,
       busy: this.writeInFlight || !!this.route?.activeRun || this.manual.pending,
       manualPhase: this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
@@ -112,15 +106,26 @@ export class TeacherRobotControl {
   }
   jog(servo: number, delta: number) {
     const reason = this.movementReason(); if (reason) throw new Error(reason);
-    this.start(jogPlan(this.positions!, servo, delta), 'Jog');
+    this.start(smoothPlan(this.positions!, servo, delta), 'Jog');
+  }
+  moveJoint(servo:number,target:number,speed=2000,acceleration=100){
+    const same=this.operation==='Slider'&&this.route?.phase==='Running'&&this.route.status().next?.servo===servo;
+    if(same){if(!this.armed||this.manual.blocked||this.connectionState!=='Listening'||!this.visible()||this.writeInFlight||this.now()-this.receivedAt>500||this.now()-this.lastCommandAt<500)throw Error('Wait for fresh feedback and the half-second interval.');}
+    else {const reason=this.movementReason();if(reason)throw Error(reason);}
+    const plan=absoluteJointPlan(this.positions!,servo,target,speed,acceleration);
+    if(same)this.route!.stop();this.start(plan,'Slider');
+  }
+  compareServo3Factory() {
+    const reason=this.movementReason();if(reason)throw new Error(reason);
+    this.start(smoothPlan(this.positions!,3,20,{speed:2000,acceleration:100}),'Servo 3 factory comparison');
   }
   returnHome() {
     const reason = this.movementReason(); if (reason) throw new Error(reason);
-    this.start(slowHomePlan(this.positions!), 'Home');
+    this.start(smoothPlan(this.positions!,undefined,undefined,{speed:HOME_SPEED,acceleration:MOTION_ACCELERATION}), 'Home');
   }
-  private start(plan: StagedRoute, operation: Operation) {
+  private start(plan: ReturnType<typeof smoothPlan>, operation: Operation) {
     this.retain();
-    this.route = new StagedReferenceReturn(this.positions!, this.now(), plan); this.operation = operation;
+    this.route = new SmoothTeacherMotion(this.positions!, this.now(), plan); this.operation = operation;
     if (this.route.phase === 'Complete') { this.message = this.route.message; this.changed(); return; }
     this.route.start(this.positions!, this.now());
     this.message = operation === 'Home' ? 'Returning slowly to Teacher Home, one joint at a time.' : 'Jogging one joint. Wait for feedback before another click.';
@@ -129,20 +134,22 @@ export class TeacherRobotControl {
   private pump() {
     const route = this.route;
     if (!route || route.phase !== 'Running') return;
-    if (!this.armed || this.connectionState !== 'Listening' || !this.visible() || this.now() - this.receivedAt > 500) {
+    if (!this.armed || this.connectionState !== 'Listening' || !this.visible() || this.now() - this.receivedAt > 1500) {
       this.fault('Movement stopped: connection, visibility, or fresh feedback changed.'); return;
     }
     if (this.writeInFlight || this.now() - this.lastCommandAt < 500) return;
     const step = route.next(this.now());
     if (route.status().phase === 'Fault') { this.fault(route.message); return; }
-    if (step) this.write(encodeGoalPosition(step.servo, step.target), () => {
+    if (step) { this.lastMovingServo=step.servo; this.write(encodeSpeedPosition(step.servo, step.target, route.speed, route.acceleration), () => {
       route.written(this.now()); this.checkRoute();
-    });
+    }); }
   }
   private checkRoute() {
     if (this.route?.phase === 'Fault') { this.fault(this.route.message); return; }
+    if (this.route?.phase === 'Settled short'){this.lastMovingServo=null;this.message=this.route.message;}
     if (this.route?.phase === 'Complete') {
-      this.evidence.clear();
+      this.lastMovingServo=null;
+
       this.message = this.operation === 'Home' ? 'Home reached within 9 raw units. Inspect the pose; no correction loop runs.' : 'Jog finished.';
     }
     this.changed();
@@ -150,7 +157,7 @@ export class TeacherRobotControl {
 
   // Existing factory All Off/All On workflow, available without enabling motion.
   setHolding(enabled: boolean, supported: boolean) {
-    const reason = this.idleReason(false);
+    const reason = this.idleReason();
     if (!supported || reason) throw new Error(reason ?? 'Support the arm and confirm clear pinch areas and cutoff access.');
     if (typeof enabled !== 'boolean') throw new Error('Choose release or restore.');
     this.armed = false;
@@ -159,7 +166,7 @@ export class TeacherRobotControl {
       this.manual.begin(enabled ? 'restore' : 'release', this.now(), this.positions!);
     } catch (error) { this.fault(error instanceof Error ? error.message : 'Holding setup could not be recorded.'); return; }
     this.write(encodeFactoryHolding(enabled), () => {
-      this.manual.sent(enabled ? 'restore' : 'release', this.positions ?? []); this.evidence.clear();
+      this.manual.sent(enabled ? 'restore' : 'release', this.positions ?? []);
       this.message = this.manual.message; this.changed();
     });
   }
@@ -168,19 +175,19 @@ export class TeacherRobotControl {
     if (!confirmed || reason) throw new Error(reason ?? 'Physically verify holding is restored and stable.');
     try { this.manual.confirm(this.positions!); }
     catch (error) { this.fault(error instanceof Error ? error.message : 'Holding confirmation could not be recorded.'); return; }
-    this.armed = false; this.faulted = false; this.evidence.clear();
+    this.armed = false; this.faulted = false;
     this.message = 'Holding confirmed. Movement controls remain off until Enable.'; this.changed();
   }
 
-  private write(packet: Uint8Array, completed: () => void) {
-    if (this.writeInFlight || this.now() - this.lastCommandAt < 500 || !this.port?.writable) {
+  private write(packet: Uint8Array, completed: () => void, urgent = false) {
+    if (this.writeInFlight || (!urgent && this.now() - this.lastCommandAt < 500) || !this.port?.writable) {
       this.fault('Writer is unavailable. No command queued.'); return;
     }
     let writer: WritableStreamDefaultWriter<Uint8Array> | undefined;
     const generation = this.generation, started = this.now();
     try {
       writer = this.port.writable.getWriter(); const activeWriter = writer;
-      this.writeInFlight = true; this.lastCommandAt = started;
+      this.writeInFlight = true; this.writeStartedAt=started; this.lastCommandAt = started;
       this.pending = activeWriter.write(packet).finally(() => {
         activeWriter.releaseLock(); this.writeInFlight = false;
         this.lastCommandAt = Math.max(this.lastCommandAt, this.now());
@@ -199,14 +206,13 @@ export class TeacherRobotControl {
       if (this.connectionState !== 'Listening') break;
       if (frame.deviceId !== 255 || frame.command !== 11 || frame.payload.length !== 24) continue;
       const positions = decodePositions(frame), at = this.now();
-      if (!positions) { this.fault('Stopped after invalid position feedback. Inspect the arm before enabling again.'); continue; }
-      if (this.receivedAt !== -Infinity && at - this.receivedAt > 500) this.fault('Telemetry gap exceeded 500 ms.');
-      this.positions = positions; this.receivedAt = at; this.evidence.observe(positions, at);
-      this.recent = [...this.recent, {at,positions:[...positions]}].filter(s=>at-s.at<=300);
+      if (!positions) continue;
+
+      this.positions = positions; this.receivedAt = at;
       if (this.route?.phase === 'Running') {
         this.route.observe(positions, at);
         const phase = this.route.status().phase;
-        if (phase === 'Fault' || phase === 'Complete') this.checkRoute();
+        if (phase === 'Fault' || phase === 'Complete' || phase === 'Settled short') this.checkRoute();
       }
     }
     this.changed();
@@ -214,11 +220,12 @@ export class TeacherRobotControl {
   tick() {
     if (this.connectionState !== 'Listening') return;
     if (!this.visible()) { this.disconnect(); return; }
+    if(this.writeInFlight && this.now()-this.writeStartedAt>=2000 && !this.faulted){this.fault('USB write did not finish within two seconds. Delivery is uncertain.');return;}
     if (this.manual.pending && this.now() - this.manual.pendingSince >= 2000) {
       this.fault('Holding write deadline exceeded. Physical holding needs confirmation.'); return;
     }
-    if (this.receivedAt === -Infinity ? this.now() - this.connectedAt > 2000 : this.now() - this.receivedAt > 500) {
-      if (!this.faulted) this.fault('Stopped after stale position feedback. Inspect the arm before enabling again.'); return;
+    if (this.receivedAt === -Infinity ? this.now() - this.connectedAt > 2000 : this.now() - this.receivedAt > 1500) {
+      if (this.route?.activeRun && !this.faulted) this.fault('Movement canceled after 1.5 seconds without valid feedback.'); this.changed(); return;
     }
     // Ask the feedback supervisor to check its deadline even while a write hangs.
     if (this.route?.phase === 'Running') {
@@ -232,14 +239,20 @@ export class TeacherRobotControl {
     if (this.route) this.history = [...this.history, {operation: this.operation, at: new Date().toISOString(), result: this.route.report()}].slice(-100);
   }
   private fault(message: string) {
+    const moving=this.route?.activeRun;
     this.armed = false; this.faulted = true; this.generation++;
     if (this.route?.activeRun) this.route.fail(message);
-    this.manual.interrupt(message, this.positions ?? []); this.evidence.clear(); this.message = message; this.changed();
+    this.manual.interrupt(message, this.positions ?? []);  this.message = message+(moving?' Future targets canceled. Use Stop or the physical cutoff to intervene in the current movement.':''); this.changed();
   }
   stop() {
+    const moving=this.lastMovingServo; this.lastMovingServo=null;
     this.armed = false; this.generation++; this.route?.stop();
-    this.manual.interrupt('Stopped by teacher.', this.positions ?? []); this.evidence.clear();
-    this.message = 'Stopped. Future steps canceled. Inspect, then enable when ready; connection remains open.'; this.changed();
+    this.manual.interrupt('Stopped by teacher.', this.positions ?? []);
+    this.message = 'Stopped. Future commands canceled; connection remains open.';
+    if(moving && this.positions && this.now()-this.receivedAt<=500 && !this.writeInFlight && this.connectionState==='Listening') {
+      this.write(encodeSpeedPosition(moving,this.positions[moving-1]!,MOTION_SPEED,MOTION_ACCELERATION),()=>{this.message='Hold target sent at the latest measured position. Verify the arm has stopped, then enable when ready.';this.changed();},true);
+    } else if(moving) this.message='Future commands canceled. Could not send a fresh hold target; use the physical cutoff if needed.';
+    this.changed();
   }
   disconnect() { this.stop(); this.connection.disconnect(); }
   report() {
