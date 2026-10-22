@@ -12,8 +12,10 @@ illustrative simulator was missing. Use these as a manufacturer-software-derived
 candidate model, then validate against the actual arm; do not rediscover every
 offset by physical probing or confuse this model with a commissioned safety profile.
 
-The servo-2 movement proposal is deferred while this non-motion route is pursued.
-Its approval was never given. The completed servo-1 approval remains consumed.
+This inspection originally deferred servo-2 mapping. The teacher subsequently
+requested the remaining joint suite, staged return, and retry/manual-positioning
+recovery. See [the current scope](./JOINT_SUITE_AND_HOME.md). The completed servo-1
+approval remains consumed; it is not offered for renewal.
 
 ## Reproducible inspection and provenance
 
@@ -138,6 +140,36 @@ In particular, a constant named Stop All Motor must not be assumed to stop the
 arm safely merely because its name sounds useful.
 
 ## Home, reset, and calibration are different
+
+### Torque release research added during recovery work
+
+The static factory `servo_torque_off_all` and `servo_torque_on_all` functions call
+`send_sys(CMD_SET_TORQUE, [0])` and `[1]`, respectively. Constants bind that command
+to61; `send_sys` wraps device255. The derived frames are
+`FF FF FF 03 3D 00 C0` and `FF FF FF 03 3D 01 BF`. The per-servo path instead writes
+register40 (`0x28`) with command3 and a one-byte0/1 parameter. These are static
+findings, **not instructions to send or physically verified command behavior**.
+
+Hiwonder's [Getting Started / PC Software guide](https://wiki.hiwonder.com/projects/NexArm/en/esp32-version/docs/1_Getting_Started_NexArm.html)
+documents All Off/All On and manual Teach Edit release. Its
+[serial protocol guide](https://wiki.hiwonder.com/projects/NexArm/en/esp32-version/docs/3_Motion_Control.html)
+documents the per-servo `0x28` torque switch. This is distinct from the unverified
+LeRobot bridge command98. The teacher confirmed factory All Off/All On work and
+All On held the manually changed pose during that test. The initially unchanged
+factory number refreshed with Read Pos; the teacher confirmed the browser passive
+inspector matches those refreshed positions. This supports the current manual
+workflow, not a general firmware guarantee. The teacher-requested browser manual
+controls now use the exact factory command61 path with support/clearance checks,
+explicit physical holding confirmation, and a durable interrupted-setup interlock.
+
+Static `ServoTab.sync_current_servo_positions` copies `comm_manager.last_servos`
+to the sliders/position fields when synchronizing the page. `_get_actual_positions`
+has a separate request/event path named `CMD_GET_REAL_JOINT_ANGLES`. This supports
+investigating a cached/target display, but does not establish the cause of the
+teacher's unchanged number. Its display refreshed through Read Pos in the teacher
+test. No new feedback query or interpretation of leading 0x0B fields was added;
+browser feedback still uses the validated passive channel. Matching values are
+observational evidence, not proof of precision or independently measured torque.
 
 The factory servo-tab `servo_home` sets six position values to 2048 and calls
 the servo-send routine for each ID. It is a physical action, not a display reset.

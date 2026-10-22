@@ -1,4 +1,4 @@
-import {HOME_REFERENCE,referenceReturnProposal} from './ReferenceReturnProposal';
+import {HOME_REFERENCE,HOME_TOLERANCE,referenceReturnProposal} from './ReferenceReturnProposal';
 export const RETURN_APPROVAL_KEY='nexarm.approval.staged-reference-a.2026-10-22';
 type Step=ReturnType<typeof referenceReturnProposal>[number];
 export class StagedReferenceReturn {
@@ -12,7 +12,7 @@ export class StagedReferenceReturn {
   private lastObservation:number;
   private lastWrite=-Infinity;
   private active:{step:Step;before:readonly number[];at:number;written:boolean;samples:{at:number;value:number}[]}|null=null;
-  constructor(positions:readonly number[],at:number){this.before=[...positions];this.latest=[...positions];this.holding=[...positions];this.lastObservation=at;this.steps=referenceReturnProposal(positions);if(!this.steps.length){this.phase='Complete';this.message='Already within ±5 of Reference A. No command needed.';}}
+  constructor(positions:readonly number[],at:number){this.before=[...positions];this.latest=[...positions];this.holding=[...positions];this.lastObservation=at;this.steps=referenceReturnProposal(positions);if(!this.steps.length){this.phase='Complete';this.message='Already within ±9 of Reference A. No command needed.';}}
   start(positions:readonly number[],at:number){
     if(this.phase!=='Enabled'||positions.some((n,i)=>Math.abs(n-this.before[i]!)>5))throw new Error('Return starting state changed; stop and review.');
     this.latest=[...positions];this.holding=[...positions];this.lastObservation=at;this.phase='Running';this.message='Staged return running. No automatic retry or correction.';
@@ -24,7 +24,7 @@ export class StagedReferenceReturn {
     if(at-this.lastWrite<900)return null;
     const step=this.steps[this.index];if(!step)return null;
     const position=this.latest[step.servo-1]!;
-    if(Math.abs(position-step.from)>5||Math.abs(step.target-position)>25){this.fail('Waypoint start differs from the frozen route.');return null;}
+    if(Math.abs(position-step.from)>HOME_TOLERANCE||Math.abs(step.target-position)>25){this.fail('Waypoint start differs from the frozen route.');return null;}
     this.active={step,before:[...this.latest],at,written:false,samples:[]};this.lastWrite=at;return step;
   }
   observe(positions:readonly number[],at:number){
@@ -33,7 +33,7 @@ export class StagedReferenceReturn {
     const a=this.active,joint=a.step.servo-1,value=positions[joint]!;
     if(at-a.at>=2000){this.fail('Waypoint settling deadline exceeded.');return;}
     if(positions.some((n,i)=>i!==joint&&Math.abs(n-a.before[i]!)>12)||value<Math.min(a.before[joint]!,a.step.target)-12||value>Math.max(a.before[joint]!,a.step.target)+12){this.fail('Unexpected joint deviation during return.');return;}
-    if(Math.abs(value-a.step.target)<=5){
+    if(Math.abs(value-a.step.target)<=HOME_TOLERANCE){
       a.samples.push({at,value});a.samples=a.samples.slice(-100);
       if(Math.max(...a.samples.map(s=>s.value))-Math.min(...a.samples.map(s=>s.value))>3)a.samples=[{at,value}];
     }else a.samples=[];
@@ -44,8 +44,8 @@ export class StagedReferenceReturn {
     const a=this.active;if(!a||!a.written||a.samples.length<3||a.samples.at(-1)!.at-a.samples[0]!.at<200)return;
     this.index++;this.active=null;this.holding=[...this.latest];
     if(this.index===this.steps.length){
-      if(this.latest.some((n,i)=>Math.abs(n-HOME_REFERENCE[i]!)>5)){this.fail('Final readings are outside Reference A tolerance. No correction will be attempted.');return;}
-      this.phase='Complete';this.message='Return feedback is within ±5 of Reference A. Review the physical pose before testing.';
+      if(this.latest.some((n,i)=>Math.abs(n-HOME_REFERENCE[i]!)>HOME_TOLERANCE)){this.fail('Final readings are outside Reference A tolerance. No correction will be attempted.');return;}
+      this.phase='Complete';this.message='Return feedback is within ±9 of Reference A. Inspect the physical pose before testing; small residual error is expected.';
     }
   }
   fail(message:string){this.phase='Fault';this.message=message;this.active=null;}

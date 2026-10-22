@@ -1,4 +1,4 @@
-# Simulation and teacher mapping preview 0.7.0-dev.5
+# Simulation and teacher mapping preview 0.7.0-dev.7
 
 This preview starts architecture packages A/B/C. It is not a complete safety
 controller, full programming curriculum, or student live-robot release.
@@ -7,29 +7,61 @@ controller, full programming curriculum, or student live-robot release.
 
 The teacher requested a build testing all remaining joints, then a staged return
 covering all servos so the robot can reach Reference A before those tests.
-`/mapping.html` now provides five separate one-shot tests (servos 2–6), teacher
+`/mapping.html` now provides five separate deliberate tests (servos 2–6), teacher
 observation fields, and one combined local report. Servo 1's confirmed clockwise
 base test remains recorded and consumed; it is not offered for a repeat.
 
-The staged return covers all six servos, skips joints already within +/-5 of
+The staged return covers all six servos, skips joints already within +/-9 of
 Reference A, previews its complete route, and requires separate Enable and Start.
-From the teacher's reported `[2046,2009,1943,2048,2044,2052]`, it plans two shoulder
-waypoints and six elbow waypoints. It uses at most 20 raw units per nominal step,
+From the teacher's reported `[2046,2009,1943,2048,2044,2052]`, it plans three shoulder
+waypoints and seven elbow waypoints. It uses at most 16 raw units per nominal step,
 checks actual readback before sending (maximum 25), waits for settled feedback,
 and preserves at least 900 ms between writes. Tests and return share one guarded
-writer and cannot overlap. Stop/fault cancels future commands without retry.
+writer and cannot overlap. Stop/fault cancels future commands without automatic retry.
 
 This is a bounded teacher commissioning tool, not general calibrated Home or
-student live control. One return attempt total is consumed before its first
-write, including failure/Stop; reload does not restore it. Numerical bounds are
+student live control. Each attempt is consumed before its first write; reload
+does not restore it. Teacher recovery now records an explicit review permitting
+one more return or selected-joint attempt, with renewed clearance, fresh evidence,
+and separate Enable/Send or Start. Original records remain. A pending write, fault
+without reconnect, stale feedback, or out-of-region pose cannot be bypassed.
+Joint targets now freeze at current reading +20 at Enable, with <=5 drift before
+Send, and starting windows accept Reference A +/-9. This fixes the mismatch
+between the return's arrival readings and historical test starting values. The
+9-unit settling tolerance matches the handoff's observed residual error; 16-unit
+return steps retain the 25-unit maximum measured command without correction loops.
+Numerical bounds are
 local commissioning guards, not verified mechanical/collision limits. Physical
 clearance, speed, force, and stopping behavior still require teacher validation.
 See [exact bounds, targets, failure rules, and operating steps](./JOINT_SUITE_AND_HOME.md).
 
-Verification: 68 unit tests, production TypeScript/Vite build, and 9 passing mocked
-Chrome tests cover the joint suite and staged return alongside existing simulation and
-passive inspection checks. The assistant has not accessed real hardware. The
+Verification: 90 unit tests, production TypeScript/Vite build, and 11 mocked
+Chrome tests pass for manual positioning, recovery, joint tests, staged return,
+simulation, and passive inspection. The assistant has not accessed real hardware. The
 existing Blockly bundle-size warning remains; Chromebook performance is unverified.
+
+The teacher confirmed factory All Off releases the arm, All On held a manually
+changed pose in that test, Read Pos updates the factory number fields, and our
+passive inspector matches the refreshed readings. The earlier readback concern
+is resolved for this observation; it is not a general calibration guarantee.
+
+The browser now implements **Enable manual positioning → Release all servos →
+Restore servo holding → Confirm holding restored** on the teacher mapping page.
+Separate support/clearance and physical-holding confirmations are required.
+It uses the factory system command61 All Off/All On through the shared guarded
+writer. No position target, reset, torque action on connect/Stop, or automatic
+holding restoration is added. Tests/returns/retries remain blocked until manual
+setup ends with physical confirmation and new fresh evidence. An interlock saved
+before torque writes survives reload and is refreshed at each connection, including
+pages opened before a different tab released the arm. Interruption leaves holding
+unverified; late writes cannot resume setup. Physical support, cutoff access,
+clear pinch areas, and adult supervision remain necessary. These browser buttons
+need a supervised physical check; the assistant tested only synthetic USB streams.
+
+Local storage adds `nexarm.commissioning.manual-positioning.v1`: a durable holding-
+verification interlock and the last50 command/confirmation events with times and
+readings. Export includes `manualPositioning`, explicitly labeling torque state
+as not measured. No new runtime network requests or dependencies were added.
 
 ## What works
 
@@ -103,10 +135,15 @@ The production app loads its HTML, CSS, and JavaScript from the same origin.
 The mapping page retains the original servo-1 localStorage approval marker
 (`nexarm.approval.reference-a-servo1-plus20.2026-10-22`), adds five independent
 `nexarm.approval.joint-suite.servoN.positive.2026-10-22` markers, and uses
-`nexarm.approval.staged-reference-a.2026-10-22` for the one return. Only attempted
+`nexarm.approval.staged-reference-a.2026-10-22` for the first return. Only attempted
 scopes are stored. They contain scope/target/route and attempt time, no student or
-USB identifiers, and are never uploaded. Teacher notes/results stay in memory
-until local JSON export; reload loses them but retains consumed markers. Do not
+USB identifiers, and are never uploaded. New recovery reviews, prior command/result
+evidence, and raw readings persist under `nexarm.commissioning.retry-reviews.v1`;
+consumed retries use separate original-scope `.retry.UUID` keys. Unused retry
+permission is session-only and is revoked by Stop, disconnect, hiding, selection,
+or reload. Teacher notes and current full results remain in memory until export,
+except result snapshots retained at review; reload loses unsaved observations.
+The schema-version-2 export includes history and review records. Do not
 clear those markers to repeat movement; a new attempt requires review.
 There are no accounts, cookies, analytics, telemetry upload,
 project uploads, or external fonts. Hosting still receives normal asset-request

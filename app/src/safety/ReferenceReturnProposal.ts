@@ -1,8 +1,12 @@
 import { encodeGoalPosition } from '../protocol/NexArmCodec';
 export const HOME_REFERENCE = Object.freeze([2048,2048,2047,2048,2042,2053]);
+// Handoff records 5–9 raw units of ordinary residual error. A 16-unit nominal
+// segment plus at most 9 of lag preserves the 25-unit measured-command ceiling.
+export const HOME_TOLERANCE = 9;
+export const RETURN_STEP = 16;
 // Reviewed local commissioning envelope: current reported pose, Reference A,
 // and the declared joint-test targets. Not mechanical/collision limits.
-export const RETURN_BOUNDS = Object.freeze([[2041,2080],[2004,2076],[1938,2075],[2043,2081],[2039,2075],[2047,2085]].map(pair=>Object.freeze(pair)));
+export const RETURN_BOUNDS = Object.freeze([[2039,2080],[2004,2076],[1938,2075],[2039,2081],[2033,2075],[2044,2085]].map(pair=>Object.freeze(pair)));
 
 // Pure preview used by the guarded executor; this module never writes.
 export function referenceReturnProposal(positions: readonly number[]) {
@@ -11,8 +15,8 @@ export function referenceReturnProposal(positions: readonly number[]) {
   const steps: {servo:number;target:number;from:number;delta:number;packet:string}[]=[];
   for(const servo of [2,3,4,5,1,6]) {
     const from=positions[servo-1]!, goal=HOME_REFERENCE[servo-1]!, distance=goal-from;
-    if(Math.abs(distance)<=5)continue;
-    const count=Math.ceil(Math.abs(distance)/20);let previous=from;
+    if(Math.abs(distance)<=HOME_TOLERANCE)continue;
+    const count=Math.ceil(Math.abs(distance)/RETURN_STEP);let previous=from;
     for(let n=1;n<=count;n++) {
       const target=Math.round(from+distance*n/count),delta=target-previous;
       steps.push({servo,target,from:previous,delta,packet:[...encodeGoalPosition(servo,target)].map(n=>n.toString(16).padStart(2,'0').toUpperCase()).join(' ')});previous=target;

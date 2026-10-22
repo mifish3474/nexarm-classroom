@@ -16,6 +16,9 @@ That page links to the teacher-requested joint mapping suite and a bounded stage
 return to Reference A. Follow [the scope and operating steps](docs/JOINT_SUITE_AND_HOME.md)
 before using them. Tests are individual deliberate actions; the return has its own
 route preview, Enable, and Start. The prior base test remains consumed.
+Teacher recovery permits a separately reviewed retry while preserving earlier
+records. Guarded manual positioning provides separate release, holding restore,
+and physical confirmation controls; unfinished setup blocks movement across reload.
 Project saving is not implemented yet. The arm is an illustration, not a calibrated
 NexArm model. See the calibration plan before connecting hardware.
 

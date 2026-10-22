@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeGoalPosition } from '../app/src/protocol/NexArmCodec';
+import { encodeFactoryHolding, encodeGoalPosition } from '../app/src/protocol/NexArmCodec';
 import { decodePositions, FrameParser } from '../app/src/protocol/FrameParser';
 
 function telemetry(id = 255, weak = false): Uint8Array {
@@ -11,6 +11,11 @@ function telemetry(id = 255, weak = false): Uint8Array {
 }
 
 describe('factory goal-position encoder', () => {
+  it('encodes the supplied factory All Off / All On path, independently from position or bridge commands',()=>{
+    expect([...encodeFactoryHolding(false)]).toEqual([255,255,255,3,61,0,192]);
+    expect([...encodeFactoryHolding(true)]).toEqual([255,255,255,3,61,1,191]);
+    expect(()=>encodeFactoryHolding(1 as unknown as boolean)).toThrow(TypeError);
+  });
   it('preserves the verified register-write format and little-endian target', () => {
     expect([...encodeGoalPosition(1, 2500)]).toEqual([255, 255, 1, 5, 3, 42, 196, 9, 255]);
   });
