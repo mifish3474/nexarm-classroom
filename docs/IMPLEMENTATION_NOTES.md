@@ -1,4 +1,4 @@
-# Simulation and passive inspection preview 0.7.0-dev.3
+# Simulation and teacher mapping preview 0.7.0-dev.4
 
 This preview starts architecture packages A/B/C. It is not a complete safety
 controller, full programming curriculum, or student live-robot release.
@@ -72,7 +72,10 @@ injected CSS and field positioning, but continues to disallow inline scripts,
 eval, and runtime data connections. The worker loads from the same origin.
 
 The production app loads its HTML, CSS, and JavaScript from the same origin.
-There are no accounts, cookies, storage records, analytics, telemetry upload,
+The approved mapping page records one localStorage approval-consumption marker
+(`nexarm.approval.reference-a-servo1-plus20.2026-10-22`) containing scope, target,
+and attempt timestamp. It contains no student/USB identifiers and is not uploaded.
+There are no accounts, cookies, analytics, telemetry upload,
 project uploads, or external fonts. Hosting still receives normal asset-request
 metadata. The local development server uses Vite's local update connection; use
 the production build to inspect the shipped network policy.
@@ -88,8 +91,22 @@ technology, or hardware validation.
 
 The first supplied reference and two photographs are summarized in
 [Reference A review](./REFERENCE_A_REVIEW.md), including the exact proposed
-single-axis command, preconditions, and observation/failure plan. Approval is
-pending; no live movement capability has been added.
+single-axis command, preconditions, and observation/failure plan. The teacher has
+approved this one test; `/mapping.html` implements its fixed single command,
+explicit Enable/Send, feedback deadline, and persisted no-repeat guard. Follow
+the review document for the teacher test sequence and recorded result. The teacher
+completed the one attempt: servo 1 reported 2051 → 2066 toward target 2068, other
+exported channels were unchanged, and a small clockwise movement was observed.
+The teacher confirmed servo 1 is the base-turn joint and increasing raw values
+rotate it clockwise when viewed directly from above. This establishes a local
+mapping/direction, not degrees per raw unit, zero angle, travel limits, or reverse
+behavior. The agent has not accessed a real robot; no repeat or reverse movement
+is authorized.
+
+Following teacher testing, the approved servo-1 starting window is now 2043–2053
+inclusive. The fixed target remains 2068 (a 15–25-unit positive command). Every
+sample in the retained observation window must satisfy that range; freshness,
+other-joint checks, and consumed-approval persistence remain unchanged.
 
 Expand the small language with capped waits, conditionals, typed variables, functions,
 project storage, and keyboard accessibility in reviewable packages. The complete

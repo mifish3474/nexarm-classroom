@@ -12,6 +12,9 @@ six virtual joints, an animated arm illustration, a Blockly repeat-loop lesson,
 manual simulation jogging, Stop, and Reset Simulation. It has no USB connection
 or live movement capability. A separate teacher page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from the footer.
+That page also links to the separately approved, single-use Reference A servo-1
+mapping test. Follow [its exact scope and operating steps](docs/REFERENCE_A_REVIEW.md)
+before using it. It is not general live robot control and has no automatic return.
 Project saving is not implemented yet. The arm is an illustration, not a calibrated
 NexArm model. See the calibration plan before connecting hardware.
 

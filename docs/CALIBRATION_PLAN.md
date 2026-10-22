@@ -1,10 +1,12 @@
 # Reference, calibration, and repeatable starts
 
-Status: passive observation implemented; physical movement tests not authorized.
+Status: passive observation implemented; one Reference A servo-1 positive test
+has been explicitly approved. All other physical movement tests remain gated.
 
 The first teacher-supplied export and photographs are reviewed in
 [Reference A and the first mapping-test proposal](./REFERENCE_A_REVIEW.md).
-That proposal awaits approval; the passive application still has no writer.
+That single test is approved and implemented on a separate teacher page. Passive
+inspection remains read-only, and simulation has no hardware access.
 
 ## Three different operations
 

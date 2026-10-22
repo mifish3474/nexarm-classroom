@@ -1,8 +1,86 @@
 # Reference A review and first mapping-test proposal
 
 Date: 2026-10-22  
-Status: evidence reviewed; movement proposal awaiting teacher approval  
-Scope: documentation and packet-encoding check only; no writer enabled
+Status: teacher confirmed the configuration and approved this single positive
+servo-1 test in this conversation on 2026-10-22.
+Scope: a guarded one-shot teacher page is implemented; the agent has not executed
+a physical test. No reverse, repeat, homing, gripper, or other joint is authorized.
+
+## First teacher-executed result
+
+Teacher supplied `nexarm-mapping-test-result.json`, captured at 10:00:06 Eastern
+on 2026-10-22 (`2026-10-22T14:00:06.871Z`), and reported: **“The arm moved clockwise
+a small amount.”** The agent did not access the physical robot.
+
+| Reported servo | Before command | Latest exported reading | Change |
+| --- | ---: | ---: | ---: |
+| 1 | 2051 | 2066 | +15 |
+| 2 | 2044 | 2044 | 0 |
+| 3 | 2043 | 2043 | 0 |
+| 4 | 2049 | 2049 | 0 |
+| 5 | 2043 | 2043 | 0 |
+| 6 | 2053 | 2053 | 0 |
+
+The requested target was 2068, a +17-unit target change from the measured start
+of 2051. The latest reported position is 2066, two units below the target. The
+report marks `attempted: true`, `written: true`, and `phase: Complete`, meaning
+the application's candidate feedback criteria were satisfied. The exported
+before/latest vectors show only channel 1 changing; they are not a complete
+time series of all movement. Do not issue a corrective command for the two-unit
+residual.
+
+The teacher explicitly confirmed that this was **the base rotating clockwise
+when viewed from directly above**. Record the local mapping as **servo 1 = base
+turn; increasing raw value = clockwise from above**. This is a teacher-observed
+local axis/direction result; angular scale, mechanical zero, travel limits,
+reverse behavior, and repeatability remain unverified. The source report's
+physical-joint/direction fields are null; the confirmed teacher observation is
+recorded here separately rather than rewriting the original file.
+
+This result does not establish degrees per raw unit, reversal/backlash behavior,
+safe travel limits, a Home pose, or a route back. The one-shot approval is consumed.
+Do not clear the marker or automatically return to 2048/2051. No additional
+movement has been authorized by submission of this result.
+
+Teacher-requested refinement on 2026-10-22: allow servo 1 to report **2043–2053**
+throughout the observation window, instead of requiring exactly 2048. The target
+remains **2068**, so the commanded positive change is **15–25 raw units**. This
+is not a general tolerance policy for other joints or future tests. The original
+approval-consumption key is retained; this change does not grant another attempt.
+
+## Running the approved test
+
+1. Run `npm run dev`, open teacher passive inspection, and follow **Teacher:
+   approved Reference A single-axis test** in its footer. Close the passive
+   connection before connecting the test page. Direct local path: `/mapping.html`.
+2. Recheck the photographed setup, full-arm clearance, cable slack, empty gripper,
+   anchoring, physical cutoff, and marked viewing direction; check the setup box.
+3. Click Connect for approved test. It only opens/listens. If the reviewed starting
+   values are not present, stop and report the discrepancy; do not force or command
+   the robot back to 2048.
+4. Once the full-checksum observation window passes, click Enable one attempt.
+   This also sends nothing. Recheck the physical scene, then deliberately click
+   Send single test: servo 1 to 2068. This is the one physical movement action.
+5. Observe the actual joint and direction. Use Stop / Disconnect for cancellation
+   of future work and the reviewed physical cutoff procedure if needed. A transmitted
+   command cannot be recalled. No automatic return or correction follows.
+6. Export the current test report and provide the observed physical joint,
+   direction from your marked viewpoint, and any unexpected behavior. Do not
+   attempt a reverse movement or force the arm by hand.
+
+The approval is marked consumed in browser localStorage before write initiation,
+even when delivery is uncertain. Reload, reconnect, or a write error does not grant
+another attempt. There is no reset/clear-approval button. Storage denial/failure
+blocks sending; a pending write keeps the connection lease until cleanup settles.
+Browser storage can be cleared by administrators or users and differs between
+origins/profiles, so this is an accidental-repeat guard, not tamper-proof security.
+Do not clear storage, switch origin/profile, or use the old prototype to repeat it.
+A blocked/consumed test requires review and a separately approved follow-up.
+
+The two-second observation deadline includes write time. The implementation
+checks feedback gaps and staleness, bounds the starting window, disarms on hidden
+page/Stop/errors, and records only a feedback candidate. Physical joint/direction
+fields in the report remain unknown until the teacher supplies observations.
 
 ## Evidence supplied
 
@@ -50,9 +128,10 @@ mapping and direction tests are still required for commissioning.
 
 ## Proposed first test: one positive command to reported servo 1
 
-This is a proposed teacher-operated commissioning exception for one small test,
-not general live arming with unknown limits. It is not implemented or authorized
-by submission of the reference/photos. No automatic reset precedes or follows it.
+This teacher-operated commissioning exception is approved for one small test,
+not general live arming with unknown limits. Approval came from the teacher's
+explicit confirmation after reviewing the proposal, not merely from submitting
+photos or data. No automatic reset precedes or follows it.
 
 ### Purpose and exact command
 
@@ -60,7 +139,8 @@ Test the working hypothesis that reported servo 1 is the base-turn axis, and
 observe the direction of increasing raw values from a teacher-marked viewpoint.
 The physical direction must be observed, not assumed from a positive number.
 
-Starting reported servo-1 value: **2048**. Proposed target: **2068** (+20 raw).
+Starting reported servo-1 window: **2043–2053**. Fixed target: **2068** (+15–25 raw;
+nominally +20 from the exported reference of 2048).
 The handoff reports prior teacher-tested +/-20 factory commands; that observation
 does not establish a safe absolute operating range or this setup's clearance.
 Actual actuator speed/acceleration under this command is not newly validated.
@@ -86,7 +166,7 @@ The encoder has a golden test for these exact bytes. Nothing is sent by that tes
 - Fresh expected full-checksum telemetry establishes a continuous observation
   window. Require at least ten samples over one second, latest age at most 500 ms,
   no sample gap over 500 ms, and no observed joint spread over 12 units.
-- Servo 1 must remain exactly 2048 throughout that window. Other reported values
+- Servo 1 must remain within **2043–2053 inclusive** throughout that window. Other reported values
   must remain within 12 raw units of Reference A. These are test-matching gates,
   not commissioned robot limits. Recheck them immediately before any write.
 - If the starting conditions differ, reject this test. Never command 2048 to make
@@ -97,7 +177,7 @@ The encoder has a golden test for these exact bytes. Nothing is sent by that tes
   including uncertain delivery; reconnect does not restore the permission.
 
 The teacher must approve these conditions and the command before a commissioning
-writer is introduced. The intended local travel is 2048 toward 2068; this is not
+writer is introduced. The intended local travel starts within 2043–2053 toward 2068; this is not
 a declaration that that interval is physically safe without the setup review.
 
 ### What the supervised test would observe
@@ -144,7 +224,7 @@ An eventual move-to-start action additionally needs an approved route from the
 actual measured configuration, velocity/acceleration evidence, and physical
 failure handling. None of those permissions follow from this reference review.
 
-The next teacher response should confirm the photographed/exported configuration,
-current clearance/cutoff/cable conditions, and whether the narrowly described
-single positive servo-1 test is approved for implementation. If any condition is
-uncertain, retain passive inspection and revise the proposal instead.
+The teacher confirmed the photographed/exported configuration, approved this test,
+and has now supplied its result above. The operating steps in this document are historical
+instructions for that consumed approval, not permission to repeat it. Any follow-up
+requires its own reviewed command and setup conditions.
