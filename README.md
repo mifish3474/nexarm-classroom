@@ -10,8 +10,10 @@ it is not a student-ready safety-controlled programming environment.
 The separate `app/` entry now contains a simulation-only development preview:
 six virtual joints, an animated arm illustration, a Blockly repeat-loop lesson,
 manual simulation jogging, Stop, and Reset Simulation. It has no USB connection
-or live movement capability. Project saving is not implemented yet. The arm is
-an illustration, not a calibrated NexArm model.
+or live movement capability. A separate teacher page provides read-only USB
+inspection and unreviewed reference capture; open it explicitly from the footer.
+Project saving is not implemented yet. The arm is an illustration, not a calibrated
+NexArm model. See the calibration plan before connecting hardware.
 
 Use Node.js 24 or newer. From the repository folder:
 
@@ -44,6 +46,7 @@ Project documents:
 - [Engineering and collaboration instructions](docs/CODEX_PROMPT.md)
 - [Proposed architecture and implementation outline](docs/ARCHITECTURE.md)
 - [First implementation scope and teacher review](docs/IMPLEMENTATION_NOTES.md)
+- [Read-only reference capture and calibration plan](docs/CALIBRATION_PLAN.md)
 
 The architecture covers module boundaries, execution and fault handling,
 local project storage, privacy, testing, and incremental delivery. New physical

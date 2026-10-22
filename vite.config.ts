@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   root: 'app',
   base: './',
-  build: { outDir: '../dist', emptyOutDir: true },
+  build: { outDir: '../dist', emptyOutDir: true, rolldownOptions: { input: ['app/index.html', 'app/commissioning.html'] } },
   plugins: [{
     name: 'production-privacy-policy',
     apply: 'build',

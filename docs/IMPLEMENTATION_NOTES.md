@@ -1,4 +1,4 @@
-# Simulation preview 0.7.0-dev.2
+# Simulation and passive inspection preview 0.7.0-dev.3
 
 This preview starts architecture packages A/B/C. It is not a complete safety
 controller, full programming curriculum, or student live-robot release.
@@ -33,9 +33,11 @@ controller, full programming curriculum, or student live-robot release.
 - Local bundled assets, no remote runtime dependencies, and a production Content
   Security Policy that disables data connections. No project data is persisted.
 
-No serial transport is implemented or reachable. The app does not request USB
-permissions, switch modes, send packets, or connect to hardware. Its protocol
-modules are tested separately and not imported as runtime writing capabilities.
+The simulation entry does not access USB. A separate teacher inspection page now
+supports explicitly requested, read-only serial connection and draft reference
+capture/export. It does not access a writer, change modes, send packets, or move
+the arm to a reference. See [the calibration plan](./CALIBRATION_PLAN.md) for setup,
+limitations, evidence needed, and the approval process before any physical test.
 
 ## Teacher review
 
@@ -83,6 +85,11 @@ These checks do not replace actual Chromebook, student-account, assistive
 technology, or hardware validation.
 
 ## Next work
+
+The first supplied reference and two photographs are summarized in
+[Reference A review](./REFERENCE_A_REVIEW.md), including the exact proposed
+single-axis command, preconditions, and observation/failure plan. Approval is
+pending; no live movement capability has been added.
 
 Expand the small language with capped waits, conditionals, typed variables, functions,
 project storage, and keyboard accessibility in reviewable packages. The complete

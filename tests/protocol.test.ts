@@ -14,6 +14,9 @@ describe('factory goal-position encoder', () => {
   it('preserves the verified register-write format and little-endian target', () => {
     expect([...encodeGoalPosition(1, 2500)]).toEqual([255, 255, 1, 5, 3, 42, 196, 9, 255]);
   });
+  it('encodes the proposed Reference A single-axis test without sending it', () => {
+    expect([...encodeGoalPosition(1, 2068)]).toEqual([0xff, 0xff, 0x01, 0x05, 0x03, 0x2a, 0x14, 0x08, 0xb0]);
+  });
   it.each([0, 7, 1.5, NaN, Infinity])('rejects invalid servo ID %s', id => {
     expect(() => encodeGoalPosition(id, 2500)).toThrow(RangeError);
   });

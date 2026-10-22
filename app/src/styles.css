@@ -5,3 +5,5 @@
 
 .actions{position:sticky;top:8px;z-index:10;background:white;padding:8px 0}
 .animation-controls label{display:flex;align-items:center;gap:8px;font-weight:650;font-size:.9rem}.animation-controls input{width:20px;height:20px;flex:none;accent-color:#086b73}.animation-controls .note{margin:8px 0 14px}
+
+.connection-confirm{display:flex;align-items:center;gap:10px}.connection-confirm input{width:20px;height:20px;flex:none}#reference-output{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;background:#edf3f7;padding:16px}
