@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.npm-cache/
+coverage/
+playwright-report/
+test-results/
+app/public/blockly-media/

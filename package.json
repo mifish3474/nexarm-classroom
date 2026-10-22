@@ -1,0 +1,26 @@
+{
+  "name": "nexarm-classroom",
+  "version": "0.7.0-dev.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/copy-blockly-media.mjs && vite --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "node scripts/copy-blockly-media.mjs && npm run check && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:browser": "playwright test"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "blockly": "13.4.0"
+  }
+}
