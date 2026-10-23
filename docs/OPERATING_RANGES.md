@@ -1,4 +1,4 @@
-# Development operating ranges: dev.29
+# Development operating ranges: dev.30
 
 The operator supplied these ranges on 2026-10-23, based on factory-software
 values with adjustments during testing. The pairs are interpreted as low/high.
@@ -8,11 +8,15 @@ student policy planned for later.
 | Joint | Low | High |
 | --- | ---: | ---: |
 | J1 | 900 | 3000 |
-| J2 | 1200 | 2600 |
+| J2 | 525 | 2600 |
 | J3 | 2000 | 2900 |
 | J4 | 1250 | 3000 |
 | J5 | 1024 | 3072 |
 | J6 | 1024 (open) | 2731 |
+
+In dev.30 the operator lowered J2's minimum from 1200 to 525. The upper
+endpoint remains 2600. Live readouts, recording, sliders and movement validation
+all use this same range.
 
 `app/src/safety/OperatingRanges.ts` is the shared, fixed configuration. There is
 no browser range editor, saved-profile setup, additional margin or teacher

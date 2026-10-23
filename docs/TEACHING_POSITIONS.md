@@ -1,6 +1,6 @@
-# Teach and use a position: dev.29
+# Teach and use a position: dev.30
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.29**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.30**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
 
 Live targets must fit the [current operating ranges](./OPERATING_RANGES.md).

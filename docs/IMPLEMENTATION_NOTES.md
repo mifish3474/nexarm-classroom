@@ -1,6 +1,14 @@
-# Classroom programming development preview 0.7.0-dev.29
+# Classroom programming development preview 0.7.0-dev.30
 
-## Current update: live recording feedback and range gating
+## Current update: J2 lower endpoint 525
+
+At the operator's request, J2's operating range is now 525–2600 (previously
+1200–2600). The shared range updates live recording boxes, recording validation,
+setup sliders and every current-controller movement target check. Exact 525 is
+accepted; 524 is rejected. No other joint endpoints or movement profiles changed.
+
+## Previous update: live recording feedback and range gating (dev.29)
+
 
 The name/record section now includes six read-only live value boxes directly
 beside the naming field, each showing the exact operating range (J6 marks 1024

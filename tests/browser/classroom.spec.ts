@@ -33,7 +33,7 @@ test('live recording boxes show ranges beside the name and block every out-of-ra
  const name=page.getByRole('textbox',{name:'Position name'}),record=page.getByRole('button',{name:'Record current position',exact:true});await name.fill('Pickup');
  await expect(page.locator('#teach-readings .teach-reading')).toHaveCount(6);await expect(record).toBeEnabled();
  const nameBox=await name.boundingBox(),readingsBox=await page.locator('#teach-readings').boundingBox();expect(readingsBox!.x).toBeGreaterThan(nameBox!.x);
- const limits=[[900,3000],[1200,2600],[2000,2900],[1250,3000],[1024,3072],[1024,2731]],home=[2050,2150,2100,2200,2000,1080];
+ const limits=[[900,3000],[525,2600],[2000,2900],[1250,3000],[1024,3072],[1024,2731]],home=[2050,2150,2100,2200,2000,1080];
  for(let i=0;i<6;i++){
    const box=page.locator(`.teach-reading[data-joint="${i+1}"]`),input=page.getByRole('textbox',{name:`J${i+1} reported position`,exact:true});await expect(box).toContainText(`Valid: ${limits[i]![0]}–${limits[i]![1]}`);
    for(const value of [limits[i]![0]!-1,limits[i]![1]!+1]){

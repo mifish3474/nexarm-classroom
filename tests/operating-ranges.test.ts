@@ -2,7 +2,7 @@ import {expect,it} from 'vitest';
 import {OPERATING_RANGES,assertJointTarget,assertPoseTargets,poseIssues} from '../app/src/safety/OperatingRanges';
 import {TEACHER_HOME} from '../app/src/safety/TeacherControlPlan';
 it('uses the operator-provided low/high ranges without adding student restrictions',()=>{
- expect(OPERATING_RANGES).toEqual([{min:900,max:3000},{min:1200,max:2600},{min:2000,max:2900},{min:1250,max:3000},{min:1024,max:3072},{min:1024,max:2731}]);
+ expect(OPERATING_RANGES).toEqual([{min:900,max:3000},{min:525,max:2600},{min:2000,max:2900},{min:1250,max:3000},{min:1024,max:3072},{min:1024,max:2731}]);
  expect(Object.isFrozen(OPERATING_RANGES)).toBe(true);expect(OPERATING_RANGES.every(Object.isFrozen)).toBe(true);
  expect(()=>assertPoseTargets(TEACHER_HOME)).not.toThrow();
 });
