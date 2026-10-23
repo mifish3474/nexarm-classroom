@@ -67,6 +67,14 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it('advances Blockly after Servo 4 stably settles ten units from its saved target',async()=>{
+   const f=fixture(),before=[2050,2150,2100,3084,2000,1080],target=[...before];target[3]=2720;
+   await f.ready(before);f.control.enable(true);f.control.runProgram([{kind:'pose',blockId:'pose',positionId:'p',name:'P',positions:target},{kind:'move',blockId:'next',servo:1,target:2130}]);await flush();
+   const actual=[...target];actual[3]=2730;
+   for(const at of [1300,1400,1500]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(1);
+   await f.feed(1700,actual);f.control.tick();await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(1);
+   expect(f.control.snapshot().program?.phase).toBe('Running');f.control.disconnect();await flush();
+ });
  it('moves a saved pose in one batch, freezes its target and skips an already reached pose',async()=>{
    const f=fixture(),target=TEACHER_HOME.map(n=>n+100),expected=[...target];await f.ready();
    expect(()=>f.control.moveToPosition(target)).toThrow('Enable');f.control.enable(true);

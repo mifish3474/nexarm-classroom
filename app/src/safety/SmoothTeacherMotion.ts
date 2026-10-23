@@ -4,6 +4,9 @@ export const MOTION_SPEED=100, MOTION_ACCELERATION=10;
 export const HOME_SPEED=600;
 // Raw feedback tolerance for supervised teacher motion, not a mechanical limit.
 export const MOTION_DEVIATION_MARGIN=100;
+// Match the existing final-pose allowance. Stability still requires three
+// samples over 150 ms with at most nine raw units of spread.
+export const TARGET_TOLERANCE=12;
 type Step={servo:number;from:number;target:number;delta:number;packet:string};
 type Command={servo:number;from:number;target:number;actual:number;error:number;elapsedMs:number;deadlineMs:number};
 export type CommandedPath={servo:number;min:number;max:number};
@@ -82,11 +85,11 @@ export class SmoothTeacherMotion{
     if(companion!==-1){this.fail(`While commanding servo ${i+1}, servo ${companion+1} changed from ${a.before[companion]} to ${positions[companion]} (more than ${MOTION_DEVIATION_MARGIN} raw units).`);return;}
     const min=this.path?.min??Math.min(a.before[i]!,a.step.target),max=this.path?.max??Math.max(a.before[i]!,a.step.target);
     if(v<min-MOTION_DEVIATION_MARGIN||v>max+MOTION_DEVIATION_MARGIN){this.fail(`Servo ${i+1} reported ${v} outside its commanded path from ${min} to ${max} (${MOTION_DEVIATION_MARGIN}-unit margin).`);return;}
-    if(this.plan.manual && Math.abs(v-a.step.target)>9 && at-a.at>=Math.max(1000,this.travelDistance(a.step)/this.speed*1000+1000)){
+    if(this.plan.manual && Math.abs(v-a.step.target)>TARGET_TOLERANCE && at-a.at>=Math.max(1000,this.travelDistance(a.step)/this.speed*1000+1000)){
       a.samples.push({at,v});a.samples=a.samples.slice(-3);
       if(a.written&&a.samples.length===3&&a.samples[2]!.at-a.samples[0]!.at>=150&&Math.max(...a.samples.map(s=>s.v))-Math.min(...a.samples.map(s=>s.v))<=3){this.phase='Settled short';this.message=`Servo ${i+1} settled at ${v}; target ${a.step.target}, remaining ${a.step.target-v}. Adjust the slider to request another position.`;this.active=null;}return;
     }
-    if(Math.abs(v-a.step.target)<=9){a.samples.push({at,v});a.samples=a.samples.slice(-3);if(a.samples.length===3&&Math.max(...a.samples.map(s=>s.v))-Math.min(...a.samples.map(s=>s.v))<=9&&a.samples[2]!.at-a.samples[0]!.at>=150&&a.written){this.index++;this.active=null;if(this.index===this.steps.length){if(!this.grouped&&positions.some((n,j)=>Math.abs(n-this.plan.target[j]!)>(this.plan.manual&&j!==i?MOTION_DEVIATION_MARGIN:12))){this.fail('Final pose differs from the requested pose.');return;}this.phase='Complete';}}}else a.samples=[];
+    if(Math.abs(v-a.step.target)<=TARGET_TOLERANCE){a.samples.push({at,v});a.samples=a.samples.slice(-3);if(a.samples.length===3&&Math.max(...a.samples.map(s=>s.v))-Math.min(...a.samples.map(s=>s.v))<=9&&a.samples[2]!.at-a.samples[0]!.at>=150&&a.written){this.index++;this.active=null;if(this.index===this.steps.length){if(!this.grouped&&positions.some((n,j)=>Math.abs(n-this.plan.target[j]!)>(this.plan.manual&&j!==i?MOTION_DEVIATION_MARGIN:TARGET_TOLERANCE))){this.fail('Final pose differs from the requested pose.');return;}this.phase='Complete';}}}else a.samples=[];
   }
   written(at:number){this.lastWrite=at;if(this.active)this.active.written=true;}
   fail(message:string){if(this.phase==='Fault')return;this.failure={message,positions:[...this.latest],command:this.command?{...this.command}:null};this.phase='Fault';this.message=message;this.active=null;}

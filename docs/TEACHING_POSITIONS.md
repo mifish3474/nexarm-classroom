@@ -1,6 +1,6 @@
-# Teach and use a position: dev.26
+# Teach and use a position: dev.27
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.26**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.27**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
 
 1. Secure the base, empty the gripper, clear pinch areas, and keep the physical
@@ -55,6 +55,8 @@ To connect positions in code:
    robot geometry. For hardware, select Station robot, Connect/Enable if needed,
    inspect the starting pose and combined sweep, then Run program.
 7. Every move waits for all commanded joints to settle before the next block.
+   Settling allows ±12 raw units from target, with three stable readings over
+   at least 150 ms; a stable 10-unit residual can therefore complete.
    Test Stop during a short sequence; later blocks must not run. Inspect the arm
    before enabling and running again. Successful runs retain the session enable.
 

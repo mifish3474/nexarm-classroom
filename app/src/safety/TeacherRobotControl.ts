@@ -248,7 +248,7 @@ export class TeacherRobotControl {
     if (this.route?.phase === 'Complete') {
       this.lastMovingServos=[];
 
-      this.message = this.operation === 'Home' ? 'Home reached within 9 raw units. Inspect the pose; no correction loop runs.' : this.operation==='Saved position'?'Saved position reached within feedback tolerance.':this.operation==='Program'?'Program step settled.':'Jog finished.';
+      this.message = this.operation === 'Home' ? 'Home reached within 12 raw units. Inspect the pose; no correction loop runs.' : this.operation==='Saved position'?'Saved position reached within feedback tolerance (12 raw units).':this.operation==='Program'?'Program step settled.':'Jog finished.';
     }
     this.changed();
   }

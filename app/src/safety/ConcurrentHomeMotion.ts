@@ -1,4 +1,4 @@
-import { SmoothTeacherMotion, MOTION_DEVIATION_MARGIN } from './SmoothTeacherMotion';
+import { SmoothTeacherMotion, MOTION_DEVIATION_MARGIN, TARGET_TOLERANCE } from './SmoothTeacherMotion';
 import type { smoothPlan } from './SmoothTeacherMotion';
 
 // Each joint retains the existing path, settling and deadline supervisor.
@@ -44,7 +44,7 @@ export class ConcurrentHomeMotion {
     }
     for(const joint of this.joints){joint.observe(positions,at);if(joint.phase==='Fault'){this.fail(joint.message);return;}}
     if(this.joints.every(joint=>joint.phase==='Complete')){
-      if(positions.some((value,i)=>Math.abs(value-this.plan.target[i]!)>12)){this.fail(`Final pose differs from the requested ${this.label} pose.`);return;}
+      if(positions.some((value,i)=>Math.abs(value-this.plan.target[i]!)>TARGET_TOLERANCE)){this.fail(`Final pose differs from the requested ${this.label} pose.`);return;}
       this.phase='Complete';this.message=`All ${this.label} joints settled.`;
     }
   }

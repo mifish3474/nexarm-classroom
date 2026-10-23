@@ -1,6 +1,30 @@
-# Classroom programming development preview 0.7.0-dev.26
+# Classroom programming development preview 0.7.0-dev.27
 
-## Current update: saved-position motion and Blockly sequences
+## Current update: consistent settling tolerance
+
+The reported Servo 4 move from 3084 to 2720 timed out at 2730, a 10-unit
+residual. The per-joint settle check required ±9 while the existing final pose
+check allowed ±12. Both checks now share a 12-unit target tolerance. Stability
+still requires three feedback samples spanning at least 150 ms, with no more
+than nine units of spread. This accepts the reported residual only when stable;
+a single screenshot does not establish stability or the cause of the offset.
+Planning still skips only targets within nine units. No target, speed,
+acceleration, path-deviation margin, deadline, retry or correction loop changed.
+
+Validation: 183 unit tests and build pass. Regression tests reproduce Servo 4's
+3084 → 2720 request settling at 2730, verify the next Blockly step waits for
+settling and the command interval, accept stable ±12 boundaries, and retain
+timeouts for ±13 residuals and rejection of unstable feedback.
+Four targeted browser regressions also pass: saved-pose buttons, Blockly pose/
+wait sequences with repeated runs under one Enable, concurrent Home and reusable
+jog controls. Successful completion already retains the connected session's
+Enable; editing and rerunning do not require another confirmation. The reported
+timeout takes the fault path, which disables motion. Accepting a stable 10-unit
+residual avoids that fault; actual faults, Stop, connection/visibility changes
+and release/restore still require deliberate recovery before further movement.
+
+## Previous update: saved-position motion and Blockly sequences (dev.26)
+
 
 Saved positions now have a Move to position button. This reuses the concurrent
 Home executor at speed 600 / acceleration 10: one batch of individual servo
