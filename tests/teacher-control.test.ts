@@ -68,13 +68,22 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it('timed pose J3 2811 to 2838 sends no correction and waits for stable frame completion',async()=>{
+   const f=fixture({directSession:true}),before=[...TEACHER_HOME];before[2]=2811;const target=[...before];target[2]=2838;await f.ready(before);
+   f.control.moveToPosition(target);await flush();expect(f.writes).toHaveLength(0);for(let at=1200;at<=2200;at+=100){await f.feed(at,before);f.control.tick();}expect(f.control.snapshot().home?.phase).toBe('Complete');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
+ });
+ it('Stop during timed dispatch holds only submitted joints and cancels the rest',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.moveToPosition(TEACHER_HOME.map(n=>n+100));await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[2]).toBe(1);
+   f.control.stop();await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes).toHaveLength(14);expect(f.writes[1]!.bytes[2]).toBe(1);
+   for(let at=1200;at<=3000;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
+ });
  it.each(['pose','move'])('larger J3 %s steps accept the measured stable 28-unit offset before continuing',async kind=>{
    const f=fixture({directSession:true}),target=[...TEACHER_HOME];target[2]=2838;await f.ready();
    const first=kind==='pose'?{kind:'pose',blockId:'j3',positionId:'p',name:'P',positions:target}:{kind:'move',blockId:'j3',servo:3,target:2838};
    f.control.runProgram([first,{kind:'move',blockId:'next',servo:1,target:2130}]);await flush();
    const actual=[...target];actual[2]=2810;for(const at of [1300,1400]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(1);
-   for(const at of [1500,1700]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(1);
-   actual[0]=2130;for(const at of [1800,1900,2000]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.control.snapshot().program?.phase).toBe('Completed');f.control.disconnect();await flush();
+   for(let at=1500;at<=2700;at+=100){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(1);
+   actual[0]=2130;for(const at of [2800,2900,3000]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.control.snapshot().program?.phase).toBe('Completed');f.control.disconnect();await flush();
  });
  it('direct sessions become ready after Connect without Enable and never write until an explicit move',async()=>{
    const f=fixture({directSession:true});await f.ready();expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(0);

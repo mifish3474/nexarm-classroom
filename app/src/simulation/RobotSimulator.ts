@@ -9,7 +9,7 @@ export interface SimulationSnapshot {
 }
 export type SimulationStep =
   | { readonly kind?:'move'; readonly servo:ServoId; readonly target:number }
-  | { readonly kind:'pose'; readonly positionId:string; readonly name:string; readonly positions:readonly number[] }
+  | { readonly kind:'pose'; readonly positionId:string; readonly name:string; readonly positions:readonly number[]; readonly durationMs?:number }
   | { readonly kind:'wait'; readonly durationMs:number };
 
 export const EXAMPLE: readonly SimulationStep[] = [
@@ -57,6 +57,7 @@ export class RobotSimulator {
         continue;
       }
       if(step.kind==='pose'){
+        if(step.durationMs!==undefined&&(!Number.isInteger(step.durationMs)||step.durationMs<100||step.durationMs>10000))throw new RangeError('Invalid pose duration');
         if(step.positions.length!==6||step.positions.some(n=>!Number.isInteger(n)||n<0||n>4095))throw new RangeError('Invalid simulated position');
         continue;
       }
@@ -69,7 +70,7 @@ export class RobotSimulator {
     for (const step of input) {
       if(step.kind==='wait'){ticks+=1+Math.ceil(step.durationMs/40);continue;}
       if(step.kind==='pose'){
-        ticks+=Math.max(1,...step.positions.map((value,i)=>Math.ceil(Math.abs(value-planned[i]!)/5)));
+        ticks+=Math.max(1+Math.ceil((step.durationMs??1000)/40),...step.positions.map((value,i)=>Math.ceil(Math.abs(value-planned[i]!)/5)));
         planned.splice(0,6,...step.positions);continue;
       }
       const joint = step.servo - 1;
@@ -91,9 +92,10 @@ export class RobotSimulator {
         waitStarted??=Date.now();
         if(Date.now()-waitStarted>=step.durationMs){index++;waitStarted=null;}
       } else if(step.kind==='pose'){
+        waitStarted??=Date.now();
         this.targets=[...step.positions];
         this.positions=this.positions.map((value,i)=>value+Math.sign(step.positions[i]!-value)*Math.min(5,Math.abs(step.positions[i]!-value)));
-        if(this.positions.every((value,i)=>value===step.positions[i]))index++;
+        if(this.positions.every((value,i)=>value===step.positions[i])&&Date.now()-waitStarted>=(step.durationMs??1000)){index++;waitStarted=null;}
       } else {
       const joint = step.servo - 1;
       this.targets[joint] = step.target;

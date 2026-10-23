@@ -28,6 +28,14 @@ async function seedPositions(page:Page){
    {id:'home',name:'Home',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}
  ]})));
 }
+test('J3 2811 to saved 2838 is already within pose accuracy and honors its editable duration with no write',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[{id:'near',name:'Near',positions:[2050,2150,2838,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}]})));
+ await station(page);await connect(page);await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{holding:boolean;positions:number[]}}).classroomRobot;s.holding=false;s.positions[2]=2811;});await page.clock.runFor(300);
+ await page.getByRole('button',{name:'New empty program',exact:true}).click();await page.getByRole('button',{name:'Add position block',exact:true}).click();await page.getByText('Program steps and keyboard editing',{exact:true}).click();
+ await page.getByRole('spinbutton',{name:/pose duration seconds/}).fill('2');await page.getByRole('spinbutton',{name:/pose duration seconds/}).dispatchEvent('change');
+ await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1500);await expect(page.locator('#state')).toHaveText('Running');expect(await writes(page)).toHaveLength(0);
+ await page.clock.runFor(700);await expect(page.locator('#state')).toHaveText('Completed');await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2811');expect(await writes(page)).toHaveLength(0);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
 test('a measured 28-unit J3 offset settles and continues through Blockly without retries',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[
    {id:'reach',name:'Reach',positions:[2050,2150,2838,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'},
@@ -77,10 +85,10 @@ test('saved pose buttons move a batch after Connect and wait for measured settli
  await seedPositions(page);await station(page);await connect(page);await page.getByText('Release, record, and restore',{exact:true}).click();
  const move=page.getByRole('button',{name:'Move to position Pickup',exact:true});await expect(move).toBeEnabled();await ready(page);await move.click();await page.clock.runFor(100);
  await expect(move).toBeDisabled();await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();
- expect(await writes(page)).toHaveLength(1);expect((await writes(page))[0]).toHaveLength(84);await page.clock.runFor(1000);
+ expect(await writes(page)).toHaveLength(6);expect((await writes(page))[0]).toHaveLength(14);await page.clock.runFor(1200);
  await expect(page.locator('#state')).toHaveText('Complete');await expect(move).toBeEnabled();
  expect(await page.locator('.joint-card strong').allTextContents()).toEqual(['2130','2230','2180','2280','2080','1160']);
- await page.getByRole('button',{name:'Move to position Home',exact:true}).click();await page.clock.runFor(1000);await expect(page.locator('#state')).toHaveText('Complete');expect(await writes(page)).toHaveLength(2);
+ await page.getByRole('button',{name:'Move to position Home',exact:true}).click();await page.clock.runFor(1300);await expect(page.locator('#state')).toHaveText('Complete');expect(await writes(page)).toHaveLength(12);
  await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
 test('Blockly chains named positions and a wait, runs in simulation and on hardware without extra enable',async({page})=>{
@@ -89,17 +97,17 @@ test('Blockly chains named positions and a wait, runs in simulation and on hardw
  await page.getByRole('button',{name:'Add wait block',exact:true}).click();await page.locator('#program-position').selectOption('home');await page.getByRole('button',{name:'Add position block',exact:true}).click();
  await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(22000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(0);
  await connect(page);await ready(page);await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(700);
- expect(await writes(page)).toHaveLength(1);await expect(page.locator('#run-status')).toContainText('Waiting');await page.clock.runFor(600);expect(await writes(page)).toHaveLength(1);
- await page.clock.runFor(1600);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);
- for(const command of await writes(page)){expect(command).toHaveLength(84);expect(command.slice(6,7)).toEqual([10]);expect(command.slice(11,13)).toEqual([88,2]);}
- await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(3000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(4);expect(errors).toEqual([]);
+ expect(await writes(page)).toHaveLength(6);await page.clock.runFor(600);await expect(page.locator('#run-status')).toContainText('Waiting');expect(await writes(page)).toHaveLength(6);
+ await page.clock.runFor(2300);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);
+ for(const command of await writes(page)){expect(command).toHaveLength(14);expect(command.slice(6,7)).toEqual([10]);expect(command[11]!+256*command[12]!).toBeLessThanOrEqual(600);}
+ await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(3600);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(24);expect(errors).toEqual([]);
  await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
 test('a deleted position blocks compilation without sending commands',async({page})=>{
  await seedPositions(page);await station(page);await connect(page);await ready(page);await page.getByRole('button',{name:'New empty program',exact:true}).click();
  await page.locator('#program-position').selectOption('pickup');await page.getByRole('button',{name:'Add position block',exact:true}).click();await page.getByText('Release, record, and restore',{exact:true}).click();await page.getByRole('button',{name:'Delete position Pickup',exact:true}).click();
  await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('saved position is missing');expect(await writes(page)).toHaveLength(0);
- await page.getByText('Program steps and keyboard editing',{exact:true}).click();await page.locator('#keyboard-fields select').selectOption('home');await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(0);
+ await page.getByText('Program steps and keyboard editing',{exact:true}).click();await page.locator('#keyboard-fields select').selectOption('home');await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(0);
  await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
 test('students edit and rerun Blockly programs without another enable or teacher approval',async({page})=>{

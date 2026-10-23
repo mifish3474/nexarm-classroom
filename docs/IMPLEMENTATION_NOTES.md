@@ -1,4 +1,88 @@
-# Classroom programming development preview 0.7.0-dev.32
+# Classroom programming development preview 0.7.0-dev.34
+
+## Current update: shared ±30 pose accuracy
+
+At the user's request, all six timed-pose joints now use the same ±30 allowance,
+replacing J3 ±30 / others ±12. This covers the reported S6 target 1512, actual
+1498 (14 short). The shared policy governs skip planning, active settling and
+final pose checks for saved poses and Home. All still require elapsed frame time
+and three stable samples over at least 150 ms with spread ≤9. Target ranges,
+recording range checks, profiles, deadlines and explicit small-joint/jog behavior
+are unchanged. This is a development accuracy tradeoff, especially for gripper
+opening; it is not proof of exact positioning or a physical fault diagnosis.
+
+Validation: 228 unit tests pass, including every joint at stable ±14/±30, skip
+planning within tolerance, and faults outside ±30. Timed frames still do not
+automatically retry or correct targets.
+
+## Timed pose implementation: dev.33
+
+The user approved the action-group investigation's next-step proposal. Current
+direct sessions now use TimedPoseMotion for Blockly saved poses, direct pose
+buttons and Home. Explicit joint moves/jogs/sliders keep their existing executor.
+The earlier ConcurrentHomeMotion remains for legacy controller callers/tests.
+
+Each pose block exposes duration 0.1–10 seconds (default 1). Pure planning uses
+the factory's distance/time ×1.2 calculation, minimum speed 10, capped at the
+previously tested 600. Requested duration is extended when needed to honor that
+cap, with acceleration retained at 10 rather than silently adopting factory 100.
+Home and direct saved-position buttons request 1 second. Requested/effective
+durations, per-joint profiles and measured feedback appear in diagnostics; status
+shows any extension. Targets are checked against operating ranges before sending.
+
+Pose accuracy is consistently J3 ±30 and other joints ±12 for skip planning,
+active settling and final validation, independent of prior travel. Thus J3
+2811 → 2838 needs no correction write, but the frame still waits for fresh stable
+readings and duration. Every joint, including skipped joints, remains supervised.
+Direct small/joint commands retain their earlier distinct accuracy semantics.
+
+Needed joints are sent separately in ID order through the shared exclusive
+writer, with at least 2 ms between resolved writes. An unresolved write cannot
+advance dispatch. Callback generation/route checks prevent late dispatch after
+Stop, disconnect, fault or mode change. Stop holds only submitted joints, using
+fresh measured positions. No factory board-download, query, calibration, PID or
+new torque command is introduced. Position measurements never become targets in
+the measurement cache.
+
+Completion requires both effective frame time and measured pose accuracy with
+three samples spanning at least 150 ms and spread ≤9 for every joint. The clock
+starts after the last target write; an all-skipped frame starts at its Run action.
+It does not use the factory's timer-only continuation. Freshness/path checks and
+a four-second settling allowance remain; larger residuals or instability still
+cancel the sequence. No retry/correction loop runs. Programs retain 100-step/
+60-second budgets; requested pose durations plus waits are also checked up front.
+Duration extensions and actual settling consume the existing live runtime budget.
+
+Simulation validates and honors pose duration as a minimum animation time; its
+illustration timing is still educational rather than measured robot dynamics.
+No accounts, network data, new dependency, device setting, or automatic program
+start was added. Root Connection Lab and archived mapping suite are preserved.
+
+Validation: 222 unit tests, all 40 browser tests, and TypeScript/Vite build pass. Regressions cover exact
+2811 → 2838 no-write completion, per-joint profiles, duration extension, ±30
+accuracy, stale/unstable/deviating feedback, Stop during partial dispatch,
+program advancement, invalid durations and bounded runtime. The exact J3 near-pose
+browser regression honors an edited two-second duration with zero writes. All
+classroom, setup, simulator and archived-suite browser regressions pass. Automated USB is synthetic;
+physical smoothness and stopping still require the operator's arm test.
+
+## Factory action-group investigation (no application behavior change)
+
+The user requested deeper inspection after J3 2811 → 2838 remained at 2811.
+Static inspection of the supplied binary found a timed online frame runner,
+per-joint speed derived from frame duration, stored per-frame acceleration, six
+existing servo writes spaced 2 ms apart, and no measured-arrival gate between
+frames. Our fixed 600/10, grouped-write, feedback-gated execution differs in all
+of these respects. The dev.32 >=100-travel tolerance condition also makes this
+27-unit request strict again, exposing inconsistent pose-arrival handling.
+
+See [the full action-group analysis](./FACTORY_ACTION_GROUP_ANALYSIS.md) for
+source-method/bytecode references, factory widget ranges versus operator ranges,
+online/preview/download distinctions, cache caveats, and a staged implementation
+proposal. The added static wordcode helper passed Node syntax checking and was
+used against the existing extracted modules; executable SHA-256 was rechecked.
+No application version bump, new movement policy, USB operation, factory program
+execution, device-setting change or physical test occurred during this pass.
 
 ## Current update: J3 settling allowance for larger moves
 

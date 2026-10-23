@@ -46,9 +46,9 @@ restore. A deliberate target back inside range remains available. Stop retains
 its existing behavior: attempt holds at fresh measured positions, even if those
 positions are outside the requested-movement ranges. Changing a Stop hold to a
 range endpoint would itself request a new movement, so it is not clamped.
-Settling accuracy is separate from these exact goal bounds: ±12 generally,
-with ±30 for J3 program/pose/Home moves of at least 100 units in dev.32.
-Direct manual controls and smaller J3 moves retain ±12. Range checks for
+Settling accuracy is separate from these exact goal bounds: ±30 for all six timed-pose joints in dev.34,
+including saved poses and Home even when already near.
+Direct manual controls retain their own accuracy rules. Range checks for
 recording and requested targets remain exact; settling allowances do not widen them.
 
 Simulation retains the general 0–4095 encoding range for learning; hardware

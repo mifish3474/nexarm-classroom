@@ -4,6 +4,10 @@ Date: 2026-10-22
 Scope: static inspection of the teacher-supplied NexArm.exe; no program launch,
 USB access, firmware operation, or physical movement
 
+Follow-up: [Action Group Editor and playback investigation](./FACTORY_ACTION_GROUP_ANALYSIS.md)
+traces timing, per-joint speed calculation, acceleration, dispatch spacing,
+range handling and completion rules in the supplied factory software.
+
 ## Main finding
 
 The supplied controller contains a robot description, arm meshes, and the

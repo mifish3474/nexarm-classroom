@@ -3,6 +3,7 @@ import type { ReadOnlyPort } from '../serial/PassiveConnection';
 import { FrameParser, decodePositions } from '../protocol/FrameParser';
 import { encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
 import { ConcurrentHomeMotion } from './ConcurrentHomeMotion';
+import {TimedPoseMotion,timedPosePlan} from './TimedPoseMotion';
 import { ManualPositioning } from './ManualPositioning';
 import { SmoothTeacherMotion, smoothPlan, MOTION_SPEED, MOTION_ACCELERATION, HOME_SPEED, absoluteJointPlan, absolutePosePlan } from './SmoothTeacherMotion';
 import type { CommandedPath } from './SmoothTeacherMotion';
@@ -52,7 +53,7 @@ export class TeacherRobotControl {
     }
     if(!this.manual.blocked&&!this.armed){this.armed=true;if(!this.faulted)this.message='Ready. Choose Run, a saved position, or a joint control. No movement starts automatically.';}
   }
-  private route: SmoothTeacherMotion | ConcurrentHomeMotion | null = null;
+  private route: SmoothTeacherMotion | ConcurrentHomeMotion | TimedPoseMotion | null = null;
   private operation: Operation | null = null;
   private history: unknown[] = [];
   private writes:WriteDiagnostic[]=[];
@@ -86,6 +87,7 @@ export class TeacherRobotControl {
       if(step.kind==='wait'){
         this.retain();this.route=null;program.index++;program.waitUntil=this.now()+step.durationMs;program.message=`Waiting ${step.durationMs/1000} seconds.`;this.message=program.message;return;
       }
+      if(step.kind==='pose'&&this.options.directSession){program.index++;this.startTimedPose(step.positions,step.durationMs??1000,'Program');return;}
       const plan=step.kind==='pose'?absolutePosePlan(this.positions!,step.positions,{speed:program.speed,acceleration:program.acceleration}):absoluteJointPlan(this.positions!,step.servo,step.target,program.speed,program.acceleration);
       program.index++;this.start({...plan,manual:false},'Program');
     }catch(error){this.fault(error instanceof Error?error.message:'Program movement could not start.');}
@@ -230,13 +232,22 @@ export class TeacherRobotControl {
   returnHome() {
     this.liveTarget=null;this.lastLive=null;
     const reason = this.movementReason(); if (reason) throw new Error(reason);
+    if(this.options.directSession){this.startTimedPose(TEACHER_HOME,1000,'Home');return;}
     this.start(smoothPlan(this.positions!,undefined,undefined,{speed:HOME_SPEED,acceleration:MOTION_ACCELERATION}), 'Home');
   }
-  moveToPosition(target:readonly number[]){
+  moveToPosition(target:readonly number[],durationMs=1000){
     const reason=this.movementReason();if(reason)throw Error(reason);
     assertPoseTargets(target,'Saved position');
+    if(this.options.directSession){this.startTimedPose(target,durationMs,'Saved position');return;}
     const plan=absolutePosePlan(this.positions!,target);
     this.liveTarget=null;this.lastLive=null;this.start(plan,'Saved position');
+  }
+  private startTimedPose(target:readonly number[],durationMs:number,operation:Operation){
+    const plan=timedPosePlan(this.positions!,target,durationMs);
+    this.retain();this.faulted=false;this.liveTarget=null;this.lastLive=null;this.lastMovingServos=[];
+    this.route=new TimedPoseMotion(this.positions!,this.now(),plan);this.operation=operation;
+    this.route.start(this.positions!,this.now());this.message=`Timed pose: requested ${durationMs/1000}s, planned ${plan.durationMs/1000}s; maximum speed 600, acceleration 10.`;
+    this.pump();this.changed();
   }
   private start(plan: ReturnType<typeof smoothPlan>, operation: Operation,previousPath?:CommandedPath|null) {
     for(const step of plan.steps)assertJointTarget(step.servo,step.target);
@@ -254,6 +265,13 @@ export class TeacherRobotControl {
     if (!route || route.phase !== 'Running') return;
     if (!this.armed || this.connectionState !== 'Listening' || !this.visible() || this.now() - this.receivedAt > 1500) {
       this.fault('Movement stopped: connection, visibility, or fresh feedback changed.'); return;
+    }
+    if(route instanceof TimedPoseMotion){
+      if(this.writeInFlight)return;
+      const step=route.next(this.now());if(route.status().phase==='Fault'){this.fault(route.message);return;}
+      if(step){this.lastMovingServos.push(step.servo);const generation=this.generation;
+        this.write(encodeSpeedPosition(step.servo,step.target,step.speed,step.acceleration),()=>{route.written(this.now());this.checkRoute();setTimeout(()=>{if(this.route===route&&this.generation===generation)this.pump();},2);},false,2);
+      }return;
     }
     if (this.writeInFlight || this.now() - this.lastCommandAt < (this.operation==='Slider'?this.sliderInterval:500)) return;
     if(route instanceof ConcurrentHomeMotion){
@@ -367,6 +385,7 @@ export class TeacherRobotControl {
     if (this.route?.phase === 'Running') {
       this.route.checkDeadline(this.now());
       if (this.route.status().phase === 'Fault') { this.fault(this.route.message); return; }
+      if(this.route.status().phase==='Complete')this.checkRoute();
     }
     this.updateDirectSession();this.flushLive();this.advanceProgram();this.pump(); this.changed();
   }

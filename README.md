@@ -22,7 +22,8 @@ The main page also supports [hand-positioned named pose recording](docs/TEACHING
 support/release the arm, capture its measured positions, then Restore holding.
 Fresh stable feedback completes restore readiness; physical holding is not measured.
 Named positions save locally with export and deletion. Move to position buttons
-and Blockly position blocks replay them with combined-joint motion at 600/10;
+and Blockly position blocks replay them as timed frames with per-joint speeds up
+to 600 and acceleration 10. Each block has an editable duration;
 Wait and Repeat connect them into sequences. Each move waits for settling.
 New empty program starts a sequence without the starter's joint movements.
 A separate setup page provides read-only USB

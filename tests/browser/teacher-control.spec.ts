@@ -58,7 +58,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.32');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.34');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeEnabled(); await ready(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {
@@ -79,13 +79,13 @@ test('all twelve reusable jog controls work from live readings with no queued cl
 });
 
 test('Home dispatches all targets together at 600 and completes with every joint settled',async({page})=>{
-  const home=[2050,2150,2100,2200,2000,1080];await robot(page,home.map(n=>n+25)); await connect(page); await ready(page);
+  const home=[2050,2150,2100,2200,2000,1080];await robot(page,home.map(n=>n+50)); await connect(page); await ready(page);
   await page.getByRole('button',{name:'Return together to Home'}).click();await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled();
   await page.clock.runFor(30000); await expect(page.locator('#teacher-home-status')).toContainText('Complete');
-  const commands=await writes(page);expect(commands).toHaveLength(6);expect([...new Set(commands.map(w=>w.bytes[2]))]).toEqual([2,3,4,5,1,6]);
-  for(const command of commands){expect(command.at).toBe(commands[0]!.at);expect(command.bytes.slice(11,13)).toEqual([88,2]);}
-  expect(await page.evaluate(()=>(window as unknown as {teacherRobot:{writes:unknown[]}}).teacherRobot.writes.length)).toBe(1);
-  const actual=await page.locator('[data-servo-value]').allTextContents();expect(actual.map(Number).every((n,i)=>Math.abs(n-home[i]!)<=9)).toBe(true);
+  const commands=await writes(page);expect(commands).toHaveLength(6);expect([...new Set(commands.map(w=>w.bytes[2]))]).toEqual([1,2,3,4,5,6]);
+  for(let i=0;i<commands.length;i++){if(i)expect(commands[i]!.at-commands[i-1]!.at).toBeGreaterThanOrEqual(2);expect(commands[i]!.bytes.slice(11,13)).toEqual([60,0]);}
+  expect(await page.evaluate(()=>(window as unknown as {teacherRobot:{writes:unknown[]}}).teacherRobot.writes.length)).toBe(6);
+  const actual=await page.locator('[data-servo-value]').allTextContents();expect(actual.map(Number).every((n,i)=>Math.abs(n-home[i]!)<=30)).toBe(true);
   await expect(page.getByRole('button',{name:'Return together to Home'})).toBeDisabled(); await expect(page.getByRole('button',{name:'Servo 6 minus 20'})).toBeEnabled();
   await page.getByText('Session report and earlier commissioning tools',{exact:true}).click();const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export session report'}).click();
   expect((await download).suggestedFilename()).toBe('nexarm-teacher-control-session.json');await page.getByRole('button',{name:'Disconnect',exact:true}).click();
@@ -173,6 +173,6 @@ test('tiny J2 drag changes are filtered and releasing sends the exact final targ
  await slider.evaluate(el=>{(el as HTMLInputElement).value='2250';el.dispatchEvent(new Event('input',{bubbles:true}));});await slider.dispatchEvent('change');expect(await writes(page)).toHaveLength(2);await page.clock.runFor(100);expect(await writes(page)).toHaveLength(3);expect((await writes(page)).at(-1)!.bytes[7]!+256*(await writes(page)).at(-1)!.bytes[8]!).toBe(2250);
  await page.clock.runFor(2500);await expect(page.getByRole('slider',{name:'Servo 2 target slider'})).toBeEnabled();
  await page.getByRole('button',{name:'Return together to Home'}).click();
- expect((await writes(page)).at(-1)!.bytes.slice(11,13)).toEqual([88,2]);
+ const homePacket=(await writes(page)).at(-1)!.bytes;expect(homePacket[11]!+256*homePacket[12]!).toBeLessThanOrEqual(600);expect(homePacket[6]).toBe(10);
  await page.clock.runFor(3000);await page.getByRole('button',{name:'Disconnect',exact:true}).click();
  });

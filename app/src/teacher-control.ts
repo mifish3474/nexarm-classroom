@@ -3,6 +3,7 @@ import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
 import { HOME_SPEED } from './safety/SmoothTeacherMotion';
 import { TEACHER_HOME } from './safety/TeacherControlPlan';
+import {poseTolerance} from './safety/TimedPoseMotion';
 import {OPERATING_RANGES,targetIssue} from './safety/OperatingRanges';
 
 const node = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -68,10 +69,10 @@ function refresh() {
   const homeCommands=state.operation==='Home'?state.home?.commands:null;
   node('teacher-motion-detail').textContent=['Fault','Settled short'].includes(state.home?.phase??'')?state.home!.message:homeCommands?.length?`Home: ${homeCommands.map(c=>`S${c.servo} reported ${c.actual}, target ${c.target}, remaining ${c.error}`).join('; ')}. Speed ${state.home?.speed}, acceleration ${state.home?.acceleration}.`:command?`Servo ${command.servo}: start ${command.from}, target ${command.target}, reported ${command.actual}, remaining ${command.error} raw units. Speed ${state.home?.speed}, acceleration ${state.home?.acceleration}.`:'No movement command sent yet.';
   const runningHome = state.operation === 'Home' && state.home?.phase === 'Running';
-  const count = state.positions ? state.positions.filter((n,i)=>Math.abs(n-TEACHER_HOME[i]!)>9).length : 0;
-  const seconds = Math.ceil(Math.max(...(state.positions?.map((n,i)=>Math.abs(n-TEACHER_HOME[i]!)/HOME_SPEED)??[0])));
+  const count = state.positions ? state.positions.filter((n,i)=>Math.abs(n-TEACHER_HOME[i]!)>poseTolerance(i+1)).length : 0;
+  const seconds = Math.ceil(Math.max(1,...(state.positions?.map((n,i)=>Math.abs(n-TEACHER_HOME[i]!)*1.2/HOME_SPEED)??[0])));
   const duration = seconds >= 60 ? `about ${Math.ceil(seconds / 60)} minutes` : `about ${Math.max(1, seconds)} seconds`;
-  node('teacher-home-preview').textContent = !state.positions ? 'Connect for a return estimate.' : runningHome ? 'Home joints are moving together. Other controls wait until it finishes or you Stop.' : count ? `${count} joint movements starting together; ${duration} plus acceleration and settling. Review clearance for the combined sweep before clicking Return.` : 'Already within 9 raw units of your Home values; no return is needed.';
+  node('teacher-home-preview').textContent = !state.positions ? 'Connect for a return estimate.' : runningHome ? 'Home joints are moving together. Other controls wait until it finishes or you Stop.' : count ? `${count} joint movements starting together; ${duration} plus acceleration and settling. Review clearance for the combined sweep before clicking Return.` : 'Already within Home pose tolerance (all joints ±30); no return is needed.';
   node<HTMLButtonElement>('teacher-home').disabled = !state.canMove || !count;
   const progress = node<HTMLProgressElement>('teacher-home-progress');
   progress.max = state.operation === 'Home' ? Math.max(1, state.home?.totalSteps ?? 0) : 1;

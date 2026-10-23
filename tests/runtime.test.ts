@@ -3,6 +3,11 @@ import { interpret } from '../app/src/runtime/instructions';
 
 const move = { kind: 'move', blockId: 'a', servo: 2, target: 2128 };
 describe('restricted lesson interpreter', () => {
+  it('validates pose durations and budgets before execution',()=>{
+    const pose={kind:'pose',blockId:'p',positionId:'p',name:'P',positions:[2050,2150,2100,2200,2000,1080]};
+    for(const durationMs of [0,99,10001,NaN,100.5])expect(()=>interpret([{...pose,durationMs}])).toThrow('duration');
+    expect(()=>interpret([{kind:'repeat',blockId:'r',count:7,body:[{...pose,durationMs:10000}]}])).toThrow('60-second');
+  });
   it('keeps pose moves grouped through repeats and freezes their six targets',()=>{
     const positions=[2050,2150,2100,2200,2000,1080],pose={kind:'pose',blockId:'p',positionId:'pickup',name:'Pickup',positions};
     const plan=interpret([{kind:'repeat',blockId:'r',count:2,body:[pose,{kind:'wait',blockId:'w',durationMs:1000}]}]);

@@ -26,6 +26,7 @@ export function createEditor(container: HTMLElement,getPositions:()=>NamedPositi
       return options.length?options:[['Record a position first','none']];
     });
     this.appendDummyInput().appendField('move to saved position').appendField(field,'POSITION');
+    this.appendDummyInput().appendField('over').appendField(new Blockly.FieldNumber(1,.1,10,.1),'SECONDS').appendField('seconds');
     this.setPreviousStatement(true);this.setNextStatement(true);this.setColour(205);
     this.setTooltip('Move all needed joints together, then wait for measured settling before continuing. Check the whole sweep is clear.');
   }};
@@ -74,7 +75,7 @@ export function createEditor(container: HTMLElement,getPositions:()=>NamedPositi
         else if(block.type==='lesson_pose'){
           const pose=getPositions().find(pose=>pose.id===block.getFieldValue('POSITION'));
           if(!pose)throw Error('A saved position is missing. Record it or choose another position in the block.');
-          nodes.push({kind:'pose',blockId:block.id,positionId:pose.id,name:pose.name,positions:[...pose.positions]});
+          nodes.push({kind:'pose',blockId:block.id,positionId:pose.id,name:pose.name,positions:[...pose.positions],durationMs:Math.round(Number(block.getFieldValue('SECONDS'))*1000)});
         }
         else if(block.type==='lesson_wait')nodes.push({kind:'wait',blockId:block.id,durationMs:Math.round(Number(block.getFieldValue('SECONDS'))*1000)});
         else if (block.type === 'lesson_repeat') nodes.push({ kind: 'repeat', blockId: block.id, count: Number(block.getFieldValue('COUNT')), body: chain(block.getInputTargetBlock('BODY'), depth + 1) });
