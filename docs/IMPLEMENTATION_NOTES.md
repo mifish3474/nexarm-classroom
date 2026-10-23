@@ -1,4 +1,44 @@
-# Classroom programming development preview 0.7.0-dev.24
+# Classroom programming development preview 0.7.0-dev.25
+
+## Current update: hand-positioned named pose recording
+
+The user requested release, physical positioning, then recording and naming the
+pose. The main robot page now provides Teach a position, using the same verified
+factory All Off/All On controls and shared writer as the setup page. Support and
+pinch-clearance confirmation is required before releasing/restoring; holding
+remains unverified until physically confirmed. Release disarms motion, and the
+durable recovery interlock still survives Stop, disconnect and reload. There is
+no automatic release, restore, program start or saved-pose replay.
+
+Record reads a fresh six-joint snapshot through the controller without writing
+to USB. It rejects stale data, pending writes and active motion. It can capture
+while released or while holding normally. Current readings are visible beside
+the record controls. The teaching section stays collapsed during ordinary use
+and opens automatically when holding needs recovery.
+
+Up to 32 positions, each with a 1–40 character unique name, measured raw vector,
+local ID and capture time, are saved under a separate local-storage key. Export,
+individual deletion and clear affect only these positions. Names are rendered as
+text. Storage failure retains a clearly labeled memory-only list and export;
+invalid saved data is preserved until explicit clear. Clearing saved positions
+does not clear holding verification. No identity fields, accounts, uploads,
+dependencies, or student-editable station limits were added.
+
+The user clarified the earlier movement was targeting J3 and confirmed Blockly
+is working. That is recorded as a successful user test, not proof that selecting
+J3 could cause an actual power failure. Diagnostics remain available.
+
+Validation: 169 unit tests, the 32-test browser regression, fourteen final
+teaching/simulator browser checks, and TypeScript/Vite build pass. Checks
+cover release/capture/restore, exact observed values, no capture write, reload,
+stale capture, export/deletion, malformed storage, memory-only fallback, and
+preservation of the holding interlock. All automated USB tests are synthetic.
+
+See [teaching a position](./TEACHING_POSITIONS.md). Saved-pose playback and Blockly
+pose blocks remain future work, with student-release handling/policy validation
+in the roadmap.
+
+The following sections record earlier versions.
 
 ## Current update: investigate reported Blockly power/holding loss
 

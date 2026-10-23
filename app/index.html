@@ -20,6 +20,18 @@
       <div id="robot-controls" hidden><p>Use this station's assigned robot and keep its sweep and gripper clear. Connect reads positions without moving. The physical power cutoff must be within reach.</p><div class="actions"><button id="robot-connect">Connect robot</button><button id="robot-disconnect" class="secondary" disabled>Disconnect robot</button></div><label class="connection-confirm"><input type="checkbox" id="robot-clearance"> This is the station's assigned robot and the robot area is clear.</label><button id="robot-enable" aria-describedby="robot-readiness" disabled>Enable robot</button><p id="robot-readiness" role="status"></p><p id="robot-status" role="status">Disconnected.</p><button id="robot-diagnostics" class="secondary" disabled>Export robot diagnostics</button><p class="note">Diagnostics stay in memory until you download them. Export sends no robot commands and does not measure power or servo holding.</p>
       <p class="note">Development testing: station limits are not enforced. Program speed 600, acceleration 10; 100 movements and 60 seconds maximum. Protected limits will be added before student release.</p><a href="./mapping.html">Robot setup controls: sliders, Home, release and restore</a></div>
     </section>
+    <section class="panel teaching-panel" id="teach-panel" hidden aria-labelledby="teach-heading"><h2 id="teach-heading">Teach a position</h2><details id="teach-details"><summary>Release, record, and restore</summary>
+      <p><strong>Support the arm before releasing it; it can fall when holding is removed.</strong> Keep fingers away from joints and the gripper. Move gently only after verifying the servos released; never force a resisting joint.</p>
+      <label class="connection-confirm"><input type="checkbox" id="teach-support"> I am supporting the arm, with clear pinch areas, an empty gripper and the power cutoff within reach.</label>
+      <div class="actions"><button id="teach-release" class="secondary" disabled>Release servos for hand positioning</button><button id="teach-restore" disabled>Restore servo holding</button></div>
+      <p id="teach-status" role="status">Connect the robot to teach a position.</p><p id="teach-readings"></p>
+      <label>Position name, such as Pickup or Dropoff <input type="text" id="pose-name" maxlength="40" autocomplete="off"></label>
+      <button id="pose-record" disabled>Record current position</button>
+      <p class="note">Recording saves the six current measured values without moving the arm. Named positions do not play back yet.</p>
+      <label class="connection-confirm"><input type="checkbox" id="teach-held"> I physically checked that holding is restored and the arm stays in its placed position.</label><button id="teach-confirm" disabled>Confirm holding restored</button>
+      <p>Continue supporting the arm during restore. Confirm holding, then use Enable robot before running another program.</p><p id="teach-error" role="alert" hidden></p>
+      <h3>Saved positions</h3><ul id="saved-positions"></ul><p id="pose-storage-status" role="status"></p><div class="actions"><button id="pose-export" class="secondary" disabled>Export saved positions</button><button id="pose-clear" class="secondary">Clear saved positions</button></div><p class="note">Names and measured positions stay in this browser. Use position labels, not student names. Export a copy before using a different browser or device.</p>
+    </details></section>
     <div class="layout">
       <section class="panel program" aria-labelledby="program-heading">
         <p class="eyebrow">01 / BUILD A PATTERN</p><h2 id="program-heading">Make it repeat</h2>

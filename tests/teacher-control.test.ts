@@ -67,6 +67,13 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it('captures fresh hand-positioned measurements without writing and rejects stale or moving capture',async()=>{
+ const f=fixture(),pose=[2070,2160,2080,2190,2010,1100];await f.ready();f.control.setHolding(false,true);await flush();await f.feed(1700,pose);
+ const count=f.writes.length,recorded=f.control.capturePosition();expect(recorded).toEqual(pose);recorded[0]=0;expect(f.control.snapshot().positions).toEqual(pose);expect(f.writes).toHaveLength(count);
+ f.setTime(2300);expect(()=>f.control.capturePosition()).toThrow('current position feedback');
+ await f.feed(2400,pose);f.control.setHolding(true,true);await flush();await f.feed(3000,pose);f.control.confirmHolding(true);f.control.enable(true);f.control.moveJoint(1,2130);await flush();
+ expect(()=>f.control.capturePosition()).toThrow('progress');f.control.disconnect();await flush();
+ });
  const program=[{kind:'move',blockId:'out',servo:1,target:2130},{kind:'repeat',blockId:'repeat',count:2,body:[{kind:'move',blockId:'up',servo:3,target:2180},{kind:'move',blockId:'down',servo:3,target:2100}]},{kind:'move',blockId:'back',servo:1,target:2050}];
  it('waits for settling and at least 500 ms between Blockly moves without sending torque commands',async()=>{
  const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);

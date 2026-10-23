@@ -5,12 +5,12 @@ async function station(page:Page){
  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+100));
  await page.addInitScript(()=>{
   const home=[2050,2150,2100,2200,2000,1080],positions=[...home],targets=[...home];let speed=600;
-  const state={positions,writes:[] as number[][],requests:0,paused:false};Object.assign(window,{classroomRobot:state});
+  const state={positions,writes:[] as number[][],requests:0,paused:false,holding:true};Object.assign(window,{classroomRobot:state});
   Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>{state.requests++;let timer:ReturnType<typeof setInterval>;return {
    open:async()=>{},close:async()=>clearInterval(timer),readable:new ReadableStream<Uint8Array>({start(controller){timer=setInterval(()=>{
-    if(state.paused)return;positions.forEach((value,i)=>{const delta=targets[i]!-value;positions[i]=value+Math.sign(delta)*Math.min(Math.abs(delta),speed*.1);});
+    if(state.paused)return;if(state.holding)positions.forEach((value,i)=>{const delta=targets[i]!-value;positions[i]=value+Math.sign(delta)*Math.min(Math.abs(delta),speed*.1);});
     const body=[255,26,11,...Array(12).fill(0),...positions.flatMap(value=>[value&255,value>>8])];controller.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255]));
-   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;offset+=14){const b=bytes.slice(offset,offset+14);targets[b[2]!-1]=b[7]!+256*b[8]!;speed=b[11]!+256*b[12]!;}}})
+   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;){const b=bytes.slice(offset,offset+bytes[offset+3]!+4);if(b[2]===255&&b[4]===61){state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);}else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){targets[b[2]!-1]=b[7]!+256*b[8]!;speed=b[11]!+256*b[12]!;}offset+=b.length;}}})
   };}}});
  });
  await page.goto('/');
@@ -83,5 +83,31 @@ test('obsolete station settings do not block Run or expose editable limits',asyn
  await page.getByRole('button',{name:'Load short practice program'}).click();await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');
  await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);
  expect(await page.evaluate(()=>localStorage.getItem('nexarm.classroom-profile.v1'))).toBe('invalid obsolete setup');
+ await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
+
+test('release, hand-position, name and record, then restore holding without a record movement',async({page})=>{
+ await station(page);await connect(page);await page.getByText('Release, record, and restore',{exact:true}).click();await expect(page.getByRole('button',{name:'Release servos for hand positioning'})).toBeDisabled();
+ await page.locator('#teach-support').check();await page.getByRole('button',{name:'Release servos for hand positioning'}).click();await page.clock.runFor(600);
+ expect((await writes(page))[0]).toEqual([255,255,255,3,61,0,192]);await expect(page.getByRole('button',{name:'Enable robot',exact:true})).toBeDisabled();
+ const pose=[2070,2160,2080,2190,2010,1100];await page.evaluate(pose=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions.splice(0,6,...pose),pose);await page.clock.runFor(100);
+ await page.getByRole('textbox',{name:'Position name'}).fill('Pickup');await page.getByRole('button',{name:'Record current position',exact:true}).click();
+ await expect(page.locator('#saved-positions')).toContainText('Pickup');await expect(page.locator('#saved-positions')).toContainText('S2: 2160');expect(await writes(page)).toHaveLength(1);
+ const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!));expect(stored.poses[0].positions).toEqual(pose);
+ await page.getByRole('button',{name:'Restore servo holding',exact:true}).click();await page.clock.runFor(600);expect((await writes(page))[1]).toEqual([255,255,255,3,61,1,191]);
+ await page.locator('#teach-held').check();await page.getByRole('button',{name:'Confirm holding restored',exact:true}).click();expect(await writes(page)).toHaveLength(2);
+ await enable(page);await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeEnabled();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export saved positions'}).click();expect((await download).suggestedFilename()).toBe('nexarm-named-positions.json');expect(await writes(page)).toHaveLength(2);
+ await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();await page.reload();await page.locator('#execution-mode').selectOption('robot');await expect(page.locator('#saved-positions')).toContainText('Pickup');
+ await page.getByText('Release, record, and restore',{exact:true}).click();await page.getByRole('button',{name:'Delete position Pickup',exact:true}).click();await expect(page.locator('#saved-positions li')).toHaveCount(0);
+});
+
+test('stale capture is blocked and interrupted teaching survives reload without automatic restore',async({page})=>{
+ await station(page);await connect(page);await page.getByText('Release, record, and restore',{exact:true}).click();await page.locator('#teach-support').check();await page.getByRole('button',{name:'Release servos for hand positioning'}).click();await page.clock.runFor(600);
+ await page.getByRole('textbox',{name:'Position name'}).fill('Dropoff');await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=true);await page.clock.runFor(700);
+ await expect(page.getByRole('button',{name:'Record current position',exact:true})).toBeDisabled();expect(await writes(page)).toHaveLength(1);
+ await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();await page.reload();await connect(page);expect(await writes(page)).toEqual([]);
+ await expect(page.locator('#teach-status')).toContainText('Recovery required');await page.locator('#robot-clearance').check();await expect(page.getByRole('button',{name:'Enable robot',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'Clear saved positions'}).click();await expect(page.getByRole('button',{name:'Enable robot',exact:true})).toBeDisabled();
  await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });

@@ -1,5 +1,11 @@
 # Blockly power/holding loss investigation
 
+User follow-up: the program was targeting J3 rather than the expected J1. The
+user then confirmed Blockly is working. This clarification does not establish
+that a J3 selection caused a real electrical power failure. The initial report
+and software audit below remain historical evidence; diagnostics are retained
+for any recurrence. Routine testing has resumed at the user's direction.
+
 Report: J1 moved briefly, then the teacher observed loss of power and servo
 holding. The user suggested that Blockly might send commands too quickly.
 The cause remains unknown. No speed, command timing, firmware mode, torque

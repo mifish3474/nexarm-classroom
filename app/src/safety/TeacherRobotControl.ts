@@ -157,9 +157,17 @@ export class TeacherRobotControl {
       program:this.program?{phase:this.program.phase,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'?this.program.index-1:null}:null,
       busy: this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
       manualPhase: this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
+      canCapture:idle===null&&this.positions!==null,captureReason:idle,
       canRelease: this.manual.phase === 'Normal' && idle === null,
       canRestore: ['Manual setup', 'Recovery required'].includes(this.manual.phase) && idle === null,
       canConfirmHolding: ['Confirm holding', 'Recovery required'].includes(this.manual.phase) && idle === null};
+  }
+
+  capturePosition():number[]{
+    const reason=this.idleReason();if(reason)throw Error(reason);
+    if(!this.positions)throw Error('Wait for six current position readings.');
+    this.recordEvent('capture','Measured position snapshot read. No robot command sent.');
+    return [...this.positions];
   }
 
   enable(confirmed: boolean) {

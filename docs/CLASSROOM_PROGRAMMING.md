@@ -1,17 +1,15 @@
-# Programming development test: dev.24
+# Programming development test: dev.25
 
-Current investigation: power/holding loss was reported during a Blockly run.
-Keep automatic hardware movement stopped while the physical power/reset symptoms
-are identified. See [the investigation](./BLOCKLY_POWER_LOSS_INVESTIGATION.md).
-The new **Export robot diagnostics** action sends no movement, remains available
-after a fault/disconnect, and only records activity from this version onward.
+The user confirms Blockly motion is working after identifying the selected J3
+block. Diagnostic export remains available for unexpected behavior. To release,
+physically position, and name a measured pose, see [Teach a position](./TEACHING_POSITIONS.md).
 
 Station limits are deferred for this development stage. There is no station
 setup requirement, student-editable limit panel, or per-program teacher approval.
 Protected limits are a required [student-release roadmap item](./ROADMAP.md).
 The current build is for development hardware testing.
 
-1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.24**.
+1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.25**.
 2. Build or edit a program. Choose **Simulation** for practice without USB, or
    **Station robot** for hardware testing. Simulation remains the default.
 3. In robot mode, click **Connect robot**, check the assigned robot / clear-area

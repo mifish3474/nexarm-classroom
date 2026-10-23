@@ -16,6 +16,9 @@ Station limits are deferred during development; protected teacher/admin limits
 are required before student release in [the roadmap](docs/ROADMAP.md).
 The intended classroom workflow lets students edit and rerun without teacher
 approval for each program. Follow [the classroom testing guide](docs/CLASSROOM_PROGRAMMING.md).
+The main page also supports [hand-positioned named pose recording](docs/TEACHING_POSITIONS.md):
+support/release the arm, capture its measured positions, then restore/confirm holding.
+Named positions save locally with export and deletion; playback is not implemented yet.
 A separate setup page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from the footer.
 That page links to direct teacher controls at `/mapping.html`: reusable +/-20

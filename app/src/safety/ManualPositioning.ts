@@ -3,8 +3,8 @@ type Phase = 'Normal' | 'Release enabled' | 'Release pending' | 'Manual setup' |
   'Restore pending' | 'Confirm holding' | 'Recovery required';
 type Event = { action: string; at: string; positions: readonly number[] };
 
-// A durable interlock, not a measurement of torque state. Only an adult's
-// explicit confirmation plus fresh feedback can finish manual setup.
+// A durable interlock, not a measurement of torque state. Explicit physical
+// confirmation plus fresh feedback is required to finish manual setup.
 export class ManualPositioning {
   phase: Phase = 'Normal';
   message = 'Manual setup inactive. No holding command is sent automatically.';
@@ -57,8 +57,8 @@ export class ManualPositioning {
   }
   confirm(positions: readonly number[]) {
     if (!['Confirm holding','Recovery required'].includes(this.phase)) throw new Error('Restore holding before confirming.');
-    this.record('Teacher physically confirmed holding restored', positions, false);
-    this.phase = 'Normal'; this.message = 'Teacher confirmed holding. Fresh evidence and separate movement clearance/Enable are still required.';
+    this.record('Operator physically confirmed holding restored', positions, false);
+    this.phase = 'Normal'; this.message = 'Holding confirmed. Fresh evidence and separate movement clearance/Enable are still required.';
   }
   interrupt(reason: string, positions: readonly number[]) {
     if (this.phase === 'Normal') return;

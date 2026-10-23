@@ -7,6 +7,7 @@ import type { PlannedStep } from './runtime/instructions';
 import type { ServoId } from './protocol/NexArmCodec';
 import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
+import {createTeachingPanel} from './poses/TeachingPanel';
 
 
 
@@ -22,6 +23,7 @@ const status=element('run-status');
 let preparing=false,session=0,control:TeacherRobotControl|null=null,previouslyArmed=false,interfaceError='';
 let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
 const robotMode=()=>destination.value==='robot';
+const teaching=createTeachingPanel(()=>control);
 
 const cards=Array.from({length:6},(_,index)=>{
   const servo=(index+1) as ServoId,card=document.createElement('section');card.className='joint-card';
@@ -37,6 +39,7 @@ const cards=Array.from({length:6},(_,index)=>{
   });card.append(title,measured,target,meter,controls);element('joints').append(card);return {measured,target,meter,buttons};
 });
 function refresh(){
+  teaching.refresh(robotMode(),preparing);
   const simulated=simulator.snapshot(),robot=control?.snapshot(),live=robotMode();
   const busy=preparing||(live?robot?.program?.phase==='Running'||robot?.busy:simulated.status==='Running');
   run.disabled=!!busy||(live&&!robot?.canMove);stop.disabled=!(busy||(live&&robot?.connectionState==='Listening'));lesson.disabled=practice.disabled=!!busy;
@@ -53,7 +56,7 @@ function refresh(){
   const blockers:string[]=[];
   if(!robot?.armed){
     if(!clearance.checked)blockers.push('Check the assigned robot / clear-area box.');
-    if(robot?.manualPhase&&robot.manualPhase!=='Normal')blockers.push('Holding is unverified. Open Robot setup controls to restore or confirm holding, then reconnect here.');
+    if(robot?.manualPhase&&robot.manualPhase!=='Normal')blockers.push('Holding is unverified. Use Teach a position below to restore and confirm holding, or open Robot setup controls.');
     else if(!robot)blockers.push('Connect the robot.');
     else if(robot.enableReason)blockers.push(robot.enableReason);
   }

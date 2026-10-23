@@ -29,12 +29,16 @@ groups will iterate independently; there will be no per-program teacher approval
   during runs, cancellation, reconnect, and managed student-account behavior.
 - Validate clearance, stopping behavior, anchoring, pinch-zone procedures and
   account permissions on the actual classroom robots before student acceptance.
+- Validate the hand-positioning support, release, restore and interruption
+  procedure for student use. Recording is implemented for development; arm weight
+  support and pinch-zone training remain physical classroom-release requirements.
 
 ## Programming and classroom usability
 
 - Local project saving, export/import, recovery, and deletion without accounts.
 - Wait blocks, conditionals, variables, functions, and bounded virtual events.
-- Named measured poses and replay after policy and route validation.
+- Named position capture is implemented in dev.25; add Blockly pose references
+  and replay after route/policy validation. Add pose import/project portability.
 - Keyboard accessibility and classroom testing across 10–20 robot stations.
 - Measured simulation geometry and XYZ research after hardware calibration.
 
