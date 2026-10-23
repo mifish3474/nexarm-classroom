@@ -7,8 +7,8 @@ import type { PlannedStep } from './runtime/instructions';
 import type { ServoId } from './protocol/NexArmCodec';
 import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
-import { classroomProfile, CLASSROOM_PROFILE_KEY } from './safety/ClassroomProfile';
-import type { ClassroomProfile } from './safety/ClassroomProfile';
+
+
 
 function element<T extends HTMLElement>(id:string):T{
   const node=document.getElementById(id);if(!node)throw Error(`Missing interface element: ${id}`);return node as T;
@@ -17,25 +17,11 @@ const simulator=new RobotSimulator(),runner=new ProgramRunner();
 const editor=createEditor(element('blockly-editor')),draw=createArmIllustration(element('arm-illustration'));
 const run=element<HTMLButtonElement>('run'),stop=element<HTMLButtonElement>('stop'),lesson=element<HTMLButtonElement>('lesson');
 const practice=element<HTMLButtonElement>('practice-lesson'),destination=element<HTMLSelectElement>('execution-mode');
-const clearance=element<HTMLInputElement>('robot-clearance'),speed=element<HTMLInputElement>('station-speed');
+const clearance=element<HTMLInputElement>('robot-clearance');
 const status=element('run-status');
-let preparing=false,session=0,control:TeacherRobotControl|null=null,profile:ClassroomProfile|null=null,previouslyArmed=false,interfaceError='';
+let preparing=false,session=0,control:TeacherRobotControl|null=null,previouslyArmed=false,interfaceError='';
 let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
 const robotMode=()=>destination.value==='robot';
-
-const ranges=Array.from({length:6},(_,index)=>{
-  const card=document.createElement('label');card.className='joint-card';card.textContent=`S${index+1} minimum / maximum`;
-  const inputs=['minimum','maximum'].map(name=>{
-    const input=document.createElement('input');input.type='number';input.min='0';input.max='4095';input.step='1';input.required=true;
-    input.setAttribute('aria-label',`S${index+1} station ${name}`);card.append(input);return input;
-  });element('station-limits').append(card);return inputs;
-});
-try{
-  const saved=localStorage.getItem(CLASSROOM_PROFILE_KEY);
-  if(saved){if(saved.length>8192)throw Error('Station setup is too large.');profile=classroomProfile(JSON.parse(saved));}
-  element('station-status').textContent=profile?'Station setup loaded from this browser. Use only its assigned robot.':'No station limits saved. Configure them once before robot programming.';
-}catch{element('station-status').textContent='Station setup could not be loaded. Simulation works; configure limits before robot programming.';}
-if(profile){profile.limits.forEach((limit,index)=>{ranges[index]![0]!.value=String(limit.min);ranges[index]![1]!.value=String(limit.max);});speed.value=String(profile.speed);}
 
 const cards=Array.from({length:6},(_,index)=>{
   const servo=(index+1) as ServoId,card=document.createElement('section');card.className='joint-card';
@@ -53,21 +39,33 @@ const cards=Array.from({length:6},(_,index)=>{
 function refresh(){
   const simulated=simulator.snapshot(),robot=control?.snapshot(),live=robotMode();
   const busy=preparing||(live?robot?.program?.phase==='Running'||robot?.busy:simulated.status==='Running');
-  run.disabled=!!busy||(live&&(!profile||!robot?.canMove));stop.disabled=!(busy||(live&&robot?.connectionState==='Listening'));lesson.disabled=practice.disabled=!!busy;
+  run.disabled=!!busy||(live&&!robot?.canMove);stop.disabled=!(busy||(live&&robot?.connectionState==='Listening'));lesson.disabled=practice.disabled=!!busy;
   element<HTMLButtonElement>('reset').disabled=live;
   element('blockly-editor').inert=element('keyboard-fields').inert=!!busy;
   element('robot-controls').hidden=!live;element('mode-label').textContent=live?'Station robot':'Learn / Simulate';
   element('robot-heading').textContent=live?'Robot readings':'Your virtual robot';
   element<HTMLButtonElement>('robot-connect').disabled=!!robot&&!robot.canConnect;
   element<HTMLButtonElement>('robot-disconnect').disabled=!robot||['Disconnected','Closing'].includes(robot.connectionState);
+  element<HTMLButtonElement>('robot-diagnostics').disabled=!control;
   if(previouslyArmed&&!robot?.armed)clearance.checked=false;previouslyArmed=!!robot?.armed;
-  element<HTMLButtonElement>('robot-enable').disabled=!profile||!clearance.checked||!robot?.canEnable;
+  const enable=element<HTMLButtonElement>('robot-enable');
+  enable.disabled=!clearance.checked||!robot?.canEnable;
+  const blockers:string[]=[];
+  if(!robot?.armed){
+    if(!clearance.checked)blockers.push('Check the assigned robot / clear-area box.');
+    if(robot?.manualPhase&&robot.manualPhase!=='Normal')blockers.push('Holding is unverified. Open Robot setup controls to restore or confirm holding, then reconnect here.');
+    else if(!robot)blockers.push('Connect the robot.');
+    else if(robot.enableReason)blockers.push(robot.enableReason);
+  }
+  const readiness=robot?.armed?(robot.canMove?'Robot enabled. Ready to run.':robot.reason??'Wait for the current operation to finish.'):
+    blockers.length?`To enable: ${blockers.join(' ')}`:'Ready. Click Enable robot. Enabling does not move the arm.';
+  const readinessNode=element('robot-readiness');if(readinessNode.textContent!==readiness)readinessNode.textContent=readiness;
+  enable.title=blockers.join(' ');
+
   element('robot-status').textContent=robot?`${robot.connectionState} · ${robot.armed?'Robot enabled':'Robot disabled'} · ${robot.message}`:'Disconnected.';
-  ranges.flat().forEach(input=>input.disabled=!!busy);speed.disabled=!!busy;
-  element<HTMLButtonElement>('station-save').disabled=element<HTMLButtonElement>('station-clear').disabled=!!busy;
   const state=preparing?'Preparing':live?robot?.program?.phase??(robot?.armed?'Ready':robot?.connectionState==='Listening'?'Disabled':'Disconnected'):simulated.status;
   element('state').textContent=state;
-  status.textContent=preparing?'Checking your program…':live?robot?.program?.message??(!profile?'Set up this station’s movement limits, then Connect and Enable.':'Connect and Enable this station’s robot, then Run your program.'):simulated.status==='Running'?'Simulating. Watch the highlighted block and virtual arm.':simulated.status==='Completed'?'Complete. Did the result match your prediction?':simulated.status==='Stopped'?'Stopped. Pending simulation steps were canceled.':'Ready to simulate.';
+  status.textContent=preparing?'Checking your program…':live?robot?.program?.message??'Connect and Enable this station’s robot, then Run your program.':simulated.status==='Running'?'Simulating. Watch the highlighted block and virtual arm.':simulated.status==='Completed'?'Complete. Did the result match your prediction?':simulated.status==='Stopped'?'Stopped. Pending simulation steps were canceled.':'Ready to simulate.';
   if(interfaceError)status.textContent=interfaceError;
   const positions=live?robot?.positions:simulated.positions;
   cards.forEach((card,index)=>{
@@ -102,7 +100,7 @@ run.onclick=async()=>{
     if(ownSession!==session||live!==robotMode())return;
     plan=result;preparing=false;element('instructions').replaceChildren();
     rows=plan.map(step=>{const row=document.createElement('li');row.textContent=`Move ${live?'robot':'virtual'} joint ${step.servo} to ${step.target}`;element('instructions').append(row);return row;});
-    if(live){if(!control||!profile)throw Error('Connect and enable the robot after station setup.');control.runProgram(instructions,profile);refresh();}
+    if(live){if(!control)throw Error('Connect and enable the robot first.');control.runProgram(instructions);refresh();}
     else simulator.run(plan);
   }catch(error){if(ownSession!==session)return;preparing=false;interfaceError=error instanceof Error?error.message:'Program could not run.';refresh();}
 };
@@ -121,23 +119,13 @@ element('robot-connect').onclick=()=>{
   }catch(error){element('robot-status').textContent=error instanceof Error?error.message:'Could not connect.';}
 };
 element('robot-disconnect').onclick=()=>{cancel();control?.disconnect();refresh();};
-element('robot-enable').onclick=()=>{try{if(!profile)throw Error('Configure station limits first.');control?.enable(clearance.checked);interfaceError='';refresh();}catch(error){interfaceError=error instanceof Error?error.message:'Could not enable.';refresh();}};
+element('robot-enable').onclick=()=>{try{control?.enable(clearance.checked);interfaceError='';refresh();}catch(error){interfaceError=error instanceof Error?error.message:'Could not enable.';refresh();}};
+element('robot-diagnostics').onclick=()=>{
+  if(!control)return;
+  const data=JSON.stringify(control.report(),null,2),url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='nexarm-robot-diagnostics.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 clearance.onchange=()=>{if(!clearance.checked)cancel();refresh();};
-element('station-save').onclick=()=>{
-  try{
-    if(![...ranges.flat(),speed].every(input=>input.reportValidity()&&input.value!==''))return;
-    const next=classroomProfile({schemaVersion:1,limits:ranges.map(inputs=>({min:Number(inputs[0]!.value),max:Number(inputs[1]!.value)})),speed:Number(speed.value),acceleration:10});
-    cancel();profile=next;
-    try{localStorage.setItem(CLASSROOM_PROFILE_KEY,JSON.stringify(next));element('station-status').textContent='Station setup saved in this browser. Students can edit and run within these ranges.';}
-    catch{element('station-status').textContent='Station setup is usable in memory, but browser storage failed. It must be entered again after reload.';}
-    refresh();
-  }catch(error){element('station-status').textContent=error instanceof Error?error.message:'Could not save station setup.';}
-};
-element('station-clear').onclick=()=>{
-  cancel();control?.disconnect();profile=null;ranges.flat().forEach(input=>input.value='');
-  try{localStorage.removeItem(CLASSROOM_PROFILE_KEY);element('station-status').textContent='Station limits cleared. Simulation remains available.';}
-  catch{element('station-status').textContent='Limits cleared in memory. Browser storage could not be cleared; saved limits may return after reload.';}refresh();
-};
 function leave(){cancel();control?.disconnect();}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)leave();});
 window.addEventListener('pagehide',leave);window.addEventListener('error',leave);window.addEventListener('unhandledrejection',leave);

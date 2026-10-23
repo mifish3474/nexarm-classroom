@@ -1,19 +1,18 @@
 import {expect,test} from '@playwright/test';
 import type {Page} from '@playwright/test';
 
-async function station(page:Page,configured=true){
+async function station(page:Page){
  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+100));
- await page.addInitScript(configured=>{
+ await page.addInitScript(()=>{
   const home=[2050,2150,2100,2200,2000,1080],positions=[...home],targets=[...home];let speed=600;
   const state={positions,writes:[] as number[][],requests:0,paused:false};Object.assign(window,{classroomRobot:state});
-  if(configured&&!localStorage.getItem('nexarm.classroom-profile.v1'))localStorage.setItem('nexarm.classroom-profile.v1',JSON.stringify({schemaVersion:1,limits:home.map(value=>({min:value-300,max:value+300})),speed:600,acceleration:10}));
   Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>{state.requests++;let timer:ReturnType<typeof setInterval>;return {
    open:async()=>{},close:async()=>clearInterval(timer),readable:new ReadableStream<Uint8Array>({start(controller){timer=setInterval(()=>{
     if(state.paused)return;positions.forEach((value,i)=>{const delta=targets[i]!-value;positions[i]=value+Math.sign(delta)*Math.min(Math.abs(delta),speed*.1);});
     const body=[255,26,11,...Array(12).fill(0),...positions.flatMap(value=>[value&255,value>>8])];controller.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255]));
    },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;offset+=14){const b=bytes.slice(offset,offset+14);targets[b[2]!-1]=b[7]!+256*b[8]!;speed=b[11]!+256*b[12]!;}}})
   };}}});
- },configured);
+ });
  await page.goto('/');
 }
 const writes=(page:Page)=>page.evaluate(()=>(window as unknown as {classroomRobot:{writes:number[][]}}).classroomRobot.writes);
@@ -36,31 +35,53 @@ test('students edit and rerun Blockly programs without another enable or teacher
  await expect(page.locator('#robot-status')).toContainText('Robot enabled');expect(errors).toEqual([]);expect(requests.every(url=>url.startsWith('http://127.0.0.1:4173/'))).toBe(true);
  await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
-test('out-of-range programs write nothing; Stop cancels subsequent blocks and students can recover',async({page})=>{
+test('Stop cancels subsequent blocks and students can recover',async({page})=>{
  await station(page);await connect(page);await enable(page);await page.getByRole('button',{name:'Load short practice program'}).click();
- await page.getByText('Program steps and keyboard editing',{exact:true}).click();let target=page.locator('#keyboard-fields input[max="4095"]').first();await target.fill('4095');await target.dispatchEvent('change');
- await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('outside the station range');expect(await writes(page)).toEqual([]);
  await page.getByRole('button',{name:'Load short practice program'}).click();await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');
  await page.clock.runFor(100);await page.getByRole('button',{name:'Stop',exact:true}).click();const count=(await writes(page)).length;await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(count);
  await expect(page.locator('#state')).toHaveText('Stopped');await enable(page);await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');
  await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
-test('one station setup persists without arming and can be cleared; mode switching cancels live execution',async({page})=>{
- await station(page,false);await connect(page);await expect(page.getByRole('button',{name:'Enable robot',exact:true})).toBeDisabled();
- await page.getByText('Station setup: movement limits',{exact:true}).click();const home=[2050,2150,2100,2200,2000,1080];
- for(let i=0;i<6;i++){await page.getByRole('spinbutton',{name:`S${i+1} station minimum`}).fill(String(home[i]!-300));await page.getByRole('spinbutton',{name:`S${i+1} station maximum`}).fill(String(home[i]!+300));}
- await page.getByRole('button',{name:'Save station setup'}).click();await page.clock.runFor(600);await expect(page.locator('#station-status')).toContainText('saved');expect(await writes(page)).toEqual([]);
- await enable(page);await page.getByRole('button',{name:'Load short practice program'}).click();await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');
- await page.locator('#execution-mode').selectOption('simulation');const count=(await writes(page)).length;await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(count);await expect(page.locator('#mode-label')).toHaveText('Learn / Simulate');
- await page.reload();await page.locator('#execution-mode').selectOption('robot');await expect(page.locator('#station-status')).toContainText('loaded');await expect(page.locator('#robot-status')).toHaveText('Disconnected.');
- await page.getByText('Station setup: movement limits',{exact:true}).click();await page.getByRole('button',{name:'Clear station setup'}).click();expect(await page.evaluate(()=>localStorage.getItem('nexarm.classroom-profile.v1'))).toBeNull();
-});
-
 test('Stop stays available after a program fault and sends a hold without resuming later blocks',async({page})=>{
  await station(page);await connect(page);await enable(page);await page.getByRole('button',{name:'Load short practice program'}).click();
  await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');
  await page.evaluate(()=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions[0]=3900);await page.clock.runFor(100);
  await expect(page.locator('#state')).toHaveText('Fault');await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeEnabled();
+ const beforeExport=(await writes(page)).length,download=page.waitForEvent('download');await page.getByRole('button',{name:'Export robot diagnostics'}).click();
+ expect((await download).suggestedFilename()).toBe('nexarm-robot-diagnostics.json');expect(await writes(page)).toHaveLength(beforeExport);
  await page.getByRole('button',{name:'Stop',exact:true}).click();const commands=await writes(page);expect(commands).toHaveLength(2);expect(commands[1]!.slice(11,13)).toEqual([100,0]);
  await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(2);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
+
+test('stale feedback explains a disabled Enable and fresh feedback restores it without moving',async({page})=>{
+ await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=true);await page.clock.runFor(700);
+ await page.locator('#robot-clearance').check();await expect(page.getByRole('button',{name:'Enable robot',exact:true})).toBeDisabled();await expect(page.locator('#robot-readiness')).toContainText('Waiting for current position feedback');
+ await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=false);await page.clock.runFor(100);
+ await expect(page.getByRole('button',{name:'Enable robot',exact:true})).toBeEnabled();expect(await writes(page)).toEqual([]);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
+
+test('unverified holding explains the recovery path and still blocks Enable',async({page})=>{
+ await station(page);await page.evaluate(()=>localStorage.setItem('nexarm.commissioning.manual-positioning.v1',JSON.stringify({requiresHoldingVerification:true,events:[]})));await connect(page);
+ await page.locator('#robot-clearance').check();await expect(page.getByRole('button',{name:'Enable robot',exact:true})).toBeDisabled();
+ await expect(page.locator('#robot-readiness')).toContainText('Holding is unverified');await expect(page.locator('#robot-readiness')).toContainText('Robot setup controls');
+ expect(await writes(page)).toEqual([]);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
+
+test('mode switching cancels a live program and reload never reconnects or resumes it',async({page})=>{
+ await station(page);await connect(page);await enable(page);await page.getByRole('button',{name:'Load short practice program'}).click();
+ await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');
+ await page.locator('#execution-mode').selectOption('simulation');const count=(await writes(page)).length;await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(count);
+ await page.reload();await expect(page.locator('#mode-label')).toHaveText('Learn / Simulate');expect(await writes(page)).toEqual([]);
+ expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);
+});
+
+test('obsolete station settings do not block Run or expose editable limits',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('nexarm.classroom-profile.v1','invalid obsolete setup'));
+ await station(page);await connect(page);await enable(page);
+ await expect(page.locator('#station-setup')).toHaveCount(0);await expect(page.locator('#station-limits')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Save station setup'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Load short practice program'}).click();await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');
+ await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);
+ expect(await page.evaluate(()=>localStorage.getItem('nexarm.classroom-profile.v1'))).toBe('invalid obsolete setup');
+ await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });

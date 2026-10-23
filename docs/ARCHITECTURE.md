@@ -1,8 +1,10 @@
 # NexArm Classroom architecture and implementation outline
 
 Classroom workflow clarification (2026-10-23): students must iterate independently
-across 10–20 robot stations. Station limits are configured once; students Connect
-and Enable per session, then edit/run without teacher approval of each program.
+across 10–20 robot stations. Students Connect and Enable per session, then edit/run
+without teacher approval of each program. The product owner has deferred station
+limits during development. Protected teacher/admin limits, without student editing,
+are required before student release; see [ROADMAP.md](./ROADMAP.md).
 Historical references below to teacher approval do not introduce a per-run
 classroom approval queue. See IMPLEMENTATION_NOTES.md and CLASSROOM_PROGRAMMING.md
 for the implemented workflow and current development limits.

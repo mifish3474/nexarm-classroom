@@ -30,7 +30,7 @@ function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: bool
   };
   const ready = async (positions: readonly number[] = TEACHER_HOME) => { control.connect(async () => port); await flush(); await window(0, positions); };
   return {control, port, writes, stored, feed, window, ready, time: () => time, setTime: (at: number) => { time = at; },
-    hide: () => { visible = false; }, finish: () => finish()};
+    hide: () => { visible = false; }, finish: () => finish(),endStream:()=>reader.close()};
 }
 const targetOf = (bytes: number[]) => bytes[6]! + 256 * bytes[7]!;
 
@@ -67,14 +67,37 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
- const station=()=>({schemaVersion:1,limits:TEACHER_HOME.map(value=>({min:value-300,max:value+300})),speed:600,acceleration:10});
  const program=[{kind:'move',blockId:'out',servo:1,target:2130},{kind:'repeat',blockId:'repeat',count:2,body:[{kind:'move',blockId:'up',servo:3,target:2180},{kind:'move',blockId:'down',servo:3,target:2100}]},{kind:'move',blockId:'back',servo:1,target:2050}];
+ it('waits for settling and at least 500 ms between Blockly moves without sending torque commands',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);
+ f.control.runProgram([{kind:'move',blockId:'out',servo:1,target:2130},{kind:'move',blockId:'back',servo:1,target:2050}]);await flush();
+ for(let at=1150;at<=3000;at+=50){await f.feed(at,pose);f.control.tick();await flush();}
+ expect(f.writes).toHaveLength(1);
+ pose[0]=2130;for(const at of [3100,3200,3300]){await f.feed(at,pose);f.control.tick();await flush();}
+ expect(f.writes).toHaveLength(2);expect(f.writes[1]!.at-f.writes[0]!.at).toBeGreaterThanOrEqual(500);
+ for(const write of f.writes){expect(write.bytes).toHaveLength(14);expect(write.bytes.slice(2,7)).toEqual([1,10,3,41,10]);expect(write.bytes.slice(11,13)).toEqual([88,2]);}
+ const report=f.control.report();expect(report.diagnostics.writes.map(entry=>entry.atMs)).toEqual(f.writes.map(entry=>entry.at));
+ expect(report.diagnostics.writes.every(entry=>entry.outcome==='stream-write-resolved')).toBe(true);expect(report.diagnostics.powerAndTorqueState).toBe('not measured');
+ report.diagnostics.writes[0]!.bytes[0]=0;expect(f.control.report().diagnostics.writes[0]!.bytes[0]).toBe(255);
+ f.control.disconnect();await flush();
+ });
+ it('does not advance a rapidly settled program before the minimum interval',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);f.control.runProgram([{kind:'move',blockId:'out',servo:1,target:2130},{kind:'move',blockId:'back',servo:1,target:2050}]);await flush();
+ pose[0]=2130;for(const at of [1200,1300,1400,1500,1599]){await f.feed(at,pose);f.control.tick();await flush();expect(f.writes).toHaveLength(1);}
+ await f.feed(1600,pose);f.control.tick();await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.at-f.writes[0]!.at).toBe(500);f.control.disconnect();await flush();
+ });
+ it('records a connection ending during a program without release, retry or automatic restore',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program);await flush();f.endStream();await flush();
+ expect(f.control.snapshot().connectionState).toBe('Disconnected');expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.writes).toHaveLength(1);
+ const report=f.control.report();expect(report.diagnostics.events.some(event=>event.kind==='connection'&&event.message.startsWith('Disconnected'))).toBe(true);
+ expect(report.diagnostics.writes).toHaveLength(1);expect(report.diagnostics.writes[0]!.bytes[4]).toBe(3);
+ });
  it('runs an edited Blockly sequence twice under one enable without teacher approvals',async()=>{
  const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);
  for(let run=0;run<2;run++){
-   f.control.runProgram(program,station());await flush();const start=f.time();let applied=f.writes.length-1;
+   f.control.runProgram(program);await flush();const start=f.time();let applied=f.writes.length-1;
    expect(()=>f.control.jog(2,20)).toThrow('Program');expect(()=>f.control.liveJoint(1,2200)).toThrow('Stop the program');
-   expect(()=>f.control.returnHome()).toThrow('Program');expect(()=>f.control.runProgram(program,station())).toThrow('Program');
+   expect(()=>f.control.returnHome()).toThrow('Program');expect(()=>f.control.runProgram(program)).toThrow('Program');
    for(let at=start+100;at<=start+5000&&f.control.snapshot().program?.phase==='Running';at+=100){
      if(f.writes.length>applied){const b=f.writes.at(-1)!.bytes;pose[b[2]!-1]=b[7]!+256*b[8]!;applied=f.writes.length;}
      await f.feed(at,pose);f.control.tick();await flush();
@@ -84,28 +107,33 @@ describe('smooth teacher controls',()=>{
  }
  expect(f.writes).toHaveLength(12);f.control.disconnect();await flush();
  });
- it('rejects missing station limits, invalid blocks and out-of-range targets before any program write',async()=>{
+ it('rejects invalid blocks and unencodable targets before any program write',async()=>{
  const f=fixture();await f.ready();f.control.enable(true);
- expect(()=>f.control.runProgram(program,null)).toThrow('station');
- expect(()=>f.control.runProgram([{kind:'serialWrite',blockId:'x'}],station())).toThrow();
- expect(()=>f.control.runProgram([{kind:'move',blockId:'x',servo:2,target:4095}],station())).toThrow('station range');
+ expect(()=>f.control.runProgram([{kind:'serialWrite',blockId:'x'}])).toThrow();
+ for(const target of [-1,4096,NaN,1.5])expect(()=>f.control.runProgram([{kind:'move',blockId:'x',servo:2,target}])).toThrow();
  expect(f.writes).toEqual([]);expect(f.control.snapshot().armed).toBe(true);f.control.disconnect();await flush();
  });
- it('freezes station limits and cancels all remaining program steps on an excursion',async()=>{
- const f=fixture(),profile=station(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);f.control.runProgram(program,profile);await flush();
- profile.limits[1]!.max=4095;pose[1]!+=301;await f.feed(1200,pose);
+ it('retains feedback excursion faults without station limit checks',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);f.control.runProgram(program);await flush();
+ pose[1]!+=101;await f.feed(1200,pose);
  expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().armed).toBe(false);
  await f.feed(1800);f.control.tick();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
  });
+ it('runs without station configuration and ignores stale saved station settings',async()=>{
+ const f=fixture({stored:new Map([['nexarm.classroom-profile.v1','invalid obsolete setup']])});await f.ready();f.control.enable(true);
+ f.control.runProgram([{kind:'move',blockId:'x',servo:1,target:4095}]);await flush();
+ const packet=f.writes[0]!.bytes;expect(packet[7]!+256*packet[8]!).toBe(4095);expect(packet.slice(11,13)).toEqual([88,2]);
+ expect(f.control.report().program?.stationLimitsEnforced).toBe(false);f.control.disconnect();await flush();
+ });
  it('Stop cancels the program, holds the active joint and requires no teacher to re-enable',async()=>{
- const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program,station());await flush();f.control.stop();await flush();
+ const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program);await flush();f.control.stop();await flush();
  expect(f.control.snapshot().program?.phase).toBe('Stopped');expect(f.writes).toHaveLength(2);
- await f.feed(1700);f.control.tick();expect(f.writes).toHaveLength(2);f.control.enable(true);f.control.runProgram(program,station());await flush();expect(f.writes).toHaveLength(3);f.control.disconnect();await flush();
+ await f.feed(1700);f.control.tick();expect(f.writes).toHaveLength(2);f.control.enable(true);f.control.runProgram(program);await flush();expect(f.writes).toHaveLength(3);f.control.disconnect();await flush();
  });
  it('enforces the total run budget and cannot resume after an interrupted write',async()=>{
- const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program,station());await flush();f.setTime(61100);f.control.tick();
+ const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program);await flush();f.setTime(61100);f.control.tick();
  expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().message).toContain('60-second');f.control.disconnect();await flush();
- const g=fixture({hang:true});await g.ready();g.control.enable(true);g.control.runProgram(program,station());await flush();g.control.stop();g.finish();await flush();await g.feed(1700);g.control.tick();
+ const g=fixture({hang:true});await g.ready();g.control.enable(true);g.control.runProgram(program);await flush();g.control.stop();g.finish();await flush();await g.feed(1700);g.control.tick();
  expect(g.writes).toHaveLength(1);expect(g.control.snapshot().program?.phase).toBe('Stopped');g.control.disconnect();await flush();
  });
  it('allows rapid slider reversal within dispatched targets but not an overwritten pending target',async()=>{

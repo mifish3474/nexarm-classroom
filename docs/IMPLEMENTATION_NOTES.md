@@ -1,4 +1,74 @@
-# Classroom programming development preview 0.7.0-dev.21
+# Classroom programming development preview 0.7.0-dev.24
+
+## Current update: investigate reported Blockly power/holding loss
+
+The teacher reports J1 moving briefly followed by lost power and holding. Cause
+is unresolved. Audit and synthetic tests confirm normal program steps wait for
+settled feedback and at least 500 ms between completed writes; Run/completion/
+fault/disconnect do not request release. Automatic movement should remain stopped
+while physical power/reset observations are collected. No motion timing, speed,
+torque, or firmware changes were made as a speculative fix.
+
+The main page adds a read-only local diagnostic export with bounded command-byte
+and timing records plus connection/fault/Stop events, available after a fault or
+disconnect. Power/torque are unmeasured, and stream completion is not an ACK.
+Logging is not retroactive and does not authorize another physical run.
+See [the investigation](./BLOCKLY_POWER_LOSS_INVESTIGATION.md).
+
+Validation: 163 unit tests, 22 targeted browser tests, and TypeScript/Vite build pass. New checks verify
+settling-dependent pacing, the minimum interval, absence of torque frames in a
+program, connection loss without extra commands, and independent report copies.
+
+The following sections record earlier versions.
+
+## Current update: defer station limits to the student-release roadmap
+
+The product owner explicitly requested that station limits not block development
+Run, and that the eventual student release not expose editable safety limits.
+The programming page no longer reads, saves, clears, or edits station profiles.
+Run requires the existing connected/enabled/fresh/idle state, not station setup.
+Old browser profiles are ignored without clearing the separate holding interlock.
+
+The program gateway no longer accepts station settings. Programs use the current
+development profile of speed 600 / acceleration 10, with 100 movements and a
+60-second budget. The bounded interpreter still rejects invalid servo IDs,
+non-integer/non-finite values, and raw targets outside the encoding range.
+Feedback path/deviation/settling checks, Stop and cancellation remain active.
+Reports explicitly record that station limits are not enforced. No automatic
+movement, reconnection, Home, or holding change was added.
+
+[ROADMAP.md](./ROADMAP.md) makes measured limits and protected teacher/admin
+configuration a required student-release workstream, with enforcement in the
+shared gateway, no student editing or project override, robot matching, migration
+of untrusted legacy profiles, and failure/adversarial tests. The development
+exception must not become a bypass in the student release.
+
+Validation: 160 unit tests, 30 browser tests, and TypeScript/Vite build pass. Tests exercise Run with
+no setup or obsolete settings, input rejection, retained feedback faults, Stop,
+run budgets, and late-write cancellation. Hardware tests remain manual.
+
+The following sections record earlier versions.
+
+## Current update: explain and unblock session Enable
+
+Missing station limits unnecessarily disabled Enable, despite Enable sending no
+movement. Enable now requires the clear-area checkbox and the existing connected,
+fresh-feedback and holding checks. Station limits remain mandatory for Run, and
+the motion gateway still checks every program target and starting position.
+No motion bounds, speed, holding procedure, or automatic movement was changed.
+
+An inline message beside Enable identifies unchecked clearance, missing/current
+feedback, connection state, and unverified holding. The latter points to the
+existing Robot setup controls. When station limits are missing, selecting robot
+mode opens station setup, and an enabled robot explicitly explains why Run is
+unavailable until those ranges are saved. This adds no per-program approval.
+
+Validation: 161 unit tests, twelve targeted classroom/simulator browser checks,
+and TypeScript/Vite build pass. Tests cover missing setup with non-moving Enable,
+required setup for Run, unchecked clearance, stale/fresh feedback, and the
+retained holding interlock.
+
+The following sections record earlier versions.
 
 ## Current update: independent student Blockly runs
 

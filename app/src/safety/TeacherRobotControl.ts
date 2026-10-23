@@ -6,8 +6,6 @@ import { ConcurrentHomeMotion } from './ConcurrentHomeMotion';
 import { ManualPositioning } from './ManualPositioning';
 import { SmoothTeacherMotion, smoothPlan, MOTION_SPEED, MOTION_ACCELERATION, HOME_SPEED, absoluteJointPlan } from './SmoothTeacherMotion';
 import type { CommandedPath } from './SmoothTeacherMotion';
-import {classroomProfile,checkClassroomPositions} from './ClassroomProfile';
-import type {ClassroomProfile} from './ClassroomProfile';
 import {interpret} from '../runtime/instructions';
 import type {PlannedStep} from '../runtime/instructions';
 
@@ -17,6 +15,8 @@ export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableS
 type Operation = 'Jog' | 'Home' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
 type SliderTarget={servo:number;target:number;speed:number;acceleration:number};
 const LIVE_TARGET_DEADBAND=10;
+const PROGRAM_SPEED=600,PROGRAM_ACCELERATION=10;
+type WriteDiagnostic={atMs:number;operation:Operation|null;bytes:number[];positions:number[]|null;finishedAtMs:number|null;outcome:'not-submitted'|'pending'|'stream-write-resolved'|'stream-write-rejected'};
 
 // Teacher-only direct controls. All jog, Home, and holding writes pass through
 // the same executor and exclusive USB lease. Live dragging retains only the
@@ -42,18 +42,21 @@ export class TeacherRobotControl {
   private route: SmoothTeacherMotion | ConcurrentHomeMotion | null = null;
   private operation: Operation | null = null;
   private history: unknown[] = [];
+  private writes:WriteDiagnostic[]=[];
+  private events:{atMs:number;kind:string;message:string;positions:number[]|null}[]=[];
+  private recordEvent(kind:string,message:string){this.events=[...this.events,{atMs:this.now(),kind,message,positions:this.positions?[...this.positions]:null}].slice(-200);}
   private liveTarget:SliderTarget|null=null;
   private lastLive:SliderTarget|null=null;
   private sliderInterval=500;
-  private program:{steps:PlannedStep[];profile:ClassroomProfile;index:number;at:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
+  private program:{steps:PlannedStep[];speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
   private cancelProgram(phase:'Stopped'|'Fault',message:string){if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
-  runProgram(instructions:unknown,profileInput:unknown){
+  runProgram(instructions:unknown){
     const reason=this.movementReason();if(reason)throw Error(reason);
-    const profile=classroomProfile(profileInput),steps=interpret(instructions);
-    checkClassroomPositions(this.positions!,profile);
-    for(const step of steps){const limit=profile.limits[step.servo-1]!;if(step.target<limit.min||step.target>limit.max)throw Error(`Block target ${step.target} for S${step.servo} is outside the station range ${limit.min}–${limit.max}.`);}
+    // Development testing only. The bounded language validates IDs and raw
+    // encoding values; protected robot-specific limits are a student-release gate.
+    const steps=interpret(instructions);
     this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
-    this.program={steps,profile,index:0,at:this.now(),phase:'Running',message:'Running your program.'};
+    this.program={steps,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),phase:'Running',message:'Running your program.'};
     this.advanceProgram();this.changed();
   }
   private advanceProgram(){
@@ -63,9 +66,8 @@ export class TeacherRobotControl {
     if(program.index===program.steps.length){program.phase='Completed';program.message='Program complete. Edit your blocks and run again.';this.message=program.message;return;}
     if(this.now()-this.lastCommandAt<500)return;
     try{
-      checkClassroomPositions(this.positions!,program.profile);
       const step=program.steps[program.index]!;
-      const plan=absoluteJointPlan(this.positions!,step.servo,step.target,program.profile.speed,program.profile.acceleration);
+      const plan=absoluteJointPlan(this.positions!,step.servo,step.target,program.speed,program.acceleration);
       program.index++;this.start({...plan,manual:false},'Program');
     }catch(error){this.fault(error instanceof Error?error.message:'Program movement could not start.');}
   }
@@ -99,6 +101,7 @@ export class TeacherRobotControl {
     this.manual = new ManualPositioning(storage);
     this.connection = new PassiveConnection((state, message) => {
       this.connectionState = state;
+      this.recordEvent('connection',`${state}: ${message}`);
       if (state === 'Listening') {
         this.connectedAt = this.now(); this.message = 'Connected. Positions are read-only until you enable controls.';
       } else {
@@ -263,19 +266,24 @@ export class TeacherRobotControl {
     }
     let writer: WritableStreamDefaultWriter<Uint8Array> | undefined;
     const generation = this.generation, started = this.now();
+    const diagnostic:WriteDiagnostic={atMs:started,operation:this.operation,bytes:[...packet],positions:this.positions?[...this.positions]:null,finishedAtMs:null,outcome:'not-submitted'};
+    this.writes=[...this.writes,diagnostic].slice(-200);
     try {
       writer = this.port.writable.getWriter(); const activeWriter = writer;
       this.writeInFlight = true; this.writeStartedAt=started; this.lastCommandAt = started;
+      diagnostic.outcome='pending';
       this.pending = activeWriter.write(packet).finally(() => {
+        diagnostic.finishedAtMs=this.now();
         activeWriter.releaseLock(); this.writeInFlight = false;
         this.lastCommandAt = Math.max(this.lastCommandAt, this.now());
       });
       void this.pending.then(() => {
+        diagnostic.outcome='stream-write-resolved';
         if (generation !== this.generation) return;
         if (this.now() - started >= 2000) { this.fault('Write deadline exceeded; delivery may have occurred.'); return; }
         try { completed(); } catch (error) { this.fault(error instanceof Error ? error.message : 'Completion recording failed.'); }
-      }, () => { if (generation === this.generation) this.fault('Write failed; delivery may have occurred. Inspect before enabling again.'); });
-    } catch { writer?.releaseLock(); this.writeInFlight = false; this.fault('Write could not complete. Inspect before enabling again.'); }
+      }, () => { diagnostic.outcome='stream-write-rejected';if (generation === this.generation) this.fault('Write failed; delivery may have occurred. Inspect before enabling again.'); });
+    } catch { diagnostic.finishedAtMs=this.now();writer?.releaseLock(); this.writeInFlight = false; this.fault('Write could not complete. Inspect before enabling again.'); }
     this.changed();
   }
 
@@ -287,9 +295,6 @@ export class TeacherRobotControl {
       if (!positions) continue;
 
       this.positions = positions; this.receivedAt = at;
-      if(this.program?.phase==='Running'){
-        try{checkClassroomPositions(positions,this.program.profile);}catch(error){this.fault(error instanceof Error?error.message:'Station range exceeded.');continue;}
-      }
       if (this.route?.phase === 'Running') {
         this.route.observe(positions, at);
         const phase = this.route.status().phase;
@@ -322,6 +327,7 @@ export class TeacherRobotControl {
     if (this.route) this.history = [...this.history, {operation: this.operation, at: new Date().toISOString(), result: this.route.report()}].slice(-100);
   }
   private fault(message: string) {
+    this.recordEvent('fault',message);
     this.cancelProgram('Fault',message);
     const moving=this.route?.activeRun;
     this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = true; this.generation++;
@@ -329,6 +335,7 @@ export class TeacherRobotControl {
     this.manual.interrupt(message, this.positions ?? []);  this.message = message+(moving?' Future targets canceled. Use Stop or the physical cutoff to intervene in the current movement.':''); this.changed();
   }
   stop() {
+    this.recordEvent('stop','Stop requested. No torque-off command is requested.');
     this.cancelProgram('Stopped','Stopped. Edit your program and run again when ready.');
     this.liveTarget=null;this.lastLive=null;
     const moving=this.lastMovingServos; this.lastMovingServos=[];
@@ -343,8 +350,12 @@ export class TeacherRobotControl {
   disconnect() { this.stop(); this.connection.disconnect(); }
   report() {
     return {format: 'nexarm-teacher-control-session', schemaVersion: 1, capturedAt: new Date().toISOString(),
+      diagnostics:{clock:'page monotonic milliseconds',state:this.connectionState,message:this.message,feedbackAgeMs:Number.isFinite(this.receivedAt)?this.now()-this.receivedAt:null,
+        writePending:this.writeInFlight,powerAndTorqueState:'not measured',
+        writes:this.writes.map(entry=>({...entry,bytes:[...entry.bytes],positions:entry.positions?[...entry.positions]:null})),
+        events:this.events.map(entry=>({...entry,positions:entry.positions?[...entry.positions]:null}))},
       home: [...TEACHER_HOME], latest: this.positions ? [...this.positions] : null,
-      program:this.program?{...this.program,steps:this.program.steps.map(step=>({...step})),profile:classroomProfile(this.program.profile)}:null,
+      program:this.program?{...this.program,steps:this.program.steps.map(step=>({...step}))}:null,
       operations: [...this.history, ...(this.route ? [{operation: this.operation, result: this.route.report()}] : [])],
       manualPositioning: this.manual.report()};
   }

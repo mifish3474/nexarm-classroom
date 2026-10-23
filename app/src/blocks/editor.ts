@@ -10,7 +10,7 @@ Blockly.defineBlocksWithJsonArray([
   { type: 'lesson_move', message0: 'move joint %1 to %2', args0: [
     { type: 'field_dropdown', name: 'SERVO', options: ['1','2','3','4','5','6'].map(id => [id, id]) },
     { type: 'field_number', name: 'TARGET', value: 2128, min: 0, max: 4095, precision: 1 },
-  ], previousStatement: null, nextStatement: null, colour: 205, tooltip: 'Raw target. Robot mode enforces the station movement limits.' },
+  ], previousStatement: null, nextStatement: null, colour: 205, tooltip: 'Raw target for simulation or development testing. Mechanical limits are not enforced in this build.' },
   { type: 'lesson_repeat', message0: 'repeat %1 times', args0: [{ type: 'field_number', name: 'COUNT', value: 2, min: 1, max: 20, precision: 1 }], message1: 'do %1', args1: [{ type: 'input_statement', name: 'BODY' }], previousStatement: null, nextStatement: null, colour: 35, tooltip: 'Run the blocks inside this loop the specified number of times.' },
 ]);
 

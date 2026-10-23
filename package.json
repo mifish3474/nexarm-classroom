@@ -1,6 +1,6 @@
 {
   "name": "nexarm-classroom",
-  "version": "0.7.0-dev.21",
+  "version": "0.7.0-dev.24",
   "private": true,
   "type": "module",
   "scripts": {
