@@ -1,4 +1,4 @@
-# Robot setup control testing: 0.7.0-dev.35
+# Robot setup control testing: 0.7.0-dev.36
 
 Home now uses a timed pose frame with individual calculated speeds, capped at
 600 and acceleration 10. Its requested one-second duration is extended for
@@ -9,6 +9,9 @@ does not trigger a settling timeout. Inspect live readings and the physical pose
 No correction loop runs. Sliders and explicit small
 jogs retain their existing behavior. Blockly saved-pose blocks expose the frame
 duration; see [teaching positions](./TEACHING_POSITIONS.md).
+For timed Home/poses, the frame endpoint-path comparison is diagnostic-only;
+continued travel from earlier targets no longer triggers a path fault. Feedback
+loss, write deadlines, target limits and Stop remain active.
 
 Sliders, numeric moves and jogs use the operator-provided
 [operating ranges](./OPERATING_RANGES.md). Stricter student policy remains future
@@ -22,7 +25,7 @@ no per-program teacher review or approval action.
 
 Current workflow:
 
-1. Open /mapping.html, confirm dev.35, Connect and wait for fresh stable readings.
+1. Open /mapping.html, confirm dev.36, Connect and wait for fresh stable readings.
    There are no clearance/support checkboxes, Enable or holding-confirmation buttons.
 2. Review the actual reading and target for one joint. Drag its slider to send
    live targets, or enter a numeric target and click Move. Slider defaults

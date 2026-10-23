@@ -1,6 +1,45 @@
-# Classroom programming development preview 0.7.0-dev.35
+# Classroom programming development preview 0.7.0-dev.36
 
-## Current update: factory-style frame completion
+## Current update: endpoint-path comparisons are diagnostic for timed poses
+
+The user reported repeated `Pose J# moved outside its commanded path` errors
+after the factory-style timing change. Dev.35 still faulted if a reading left
+the current frame's measured start/target interval by more than 100 raw units.
+That interval does not model continued movement toward a previous frame's goal,
+overshoot, reversal, or a joint awaiting its next write. Timed completion permits
+these transitions without proving the previous movement has settled. A regression
+reproduces the false fault when J6 continues moving before its reversal target
+is sent. This establishes a software failure case, not a physical diagnosis of
+every reported error.
+
+For timed Home and saved-position playback, that comparison now records
+diagnostics instead of canceling the run. Reports identify
+`pathCheckPolicy: diagnostic-only`, a total `pathDeviationCount`, and up to 64
+recent `pathDeviations` with time, joint, measured value, comparison bounds and
+whether its current target had been submitted. The existing 64-sample feedback
+trace and actual/target separation remain. The comparison is not a physical
+collision or motion-path detector. It does not gate the UI or cause retries.
+
+Target ranges, capture validation, whole-program preflight, fresh feedback,
+write deadlines, USB ownership, cancellation, Stop, and program budgets remain
+active. Timing/profile caps remain 600/10 with no new physical command, target
+or persistent device setting. Individual-joint/sliding controls keep their
+existing supervision; the change applies to TimedPoseMotion only.
+
+Testing: refresh and confirm dev.36, then retry the same pose sequence. These
+endpoint-path errors should no longer interrupt timed poses. Readings stay live
+and movement diagnostics retain the observations. Test Stop during the sequence.
+Physical hardware verification remains with the operator.
+
+Validation: all 239 unit tests, all 41 browser checks, and TypeScript/Vite build
+pass. New coverage includes every joint leaving its endpoint interval without a
+timed-pose fault, bounded/copied diagnostic observations, J6 continuing during
+partial reversal dispatch, cancellation on subsequent feedback loss, elapsed
+sequence completion, and Stop holding all submitted joints without replay.
+Browser hardware behavior is mocked; no USB command or device-setting change was
+performed by these checks. The existing Blockly bundle-size warning remains.
+
+## Previous update: factory-style frame completion (dev.35)
 
 At the user's request, saved-position buttons, Blockly pose blocks and Home now
 advance on elapsed effective frame time. All six targets are sent, including

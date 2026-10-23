@@ -50,6 +50,22 @@ test('a measured 32-unit J3 offset advances through Blockly by frame time withou
  await page.clock.runFor(3000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2068');
  await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(12);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
+test('endpoint-path deviations do not interrupt timed pose playback and Stop remains available',async({page})=>{
+ await seedPositions(page);await station(page);await connect(page);
+ await page.getByRole('button',{name:'New empty program',exact:true}).click();
+ for(const position of ['pickup','home']){await page.locator('#program-position').selectOption(position);await page.getByRole('button',{name:'Add position block',exact:true}).click();}
+ // Freeze physical tracking and inject in-range readings beyond the current
+ // endpoint interval, as can happen during overlapping frames or a reversal.
+ await page.evaluate(()=>(window as unknown as {classroomRobot:{holding:boolean}}).classroomRobot.holding=false);
+ await page.getByRole('button',{name:'Run program',exact:true}).click();await page.clock.runFor(100);expect(await writes(page)).toHaveLength(6);
+ await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot;s.positions.forEach((value,i)=>s.positions[i]=value+240);});
+ await page.clock.runFor(100);await expect(page.locator('#state')).toHaveText('Running');await expect(page.locator('#robot-status')).not.toContainText('outside its commanded path');
+ await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);await ready(page);
+ await expect(page.locator('.joint-card strong').first()).toHaveText('2290');
+ await page.getByRole('button',{name:'Stop',exact:true}).click();expect(await writes(page)).toHaveLength(13);expect((await writes(page)).at(-1)).toHaveLength(84);
+ await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(13);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
+
 test('live recording boxes show ranges beside the name and block every out-of-range or stale capture',async({page})=>{
  await station(page);await connect(page);await page.getByText('Release, record, and restore',{exact:true}).click();await page.getByRole('button',{name:'Release servos for hand positioning'}).click();await page.clock.runFor(600);
  const name=page.getByRole('textbox',{name:'Position name'}),record=page.getByRole('button',{name:'Record current position',exact:true});await name.fill('Pickup');

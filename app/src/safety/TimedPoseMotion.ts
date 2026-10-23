@@ -19,6 +19,8 @@ export class TimedPoseMotion{
   private latest:number[];private lastObservation:number;private started=0;private lastWrite=-Infinity;private clock=0;
   private index=0;private pending=false;private endsAt:number|null=null;
   private feedback:{at:number;positions:number[]}[]=[];
+  private pathDeviationCount=0;
+  private pathDeviations:{elapsedMs:number;servo:number;actual:number;min:number;max:number;targetSent:boolean}[]=[];
   private sent:number[]=[];
   constructor(private readonly before:readonly number[],at:number,private readonly plan:ReturnType<typeof timedPosePlan>){
     this.before=[...before];this.latest=[...before];this.lastObservation=at;this.steps=plan.steps.map(s=>({...s}));
@@ -32,8 +34,15 @@ export class TimedPoseMotion{
     this.latest=[...values];this.lastObservation=at;if(this.phase!=='Running')return;
     this.feedback=[...this.feedback,{at,positions:[...values]}].slice(-64);
     for(let i=0;i<6;i++){
-      const target=this.sent.includes(i+1)?this.plan.target[i]!:this.before[i]!;
-      if(values[i]!<Math.min(this.before[i]!,target)-MOTION_DEVIATION_MARGIN||values[i]!>Math.max(this.before[i]!,target)+MOTION_DEVIATION_MARGIN){this.fail(`Pose J${i+1} moved outside its commanded path.`);return;}
+      const targetSent=this.sent.includes(i+1),target=targetSent?this.plan.target[i]!:this.before[i]!;
+      const min=Math.min(this.before[i]!,target)-MOTION_DEVIATION_MARGIN,max=Math.max(this.before[i]!,target)+MOTION_DEVIATION_MARGIN;
+      // Endpoint bounds cannot predict the path during overlapping timed frames,
+      // reversals, or continued travel before a joint receives its next target.
+      // Retain observations for diagnosis; they do not gate factory-style playback.
+      if(values[i]!<min||values[i]!>max){
+        this.pathDeviationCount++;
+        this.pathDeviations=[...this.pathDeviations,{elapsedMs:at-this.started,servo:i+1,actual:values[i]!,min,max,targetSent}].slice(-64);
+      }
     }
     this.checkDeadline(at);
   }
@@ -50,5 +59,5 @@ export class TimedPoseMotion{
     const next=this.steps[this.index];
     return {phase:this.phase,message:this.message,speed:this.speed,acceleration:this.acceleration,commandedPath:null,commands,command:commands.reduce<(typeof commands)[number]|null>((largest,c)=>!largest||Math.abs(c.error)>Math.abs(largest.error)?c:largest,null),next:next?{servo:next.servo,target:next.target}:null,completedWaypoints:this.index,totalSteps:this.steps.length,requestedMs:this.plan.requestedMs,durationMs:this.plan.durationMs,completionPolicy:'elapsed-time' as const};
   }
-  report(){return {...this.status(),mode:'timed-pose',before:[...this.before],latest:[...this.latest],target:[...this.plan.target],sent:[...this.sent],feedback:this.feedback.map(s=>({elapsedMs:s.at-this.started,positions:[...s.positions]}))};}
+  report(){return {...this.status(),mode:'timed-pose',pathCheckPolicy:'diagnostic-only',pathDeviationCount:this.pathDeviationCount,pathDeviations:this.pathDeviations.map(sample=>({...sample})),before:[...this.before],latest:[...this.latest],target:[...this.plan.target],sent:[...this.sent],feedback:this.feedback.map(s=>({elapsedMs:s.at-this.started,positions:[...s.positions]}))};}
 }

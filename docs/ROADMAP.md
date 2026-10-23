@@ -33,6 +33,11 @@ groups will iterate independently; there will be no per-program teacher approval
   during runs, cancellation, reconnect, and managed student-account behavior.
 - Validate clearance, stopping behavior, anchoring, pinch-zone procedures and
   account permissions on the actual classroom robots before student acceptance.
+- Validate feedback fault criteria for overlapping timed frames, reversals,
+  overshoot and continued travel while targets are being sent. A frame's raw
+  start/target interval is not a physical path model. Dev.36 logs that comparison
+  without aborting timed poses; student-release motion supervision still needs
+  measured limits and hardware acceptance.
 - Validate the hand-positioning support, release, restore and interruption
   procedure for student use. Recording is implemented for development; arm weight
   support and pinch-zone training remain physical classroom-release requirements.
@@ -52,11 +57,14 @@ groups will iterate independently; there will be no per-program teacher approval
 
 Explicit Connect and deliberate Run/manual actions, automatic readiness from
 fresh stable feedback, one shared writer and exclusive USB lease, bounded
-instruction expansion, servo ID/numeric/encoding checks, speed 600 and
-acceleration 10 for programs, feedback path/settling/deadline supervision, Stop,
+instruction expansion, servo ID/numeric/encoding checks, speed up to 600 and
+acceleration 10 for program poses, feedback freshness/write-deadline supervision, Stop,
 60-second/100-movement budgets, cancellation on mode/visibility/connection
 changes, and a durable interrupted-release record cleared by explicit Restore
 and fresh stable feedback. Position feedback does not measure holding power.
+Timed Home/saved poses advance on frame time; endpoint-path comparisons are
+diagnostic-only in dev.36. Explicit individual-joint controls retain their
+existing path/settling checks.
 Station limits are not
 enforced as protected policy in the current development build. Fixed development
 operating ranges are enforced for targets through the current motion controller.

@@ -1,6 +1,6 @@
-# Teach and use a position: dev.35
+# Teach and use a position: dev.36
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.35**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.36**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
 
 Live targets must fit the [current operating ranges](./OPERATING_RANGES.md).
@@ -69,6 +69,10 @@ To connect positions in code:
    factory online action playback. No pose-arrival tolerance or stable-reading
    check blocks the next frame. Add Wait for an extra pause. Reported positions,
    targets and remaining errors stay visible; no correction loop or retry runs.
+   Readings outside the frame's start/target interval are logged in diagnostics
+   and do not interrupt timed playback. That interval cannot predict a physical
+   path while earlier targets are still in motion. Target limits, feedback-loss
+   and USB write checks remain active.
    Explicit individual-joint blocks retain their existing completion behavior.
    Test Stop during a short sequence; later blocks must not run. Inspect the arm
    before running again. Fresh stable readings make controls ready without Enable.

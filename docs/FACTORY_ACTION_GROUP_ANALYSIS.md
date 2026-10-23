@@ -1,5 +1,10 @@
 # Factory Action Group Editor investigation
 
+Dev.36 follow-up: the retained endpoint-path comparison also conflicted with
+timed frames when earlier targets remained in motion. Timed Home and pose
+playback now records such observations without aborting. Target-range checks,
+feedback/write guards and Stop remain active. See IMPLEMENTATION_NOTES.md.
+
 Current follow-up (dev.35): the user requested factory-style arrival handling.
 Saved poses and Home now send all six targets and advance after effective frame
 time, without settling/accuracy gates. Profile caps remain 600/10; fresh measured

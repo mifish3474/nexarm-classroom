@@ -1,4 +1,4 @@
-# Programming development test: dev.35
+# Programming development test: dev.36
 
 The user confirms Blockly motion is working after identifying the selected J3
 block. Diagnostic export remains available for unexpected behavior. To release,
@@ -12,7 +12,7 @@ setup requirement, student-editable limit panel, or per-program teacher approval
 Protected limits are a required [student-release roadmap item](./ROADMAP.md).
 The current build is for development hardware testing.
 
-1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.35**.
+1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.36**.
 2. Build or edit a program. Choose **Simulation** for practice without USB, or
    **Station robot** for hardware testing. Simulation remains the default.
 3. In robot mode, click **Connect robot** and wait for Ready. Fresh stable

@@ -27,6 +27,9 @@ to 600 and acceleration 10. Each block has an editable duration;
 Wait and Repeat connect them into sequences. Pose playback advances when frame
 time elapses, matching factory online actions; exact arrival is not verified.
 Live readings show the result. Add Wait for an extra pause between positions.
+Timed-pose start/target path comparisons are diagnostic-only; continued movement
+from previous frames does not trigger a path fault. Target limits, feedback-loss
+checks, USB write checks, and Stop remain active.
 New empty program starts a sequence without the starter's joint movements.
 A separate setup page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from the footer.

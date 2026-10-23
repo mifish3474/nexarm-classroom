@@ -119,6 +119,23 @@ describe('smooth teacher controls',()=>{
    for(let at=1200;at<=2300;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.control.snapshot().home?.phase).toBe('Complete');
    f.control.setHolding(false,true);await flush();const count=f.writes.length;f.control.stop();await flush();expect(f.writes).toHaveLength(count);expect(f.control.snapshot().canMove).toBe(false);f.control.disconnect();await flush();
  });
+ it('continued J6 movement during a frame reversal is diagnostic and preserves playback and Stop',async()=>{
+   const f=fixture({directSession:true}),target=[...TEACHER_HOME];target[5]=2000;await f.ready();
+   const pose=(positions:readonly number[])=>({kind:'pose',blockId:'p',positionId:'p',name:'P',positions:[...positions]});
+   f.control.runProgram([pose(target),pose(TEACHER_HOME)]);await flush();await dispatchPose(f);
+   const actual=[...TEACHER_HOME];actual[5]=1400;
+   for(let at=1200;at<=2900;at+=100){await f.feed(at,actual);f.control.tick();await flush();}
+   await f.feed(2950,actual);f.control.tick();await flush();expect(f.writes).toHaveLength(7); // second frame has sent only J1
+   actual[5]=1600;await f.feed(2952,actual);f.control.tick();await flush();
+   expect(f.control.snapshot().faulted).toBe(false);expect(f.control.snapshot().program?.phase).toBe('Running');
+   for(let at=2954;at<=2960;at+=2){await f.feed(at,actual);f.control.tick();await flush();}
+   for(let at=3000;at<=4100;at+=100){await f.feed(at,actual);f.control.tick();await flush();}
+   expect(f.writes).toHaveLength(12);expect(f.control.snapshot().program?.phase).toBe('Completed');expect(f.control.snapshot().canMove).toBe(true);
+   const operation=f.control.report().operations.at(-1) as {result:{pathCheckPolicy:string;pathDeviations:unknown[]}};
+   expect(operation.result.pathCheckPolicy).toBe('diagnostic-only');expect(operation.result.pathDeviations).toEqual(expect.arrayContaining([expect.objectContaining({servo:6,actual:1600,targetSent:false})]));
+   f.control.stop();await flush();expect(f.writes.at(-1)!.bytes).toHaveLength(84);const count=f.writes.length;
+   for(let at=4200;at<=4800;at+=100){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(count);f.control.disconnect();await flush();
+ });
  it('short timed poses and a zero wait advance at frame time without an extra half-second gate',async()=>{
    const f=fixture({directSession:true});await f.ready();
    const pose={kind:'pose',blockId:'p',positionId:'home',name:'Home',positions:[...TEACHER_HOME],durationMs:100};

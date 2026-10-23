@@ -40,10 +40,24 @@ it('does not require stable readings or arrival before the next frame',()=>{
  for(let at=100;at<=1000;at+=100)motion.observe(home.map(n=>n+(at%200?15:45)),at);
  motion.checkDeadline(1010);expect(motion.phase).toBe('Complete');expect(motion.report().latest).toEqual(home.map(n=>n+45));
 });
-it('retains stale feedback, path deviation, and dispatch deadline faults',()=>{
+it('retains stale feedback and dispatch deadline faults',()=>{
  const stale=frame().motion;dispatch(stale);stale.checkDeadline(1501);expect(stale.phase).toBe('Fault');
- const drift=frame().motion,actual=[...home];actual[1]+=101;drift.observe(actual,100);expect(drift.phase).toBe('Fault');
+ const deviated=frame().motion;dispatch(deviated);deviated.observe(home.map(n=>n+200),100);deviated.checkDeadline(1601);expect(deviated.phase).toBe('Fault');expect(deviated.message).toContain('feedback');
  const {motion}=frame();for(let at=100;at<=5100;at+=100)motion.observe(home,at);expect(motion.phase).toBe('Fault');expect(motion.message).toContain('dispatch');
+});
+it.each([1,2,3,4,5,6])('records J%s endpoint deviations without stopping timed playback or altering its target',servo=>{
+ const {motion}=frame(),actual=[...home];actual[servo-1]!+=200;dispatch(motion);
+ motion.observe(actual,100);expect(motion.phase).toBe('Running');motion.observe(actual,1010);expect(motion.phase).toBe('Complete');
+ expect(motion.report()).toMatchObject({pathCheckPolicy:'diagnostic-only',pathDeviationCount:2,latest:actual,target:home});
+ expect(motion.report().pathDeviations[0]).toMatchObject({servo,actual:actual[servo-1],targetSent:true});
+});
+it('allows an earlier target to keep moving before the next joint target is dispatched and bounds diagnostics',()=>{
+ const {motion}=frame(),actual=[...home];actual[5]=1600;motion.next(0);motion.written(0);
+ motion.observe(actual,100);expect(motion.phase).toBe('Running');expect(motion.report().pathDeviations[0]).toMatchObject({servo:6,targetSent:false,actual:1600});
+ for(let at=102;at<=110;at+=2){motion.next(at);motion.written(at);}
+ for(let at=120;at<=1110;at+=10)motion.observe(actual,at);
+ expect(motion.phase).toBe('Complete');expect(motion.report().pathDeviations).toHaveLength(64);expect(motion.report().pathDeviationCount).toBeGreaterThan(64);
+ const report=motion.report();report.pathDeviations[0]!.actual=0;expect(motion.report().pathDeviations[0]!.actual).toBe(1600);
 });
 it('rejects invalid goals/durations and freezes inputs',()=>{
  for(const ms of [0,99,10001,NaN,100.5])expect(()=>frame(home,home,ms)).toThrow();const bad=[...home];bad[2]=2901;expect(()=>frame(home,bad)).toThrow('J3');
