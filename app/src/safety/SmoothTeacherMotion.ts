@@ -7,8 +7,13 @@ export const MOTION_DEVIATION_MARGIN=100;
 // Match the existing final-pose allowance. Stability still requires three
 // samples over 150 ms with at most nine raw units of spread.
 export const TARGET_TOLERANCE=12;
+// Repeated in-range J3 tests settled 27–28 units short. Only larger program/
+// pose moves use this allowance; small moves and direct manual controls stay strict.
+export function settlingTolerance(servo:number,delta:number,allowJ3Offset=false){
+  return allowJ3Offset&&servo===3&&Math.abs(delta)>=100?30:TARGET_TOLERANCE;
+}
 type Step={servo:number;from:number;target:number;delta:number;packet:string};
-type Command={servo:number;from:number;target:number;actual:number;error:number;elapsedMs:number;deadlineMs:number};
+type Command={servo:number;from:number;target:number;actual:number;error:number;elapsedMs:number;deadlineMs:number;tolerance:number};
 export type CommandedPath={servo:number;min:number;max:number};
 export function absolutePosePlan(positions:readonly number[],targetValues:readonly number[],profile={speed:HOME_SPEED,acceleration:MOTION_ACCELERATION}){
   for(const values of [positions,targetValues])if(values.length!==6||values.some(n=>!Number.isInteger(n)||n<0||n>4095))throw Error('Six valid positions required.');
@@ -48,7 +53,7 @@ export class SmoothTeacherMotion{
   private failure:{message:string;positions:readonly number[];command:Command|null}|null=null;
   private readonly path:CommandedPath|null;
   private feedback:{elapsedMs:number;positions:number[]}[]=[];
-  constructor(positions:readonly number[],at:number,private plan:ReturnType<typeof smoothPlan>,previousPath?:CommandedPath|null,private grouped=false){
+  constructor(positions:readonly number[],at:number,private plan:ReturnType<typeof smoothPlan>,previousPath?:CommandedPath|null,private grouped=false,private allowJ3Offset=false){
     this.before=[...positions];this.latest=[...positions];this.steps=plan.steps.map(s=>({...s}));this.lastObservation=at;
     const step=this.steps[0];
     this.path=plan.manual&&step?{servo:step.servo,min:Math.min(step.from,step.target),max:Math.max(step.from,step.target)}:null;
@@ -66,7 +71,7 @@ export class SmoothTeacherMotion{
   next(at:number){this.checkDeadline(at);if(this.phase!=='Running'||this.active||at-this.lastWrite<500||at-this.lastObservation>500)return null;
     const step=this.steps[this.index];if(!step)return null;
     this.active={step,at,before:[...this.latest],written:false,samples:[]};
-    this.command={servo:step.servo,from:this.latest[step.servo-1]!,target:step.target,actual:this.latest[step.servo-1]!,error:step.target-this.latest[step.servo-1]!,elapsedMs:0,deadlineMs:Math.max(4000,this.travelDistance(step)/this.speed*2000+4000)};
+    this.command={servo:step.servo,from:this.latest[step.servo-1]!,target:step.target,actual:this.latest[step.servo-1]!,error:step.target-this.latest[step.servo-1]!,elapsedMs:0,deadlineMs:Math.max(4000,this.travelDistance(step)/this.speed*2000+4000),tolerance:settlingTolerance(step.servo,step.delta,this.allowJ3Offset)};
     return step;
   }
   checkDeadline(at:number){if(this.phase!=='Running')return;
@@ -79,17 +84,18 @@ export class SmoothTeacherMotion{
   }
   observe(positions:readonly number[],at:number){this.latest=[...positions];this.lastObservation=at;if(this.phase!=='Running')return;
     const a=this.active;if(!a)return;const i=a.step.servo-1,v=positions[i]!;
+    const tolerance=settlingTolerance(a.step.servo,a.step.delta,this.allowJ3Offset);
     this.feedback.push({elapsedMs:at-a.at,positions:[...positions]});this.feedback=this.feedback.slice(-64);
     if(this.command){this.command.actual=v;this.command.error=a.step.target-v;this.command.elapsedMs=at-a.at;}
     const companion=this.grouped?-1:positions.findIndex((n,j)=>j!==i&&Math.abs(n-a.before[j]!)>MOTION_DEVIATION_MARGIN);
     if(companion!==-1){this.fail(`While commanding servo ${i+1}, servo ${companion+1} changed from ${a.before[companion]} to ${positions[companion]} (more than ${MOTION_DEVIATION_MARGIN} raw units).`);return;}
     const min=this.path?.min??Math.min(a.before[i]!,a.step.target),max=this.path?.max??Math.max(a.before[i]!,a.step.target);
     if(v<min-MOTION_DEVIATION_MARGIN||v>max+MOTION_DEVIATION_MARGIN){this.fail(`Servo ${i+1} reported ${v} outside its commanded path from ${min} to ${max} (${MOTION_DEVIATION_MARGIN}-unit margin).`);return;}
-    if(this.plan.manual && Math.abs(v-a.step.target)>TARGET_TOLERANCE && at-a.at>=Math.max(1000,this.travelDistance(a.step)/this.speed*1000+1000)){
+    if(this.plan.manual && Math.abs(v-a.step.target)>tolerance && at-a.at>=Math.max(1000,this.travelDistance(a.step)/this.speed*1000+1000)){
       a.samples.push({at,v});a.samples=a.samples.slice(-3);
       if(a.written&&a.samples.length===3&&a.samples[2]!.at-a.samples[0]!.at>=150&&Math.max(...a.samples.map(s=>s.v))-Math.min(...a.samples.map(s=>s.v))<=3){this.phase='Settled short';this.message=`Servo ${i+1} settled at ${v}; target ${a.step.target}, remaining ${a.step.target-v}. Adjust the slider to request another position.`;this.active=null;}return;
     }
-    if(Math.abs(v-a.step.target)<=TARGET_TOLERANCE){a.samples.push({at,v});a.samples=a.samples.slice(-3);if(a.samples.length===3&&Math.max(...a.samples.map(s=>s.v))-Math.min(...a.samples.map(s=>s.v))<=9&&a.samples[2]!.at-a.samples[0]!.at>=150&&a.written){this.index++;this.active=null;if(this.index===this.steps.length){if(!this.grouped&&positions.some((n,j)=>Math.abs(n-this.plan.target[j]!)>(this.plan.manual&&j!==i?MOTION_DEVIATION_MARGIN:TARGET_TOLERANCE))){this.fail('Final pose differs from the requested pose.');return;}this.phase='Complete';}}}else a.samples=[];
+    if(Math.abs(v-a.step.target)<=tolerance){a.samples.push({at,v});a.samples=a.samples.slice(-3);if(a.samples.length===3&&Math.max(...a.samples.map(s=>s.v))-Math.min(...a.samples.map(s=>s.v))<=9&&a.samples[2]!.at-a.samples[0]!.at>=150&&a.written){this.index++;this.active=null;if(this.index===this.steps.length){if(!this.grouped&&positions.some((n,j)=>Math.abs(n-this.plan.target[j]!)>(this.plan.manual&&j!==i?MOTION_DEVIATION_MARGIN:j===i?tolerance:TARGET_TOLERANCE))){this.fail('Final pose differs from the requested pose.');return;}this.phase='Complete';}}}else a.samples=[];
   }
   written(at:number){this.lastWrite=at;if(this.active)this.active.written=true;}
   fail(message:string){if(this.phase==='Fault')return;this.failure={message,positions:[...this.latest],command:this.command?{...this.command}:null};this.phase='Fault';this.message=message;this.active=null;}

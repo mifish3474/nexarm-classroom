@@ -68,6 +68,14 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it.each(['pose','move'])('larger J3 %s steps accept the measured stable 28-unit offset before continuing',async kind=>{
+   const f=fixture({directSession:true}),target=[...TEACHER_HOME];target[2]=2838;await f.ready();
+   const first=kind==='pose'?{kind:'pose',blockId:'j3',positionId:'p',name:'P',positions:target}:{kind:'move',blockId:'j3',servo:3,target:2838};
+   f.control.runProgram([first,{kind:'move',blockId:'next',servo:1,target:2130}]);await flush();
+   const actual=[...target];actual[2]=2810;for(const at of [1300,1400]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(1);
+   for(const at of [1500,1700]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(1);
+   actual[0]=2130;for(const at of [1800,1900,2000]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.control.snapshot().program?.phase).toBe('Completed');f.control.disconnect();await flush();
+ });
  it('direct sessions become ready after Connect without Enable and never write until an explicit move',async()=>{
    const f=fixture({directSession:true});await f.ready();expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(0);
    f.control.runProgram([{kind:'move',blockId:'a',servo:1,target:2130}]);await flush();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
@@ -83,7 +91,7 @@ describe('smooth teacher controls',()=>{
  it('direct Stop and a settled-short timeout allow a new explicit Run without replaying canceled blocks',async()=>{
    const f=fixture({directSession:true}),target=[...TEACHER_HOME];target[2]=2838;await f.ready();
    const instructions=[{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:target},{kind:'move',blockId:'later',servo:1,target:2300}];f.control.runProgram(instructions);await flush();
-   const actual=[...target];actual[2]=2810;
+   const actual=[...target];actual[2]=2807;
    for(let at=1200;at<=9000;at+=100){await f.feed(at,actual);f.control.tick();await flush();}
    expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(1);
    f.control.stop();await flush();const count=f.writes.length;for(const at of [9200,9300,9400,9600])await f.feed(at,actual);f.control.tick();expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(count);

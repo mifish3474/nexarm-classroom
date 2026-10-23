@@ -1,4 +1,4 @@
-import { SmoothTeacherMotion, MOTION_DEVIATION_MARGIN, TARGET_TOLERANCE } from './SmoothTeacherMotion';
+import { SmoothTeacherMotion, MOTION_DEVIATION_MARGIN, settlingTolerance } from './SmoothTeacherMotion';
 import type { smoothPlan } from './SmoothTeacherMotion';
 
 // Each joint retains the existing path, settling and deadline supervisor.
@@ -13,7 +13,7 @@ export class ConcurrentHomeMotion {
   private failure: {message:string;positions:number[]}|null=null;
   constructor(private readonly before:readonly number[],at:number,private readonly plan:ReturnType<typeof smoothPlan>,private readonly label='Home'){
     this.before=[...before];this.latest=[...before];this.steps=plan.steps.map(step=>({...step}));
-    this.joints=this.steps.map(step=>new SmoothTeacherMotion(before,at,{...plan,steps:[step]},null,true));
+    this.joints=this.steps.map(step=>new SmoothTeacherMotion(before,at,{...plan,steps:[step]},null,true,true));
     if(!this.steps.length){this.phase='Complete';this.message=`Already within ${label} tolerance.`;}
   }
   get speed(){return this.plan.speed;}
@@ -44,7 +44,7 @@ export class ConcurrentHomeMotion {
     }
     for(const joint of this.joints){joint.observe(positions,at);if(joint.phase==='Fault'){this.fail(joint.message);return;}}
     if(this.joints.every(joint=>joint.phase==='Complete')){
-      if(positions.some((value,i)=>Math.abs(value-this.plan.target[i]!)>TARGET_TOLERANCE)){this.fail(`Final pose differs from the requested ${this.label} pose.`);return;}
+      if(positions.some((value,i)=>Math.abs(value-this.plan.target[i]!)>settlingTolerance(i+1,this.steps.find(step=>step.servo===i+1)?.delta??0,true))){this.fail(`Final pose differs from the requested ${this.label} pose.`);return;}
       this.phase='Complete';this.message=`All ${this.label} joints settled.`;
     }
   }

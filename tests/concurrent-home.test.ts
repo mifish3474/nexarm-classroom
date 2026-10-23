@@ -8,6 +8,23 @@ function motion(start=TEACHER_HOME.map(value=>value+300)){
  const group=new ConcurrentHomeMotion(start,0,smoothPlan(start,undefined,undefined,{speed:HOME_SPEED,acceleration:10}));
  group.start(start,0);return group;
 }
+it.each([-30,-28,-27,27,28,30])('accepts a stable larger J3 pose residual of %s with no extra command',residual=>{
+ const before=[...TEACHER_HOME];before[2]=2016;const target=[...before];target[2]=2838;
+ const group=new ConcurrentHomeMotion(before,0,absolutePosePlan(before,target),'saved position');group.start(before,0);expect(group.nextBatch(0)).toHaveLength(1);group.written(0);
+ const actual=[...target];actual[2]!+=residual;group.observe(actual,100);group.observe(actual,200);expect(group.phase).toBe('Running');group.observe(actual,300);
+ expect(group.phase).toBe('Complete');expect(group.status().commands[0]).toMatchObject({servo:3,error:-residual,tolerance:30});expect(group.nextBatch(400)).toBeNull();
+});
+it('retains timeout beyond 30, stability checks, and strict tolerance for small or skipped J3 moves',()=>{
+ for(const [delta,residual] of [[822,31],[822,-31],[20,20],[99,27],[0,28]]){
+   const before=[...TEACHER_HOME],target=[...before];target[2]!+=delta!;target[0]!+=100;
+   const group=new ConcurrentHomeMotion(before,0,absolutePosePlan(before,target));group.start(before,0);group.nextBatch(0);group.written(0);
+   const actual=[...target];actual[2]!+=residual!;
+   for(let at=100;at<=8000;at+=100){group.observe(actual,at);group.checkDeadline(at);}
+   expect(group.phase).toBe('Fault');
+ }
+ const group=motion();group.nextBatch(0);group.written(0);
+ for(let at=100;at<=1000;at+=100){const actual=[...TEACHER_HOME];actual[2]!+=at%200?15:30;group.observe(actual,at);}expect(group.phase).toBe('Running');
+});
 it.each([-12,-10,10,12])('accepts a stable Servo 4 residual of %s without another command',residual=>{
  const before=[2050,2150,2100,3084,2000,1080],target=[...before];target[3]=2720;
  const group=new ConcurrentHomeMotion(before,0,absolutePosePlan(before,target),'saved position');group.start(before,0);

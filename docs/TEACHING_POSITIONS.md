@@ -1,6 +1,6 @@
-# Teach and use a position: dev.31
+# Teach and use a position: dev.32
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.31**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.32**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
 
 Live targets must fit the [current operating ranges](./OPERATING_RANGES.md).
@@ -65,8 +65,10 @@ To connect positions in code:
    robot geometry. For hardware, select Station robot and Connect if needed,
    inspect the starting pose and combined sweep, then Run program.
 7. Every move waits for all commanded joints to settle before the next block.
-   Settling allows ±12 raw units from target, with three stable readings over
-   at least 150 ms; a stable 10-unit residual can therefore complete.
+   Settling allows ±12 raw units, or ±30 for J3 when the program/pose/Home
+   requests at least 100 units of J3 travel. All require three stable readings
+   over at least 150 ms with at most nine units of spread. Reported positions
+   stay visible; targets are not silently rewritten and no correction loop runs.
    Test Stop during a short sequence; later blocks must not run. Inspect the arm
    before running again. Fresh stable readings make controls ready without Enable.
 

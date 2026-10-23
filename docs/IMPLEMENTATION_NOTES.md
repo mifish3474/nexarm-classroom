@@ -1,6 +1,32 @@
-# Classroom programming development preview 0.7.0-dev.31
+# Classroom programming development preview 0.7.0-dev.32
 
-## Current update: direct testing without confirmation checkboxes or Enable
+## Current update: J3 settling allowance for larger moves
+
+Repeated in-range J3 moves stopped 27–28 raw units short. J3 now allows ±30 for
+program joint moves and concurrent saved-pose/Home moves requesting at least
+100 raw units of J3 travel. Other joints and smaller J3 moves retain ±12.
+Direct sliders, numeric manual moves, ±20 jogs and the factory comparison retain
+their prior tolerance. This avoids accepting an unperformed small jog as arrival.
+
+The selected per-move tolerance is included in command diagnostics and is used
+by both per-joint settling and final whole-pose checks. Skipped J3 joints retain
+the strict final check. Three samples over at least 150 ms with spread at most
+nine are still required. Targets, range checks, packet contents, motion profiles,
+deadlines and lack of retries/correction loops are unchanged. Larger residuals
+still cancel subsequent blocks. This is approximate pose replay, not calibration
+or a diagnosis of why the joint stops short. No confirmation/Enable controls return.
+
+Validation: 213 unit tests and build pass, including 27/28/30-unit residuals in
+both directions, errors beyond 30, unstable data, small/skipped J3 movement,
+unchanged J4 accuracy, and advancement after both Blockly joint and pose steps.
+All four targeted browser checks pass: reproduced 28-unit J3 offset through a
+Blockly pose/wait/return sequence with exactly two writes and no retries,
+concurrent Home, all six live sliders and all twelve jog controls. A final build
+also checks the on-page tolerance wording. Hardware verification remains with
+the operator; the new allowance is a development setting for this observed arm.
+
+## Previous update: direct testing without confirmation checkboxes or Enable (dev.31)
+
 
 At the user's request, the current classroom and setup pages now use direct
 sessions: Connect, wait for fresh stable readings, then Run or use joint controls.

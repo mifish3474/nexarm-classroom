@@ -243,7 +243,7 @@ export class TeacherRobotControl {
     this.faulted=false;
     this.retain();
     const poseProgram=operation==='Program'&&this.program?.steps[this.program.index-1]?.kind==='pose';
-    this.route = operation==='Home'||operation==='Saved position'||poseProgram?new ConcurrentHomeMotion(this.positions!,this.now(),plan,operation==='Home'?'Home':'saved position'):new SmoothTeacherMotion(this.positions!, this.now(), plan,previousPath); this.operation = operation;
+    this.route = operation==='Home'||operation==='Saved position'||poseProgram?new ConcurrentHomeMotion(this.positions!,this.now(),plan,operation==='Home'?'Home':'saved position'):new SmoothTeacherMotion(this.positions!, this.now(), plan,previousPath,false,operation==='Program'); this.operation = operation;
     if (this.route.phase === 'Complete') { this.message = this.route.message; this.changed(); return; }
     this.route.start(this.positions!, this.now());
     this.message = operation === 'Home' ? 'Returning to Teacher Home with all needed joints moving together.' : operation==='Saved position'?'Moving to saved position with all needed joints together.':operation==='Program'?'Running your Blockly program. Waiting for each move to settle.':'Jogging one joint. Wait for feedback before another click.';
@@ -274,7 +274,7 @@ export class TeacherRobotControl {
     if (this.route?.phase === 'Complete') {
       this.lastMovingServos=[];
 
-      this.message = this.operation === 'Home' ? 'Home reached within 12 raw units. Inspect the pose; no correction loop runs.' : this.operation==='Saved position'?'Saved position reached within feedback tolerance (12 raw units).':this.operation==='Program'?'Program step settled.':'Jog finished.';
+      this.message = this.operation === 'Home' ? 'Home reached within joint settling tolerances. Inspect the pose; no correction loop runs.' : this.operation==='Saved position'?'Saved position reached within joint settling tolerances.':this.operation==='Program'?'Program step settled.':'Jog finished.';
     }
     this.changed();
   }
