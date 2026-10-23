@@ -1,5 +1,12 @@
 export type ServoId = 1 | 2 | 3 | 4 | 5 | 6;
 
+// Back-to-back existing unicast frames in one USB write. This is not a new
+// broadcast instruction or a guarantee of simultaneous arrival.
+export function encodeSpeedPositions(targets:readonly {servo:number;target:number}[],speed:number,acceleration:number):Uint8Array {
+  if(!targets.length||targets.length>6||new Set(targets.map(t=>t.servo)).size!==targets.length)throw new RangeError('Choose one to six distinct joints.');
+  return Uint8Array.from(targets.flatMap(t=>[...encodeSpeedPosition(t.servo,t.target,speed,acceleration)]));
+}
+
 // Teacher-authorized smooth controls use this atomic speed/position command.
 // Factory ServoTab.send_servo_cmd and manufacturer continuous-write layout.
 export function encodeSpeedPosition(id:number,position:number,speed:number,acceleration:number):Uint8Array {

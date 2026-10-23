@@ -1,4 +1,38 @@
-# Simulation and teacher control preview 0.7.0-dev.19
+# Simulation and teacher control preview 0.7.0-dev.20
+
+## Current update: concurrent Home at doubled speed
+
+The teacher explicitly requested starting all Home joints together and doubling
+Home speed. Home now sends the needed targets back-to-back in one guarded USB
+write at speed 600 / acceleration 10, using up to six existing checksum-valid
+unicast position commands. This changes the physical sweep from the earlier
+sequential route. It is not a new firmware broadcast instruction, an atomic
+delivery guarantee, coordinated Cartesian planning, or synchronized arrival.
+Joints traveling shorter distances can finish first. Near-Home joints are skipped.
+
+ConcurrentHomeMotion supervises each moving joint's path, settling, and deadline
+through the existing motion supervisor. Other commanded joints are expected to
+move; all joints, including skipped and already-settled ones, retain group path
+checks. Completion requires all moving joints to settle and the final whole-pose
+check. One joint's fault fails the group without automatic retry. Stop attempts
+fresh-position holds for every commanded joint in one write, retaining existing
+handling of stale feedback, pending writes, and uncertain delivery. A partial USB
+delivery is possible and never treated as successful completion.
+
+The page now says Return together to Home, shows individual joint feedback, and
+estimates duration from the longest move rather than the sum of all distances.
+Manual slider speed/acceleration, live reversal behavior, Home values, and student
+simulation are unchanged. The teacher reports dev.19 now resembles the factory
+app, including a slight J2 tremor that then settles; this concurrent return still
+needs its own physical test.
+
+Validation: 154 unit tests, ten synthetic-USB Chrome browser tests, and the
+TypeScript/Vite build pass. Tests cover grouped
+dispatch, frame checksums, independent settling, skipped and already-settled
+joints, path faults, timeout, feedback loss, and fresh-position holds for all
+commanded joints. All automated motion checks use synthetic USB.
+
+The following sections record earlier versions.
 
 ## Current update: fast slider reversals and small input changes
 

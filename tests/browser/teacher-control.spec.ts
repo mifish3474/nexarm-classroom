@@ -4,20 +4,20 @@ import type { Page } from '@playwright/test';
 async function robot(page: Page, initial = [2050,2150,2100,2200,2000,1080]) {
   await page.clock.install(); await page.clock.pauseAt(new Date(Date.now() + 100));
   await page.addInitScript(pose => {
-    const positions = [...pose], targets=[...pose], writes: {at:number;bytes:number[]}[] = [];
+    const positions = [...pose], targets=[...pose], speeds=Array(6).fill(100), writes: {at:number;bytes:number[]}[] = [];
     const state = {positions, writes, paused:false}; Object.assign(window, {teacherRobot:state});
     Object.defineProperty(navigator, 'serial', {value:{requestPort: async () => {
       let timer: ReturnType<typeof setInterval>;
       return {open:async()=>{}, close:async()=>clearInterval(timer),
         readable:new ReadableStream<Uint8Array>({start(controller) { timer=setInterval(()=>{
           if (state.paused) return;
-          for(let i=0;i<6;i++){const d=targets[i]!-positions[i]!;if(Math.abs(d)>5)positions[i]!+=Math.sign(d)*Math.min(10,Math.abs(d)-5);}
+          for(let i=0;i<6;i++){const d=targets[i]!-positions[i]!;if(Math.abs(d)>5)positions[i]!+=Math.sign(d)*Math.min(speeds[i]*0.1,Math.abs(d)-5);}
           const body=[255,26,11,...Array(12).fill(0),...positions.flatMap(n=>[n&255,n>>8])];
           controller.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255]));
         },100); },cancel(){clearInterval(timer);}}),
         writable:new WritableStream<Uint8Array>({write(bytes){
           writes.push({at:performance.now(),bytes:[...bytes]});
-          if(bytes[2]!>=1&&bytes[2]!<=6&&bytes[5]===41){const i=bytes[2]!-1,target=bytes[7]!+256*bytes[8]!;targets[i]=target;}
+          for(let offset=0;offset<bytes.length;){const frame=bytes.slice(offset,offset+bytes[offset+3]!+4);if(frame[2]!>=1&&frame[2]!<=6&&frame[5]===41){const i=frame[2]!-1;targets[i]=frame[7]!+256*frame[8]!;speeds[i]=frame[11]!+256*frame[12]!;}offset+=frame.length;}
         }})};
     }}});
   }, initial);
@@ -31,7 +31,9 @@ async function connect(page:Page) {
 async function enable(page:Page) {
   await page.locator('#teacher-clearance').check(); await page.getByRole('button',{name:'Enable teacher controls'}).click();
 }
-const writes = (page:Page) => page.evaluate(() => (window as unknown as {teacherRobot:{writes:{at:number;bytes:number[]}[]}}).teacherRobot.writes);
+const writes = (page:Page) => page.evaluate(() => (window as unknown as {teacherRobot:{writes:{at:number;bytes:number[]}[]}}).teacherRobot.writes.flatMap(write=>{
+ const frames:typeof write[]=[];for(let offset=0;offset<write.bytes.length;){const length=write.bytes[offset+3]!+4;frames.push({at:write.at,bytes:write.bytes.slice(offset,offset+length)});offset+=length;}return frames;
+}));
 
 test('approved Servo 3 comparison uses factory settings without changing normal controls',async({page})=>{
  await robot(page);await page.getByText('Earlier Servo 3 test',{exact:true}).click();const comparison=page.getByRole('button',{name:'Servo 3 +20 at factory settings'});
@@ -47,7 +49,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.19');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.20');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled(); await enable(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {
@@ -67,24 +69,25 @@ test('all twelve reusable jog controls work from live readings with no queued cl
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
-test('smooth Home sends one speed-controlled target per joint and completes in order',async({page})=>{
+test('Home dispatches all targets together at 600 and completes with every joint settled',async({page})=>{
   const home=[2050,2150,2100,2200,2000,1080];await robot(page,home.map(n=>n+25)); await connect(page); await enable(page);
-  await page.getByRole('button',{name:'Return slowly to Home'}).click();await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled();
+  await page.getByRole('button',{name:'Return together to Home'}).click();await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled();
   await page.clock.runFor(30000); await expect(page.locator('#teacher-home-status')).toContainText('Complete');
   const commands=await writes(page);expect(commands).toHaveLength(6);expect([...new Set(commands.map(w=>w.bytes[2]))]).toEqual([2,3,4,5,1,6]);
-  for(let i=1;i<commands.length;i++)expect(commands[i]!.at-commands[i-1]!.at).toBeGreaterThanOrEqual(500);
+  for(const command of commands){expect(command.at).toBe(commands[0]!.at);expect(command.bytes.slice(11,13)).toEqual([88,2]);}
+  expect(await page.evaluate(()=>(window as unknown as {teacherRobot:{writes:unknown[]}}).teacherRobot.writes.length)).toBe(1);
   const actual=await page.locator('[data-servo-value]').allTextContents();expect(actual.map(Number).every((n,i)=>Math.abs(n-home[i]!)<=9)).toBe(true);
-  await expect(page.getByRole('button',{name:'Return slowly to Home'})).toBeDisabled(); await expect(page.getByRole('button',{name:'Servo 6 minus 20'})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Return together to Home'})).toBeDisabled(); await expect(page.getByRole('button',{name:'Servo 6 minus 20'})).toBeEnabled();
   await page.getByText('Session report and earlier commissioning tools',{exact:true}).click();const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export session report'}).click();
   expect((await download).suggestedFilename()).toBe('nexarm-teacher-control-session.json');await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
 test('Stop cancels a long gripper return and permits a new Home run without reconnecting',async({page})=>{
   await robot(page,[2050,2150,2100,2200,2000,2050]);await connect(page);await enable(page);
-  await expect(page.locator('#teacher-home-preview')).toContainText('1 joint movements');await page.getByRole('button',{name:'Return slowly to Home'}).click();await page.clock.runFor(100);
+  await expect(page.locator('#teacher-home-preview')).toContainText('1 joint movements');await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(100);
   await page.getByRole('button',{name:'Stop motion'}).click();const count=(await writes(page)).length;await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(count);
   await expect(page.locator('#teacher-status')).toContainText('Listening');await expect(page.locator('#teacher-clearance')).not.toBeChecked();
-  await enable(page);await page.getByRole('button',{name:'Return slowly to Home'}).click();await page.clock.runFor(130000);
+  await enable(page);await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(130000);
   await expect(page.locator('#teacher-home-status')).toContainText('Complete');await expect(page.locator('[data-servo-value="6"]')).toHaveText('1085');
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
@@ -160,7 +163,7 @@ test('tiny J2 drag changes are filtered and releasing sends the exact final targ
  await slider.evaluate(el=>{(el as HTMLInputElement).value='2230';el.dispatchEvent(new Event('input',{bubbles:true}));});
  await slider.evaluate(el=>{(el as HTMLInputElement).value='2250';el.dispatchEvent(new Event('input',{bubbles:true}));});await slider.dispatchEvent('change');expect(await writes(page)).toHaveLength(2);await page.clock.runFor(100);expect(await writes(page)).toHaveLength(3);expect((await writes(page)).at(-1)!.bytes[7]!+256*(await writes(page)).at(-1)!.bytes[8]!).toBe(2250);
  await page.clock.runFor(2500);await expect(page.getByRole('slider',{name:'Servo 2 target slider'})).toBeEnabled();
- await page.getByRole('button',{name:'Return slowly to Home'}).click();
- expect((await writes(page)).at(-1)!.bytes.slice(11,13)).toEqual([44,1]);
+ await page.getByRole('button',{name:'Return together to Home'}).click();
+ expect((await writes(page)).at(-1)!.bytes.slice(11,13)).toEqual([88,2]);
  await page.clock.runFor(3000);await page.getByRole('button',{name:'Disconnect',exact:true}).click();
  });

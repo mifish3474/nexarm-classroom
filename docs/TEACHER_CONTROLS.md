@@ -1,8 +1,8 @@
-# Teacher slider testing: 0.7.0-dev.19
+# Teacher slider testing: 0.7.0-dev.20
 
 Current workflow:
 
-1. Open /mapping.html, confirm dev.19, Connect, confirm clearance, and Enable.
+1. Open /mapping.html, confirm dev.20, Connect, confirm clearance, and Enable.
 2. Review the actual reading and target for one joint. Drag its slider to send
    live targets, or enter a numeric target and click Move. Slider defaults
    are factory speed 2000 / acceleration 100; both fields can be edited.
@@ -12,8 +12,11 @@ Current workflow:
    and permits a new manual target; it is not called a successful arrival.
 4. Test Stop during dragging, then re-enable. Stop discards pending targets.
    Release/restore controls remain in Manual positioning.
-5. Review the Home sweep and click Return slowly to Home. Speed is now 300,
-   three times the old 100, with acceleration still 10. Home values are unchanged.
+5. Review clearance for all joints moving together, then click Return together
+   to Home. Speed is now 600, doubled from 300, with acceleration still 10.
+   Home values are unchanged. Shorter moves can finish first. Check Stop during
+   an early return; it attempts holds for all commanded joints. Then re-enable
+   and let a return finish. Check the actual final pose and six readings.
 6. Export diagnostics for unexpected behavior. Student live control remains off.
 
 Fast direction changes now account for earlier targets sent during the same
@@ -37,7 +40,7 @@ leaves USB connected when the connection itself is healthy.
 Page hiding, disconnection, faults, and stale feedback discard unsent slider
 targets. Fresh feedback never automatically restores a discarded target. Numeric
 Move retains its half-second command interval. Other joints wait while the active
-joint moves; Home remains sequential.
+joint moves; Home starts the needed joints together.
 
 The remaining sections describe earlier versions and are historical.
 

@@ -132,15 +132,15 @@ describe('smooth teacher controls',()=>{
  for(const at of [1200,1300,1400])await f.feed(at);
  f.control.liveJoint(3,2200);await flush();expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
  });
- it('accepts absolute slider targets, retargets only the moving joint, and triples Home speed',async()=>{
+ it('accepts absolute slider targets, retargets only the moving joint, and uses doubled Home speed',async()=>{
  const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);f.control.moveJoint(3,2200);await flush();
  expect(f.writes[0]!.bytes.slice(2,-1)).toEqual([3,10,3,41,100,152,8,0,0,208,7]);
  expect(()=>f.control.moveJoint(2,2200)).toThrow('progress');expect(()=>f.control.moveJoint(3,2300)).toThrow('half-second');
  for(let at=1200;at<=1600;at+=100){pose[2]!+=10;await f.feed(at,pose);}
  f.control.moveJoint(3,2250);await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(3);
  pose[2]=2245;for(let at=1700;at<=2100;at+=100)await f.feed(at,pose);
- f.control.returnHome();await flush();expect(f.writes.at(-1)!.bytes.slice(11,13)).toEqual([44,1]);
- expect(f.control.snapshot().home?.speed).toBe(300);f.control.disconnect();await flush();
+ f.control.returnHome();await flush();expect(f.writes.at(-1)!.bytes.slice(11,13)).toEqual([88,2]);
+ expect(f.control.snapshot().home?.speed).toBe(600);f.control.disconnect();await flush();
  });
  it('rejects invalid absolute targets without writing',async()=>{
  const f=fixture();await f.ready();f.control.enable(true);
@@ -169,12 +169,12 @@ describe('smooth teacher controls',()=>{
  expect(f.control.snapshot().canMove).toBe(true);}
  expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
  });
- it('returns to Home with at most six continuous targets, not hundreds of steps',async()=>{
+ it('dispatches all Home targets in one write at speed 600 and waits for every joint',async()=>{
  const f=fixture(),pose=TEACHER_HOME.map(n=>n+100);await f.ready(pose);f.control.enable(true);f.control.returnHome();await flush();
  let applied=0;for(let at=1200;at<10000&&f.control.snapshot().home?.phase==='Running';at+=100){
- if(f.writes.length>applied){const b=f.writes.at(-1)!.bytes;pose[b[2]!-1]=b[7]!+256*b[8]!;applied=f.writes.length;}
+ if(f.writes.length>applied){const batch=f.writes.at(-1)!.bytes;for(let offset=0;offset<batch.length;offset+=14){const b=batch.slice(offset,offset+14);pose[b[2]!-1]=b[7]!+256*b[8]!;expect(b.slice(11,13)).toEqual([88,2]);}applied=f.writes.length;}
  await f.feed(at,pose);f.control.tick();await flush();}
- expect(f.control.snapshot().home?.phase).toBe('Complete');expect(f.writes).toHaveLength(6);expect(pose).toEqual(TEACHER_HOME);f.control.disconnect();await flush();
+ expect(f.control.snapshot().home?.phase).toBe('Complete');expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes).toHaveLength(84);expect(pose).toEqual(TEACHER_HOME);f.control.disconnect();await flush();
  });
  it('keeps controls armed through ordinary jitter and short idle gaps',async()=>{
  const f=fixture();await f.ready();f.control.enable(true);f.setTime(1800);f.control.tick();expect(f.control.snapshot().armed).toBe(true);expect(f.control.snapshot().canMove).toBe(false);
@@ -183,10 +183,18 @@ describe('smooth teacher controls',()=>{
  it('Stop sends a fresh hold target and never resumes Home automatically',async()=>{
  const f=fixture(),pose=TEACHER_HOME.map(n=>n+100);await f.ready(pose);f.control.enable(true);f.control.returnHome();await flush();f.control.stop();await flush();
  expect(f.writes).toHaveLength(2);const b=f.writes[1]!.bytes;expect(b[7]!+256*b[8]!).toBe(pose[1]);
+ expect(b).toHaveLength(84);for(let offset=0;offset<b.length;offset+=14){const frame=b.slice(offset,offset+14);expect(frame[7]!+256*frame[8]!).toBe(pose[frame[2]!-1]);expect(frame.slice(11,13)).toEqual([100,0]);}
  await f.window(1200,pose);f.control.tick();expect(f.writes).toHaveLength(2);expect(f.control.snapshot().armed).toBe(false);f.control.disconnect();await flush();
  });
  it('retains ownership during a hanging write and ignores a late completion',async()=>{
  const f=fixture({hang:true});await f.ready();f.control.enable(true);f.control.jog(1,20);await flush();f.control.disconnect();await flush();expect(f.port.close).not.toHaveBeenCalled();f.finish();await flush();expect(f.port.close).toHaveBeenCalledOnce();expect(f.control.snapshot().armed).toBe(false);expect(f.writes).toHaveLength(1);
+ });
+ it('never resumes a Home batch after Stop interrupts a hanging write',async()=>{
+ const f=fixture({hang:true});await f.ready(TEACHER_HOME.map(value=>value+100));f.control.enable(true);f.control.returnHome();await flush();
+ expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes).toHaveLength(84);
+ f.control.stop();expect(f.control.snapshot().armed).toBe(false);expect(f.control.snapshot().message).toContain('Could not send fresh hold targets');
+ f.finish();await flush();await f.feed(1700);f.control.tick();await flush();expect(f.writes).toHaveLength(1);expect(f.control.snapshot().home?.phase).toBe('Stopped');
+ f.control.disconnect();await flush();
  });
  it('cancels an active route on prolonged feedback loss and never auto-retries',async()=>{
  const f=fixture();await f.ready();f.control.enable(true);f.control.jog(1,20);await flush();f.setTime(2700);f.control.tick();expect(f.control.snapshot().faulted).toBe(true);expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();

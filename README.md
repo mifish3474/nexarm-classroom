@@ -15,9 +15,9 @@ inspection and unreviewed reference capture; open it explicitly from the footer.
 That page links to direct teacher controls at `/mapping.html`: reusable +/-20
 buttons on every servo and a slow return to the teacher-requested Home
 `[2050,2150,2100,2200,2000,1080]`. Follow [the operating and testing steps](docs/TEACHER_CONTROLS.md).
-Home moves one joint at a time with one continuous speed-controlled target per
-joint (speed 300 raw units/second, acceleration 10), with completion feedback.
-Stop attempts a hold at the latest measured position, cancels future joints, and permits
+Home starts the needed joints together with one continuous target per joint
+(speed 600 raw units/second, acceleration 10), with individual completion feedback.
+Stop attempts holds for all commanded joints at their latest measured positions and permits
 explicit re-enabling on the same connection. Optional manual release/restore
 retains the physical-holding confirmation and durable interrupted-setup interlock.
 The earlier mapping suite and Reference A return remain at `/mapping-tests.html`,
