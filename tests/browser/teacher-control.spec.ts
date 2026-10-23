@@ -47,7 +47,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.16');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.19');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled(); await enable(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {
@@ -112,15 +112,53 @@ test('brief feedback delays pause buttons without disarming controls',async({pag
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
- test('slider previews send nothing until release, absolute targets use the shared controller',async({page})=>{
+test('all six live sliders work in sequence after a single Enable',async({page})=>{
+ await robot(page);await connect(page);await enable(page);
+ for(let servo=1;servo<=6;servo++){
+  const slider=page.getByRole('slider',{name:`Servo ${servo} target slider`});await expect(slider).toBeEnabled();
+  await slider.evaluate(el=>{const input=el as HTMLInputElement;input.value=String(Number(input.value)+50);input.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect((await writes(page)).at(-1)!.bytes[2]).toBe(servo);
+  await page.clock.runFor(1400);await expect(page.locator('#teacher-status')).toContainText('Controls enabled');
+ }
+ expect(await writes(page)).toHaveLength(6);await expect(page.locator('#teacher-error')).toBeHidden();
+ await page.getByRole('button',{name:'Disconnect',exact:true}).click();
+});
+
+test('fast slider reversal allows feedback still approaching the earlier dispatched target',async({page})=>{
+ await robot(page,[2078,2150,2100,2200,2000,1080]);await connect(page);await enable(page);
+ const slider=page.getByRole('slider',{name:'Servo 1 target slider'});
+ await slider.evaluate(el=>{(el as HTMLInputElement).value='2500';el.dispatchEvent(new Event('input',{bubbles:true}));});
+ await page.clock.runFor(100);
+ await slider.evaluate(el=>{(el as HTMLInputElement).value='2038';el.dispatchEvent(new Event('input',{bubbles:true}));});
+ await page.evaluate(()=>(window as unknown as {teacherRobot:{positions:number[]}}).teacherRobot.positions[0]=2463);
+ await page.clock.runFor(100);await expect(page.locator('#teacher-status')).toContainText('Controls enabled');
+ await expect(page.locator('#teacher-motion-detail')).toContainText('target 2038');
+ await page.getByRole('button',{name:'Stop motion',exact:true}).click();await page.getByRole('button',{name:'Disconnect',exact:true}).click();
+});
+
+test('tiny J2 drag changes are filtered and releasing sends the exact final target once',async({page})=>{
+ await robot(page);await connect(page);await enable(page);
+ const slider=page.getByRole('slider',{name:'Servo 2 target slider'});
+ await slider.evaluate(el=>{(el as HTMLInputElement).value='2250';el.dispatchEvent(new Event('input',{bubbles:true}));});
+ await page.clock.runFor(100);
+ await slider.evaluate(el=>{(el as HTMLInputElement).value='2254';el.dispatchEvent(new Event('input',{bubbles:true}));});
+ await page.clock.runFor(100);expect(await writes(page)).toHaveLength(1);
+ await slider.dispatchEvent('change');expect(await writes(page)).toHaveLength(2);
+ const packet=(await writes(page)).at(-1)!.bytes;expect(packet[7]!+256*packet[8]!).toBe(2254);
+ await slider.dispatchEvent('change');await page.clock.runFor(1500);expect(await writes(page)).toHaveLength(2);
+ await page.getByRole('button',{name:'Disconnect',exact:true}).click();
+});
+
+ test('slider input sends live targets and coalesces intermediate values',async({page})=>{
  await robot(page);await connect(page);await enable(page);
  const slider=page.getByRole('slider',{name:'Servo 3 target slider'});
  const target=page.getByRole('spinbutton',{name:'Servo 3 target',exact:true});await target.fill('');await page.getByRole('button',{name:'Move servo 3 to target'}).click();expect(await writes(page)).toHaveLength(0);await target.fill('2100');
- await slider.evaluate(el=>{(el as HTMLInputElement).value='2200';el.dispatchEvent(new Event('input',{bubbles:true}));});expect(await writes(page)).toHaveLength(0);
+ await slider.evaluate(el=>{(el as HTMLInputElement).value='2200';el.dispatchEvent(new Event('input',{bubbles:true}));});expect(await writes(page)).toHaveLength(1);
  await slider.dispatchEvent('change');expect(await writes(page)).toHaveLength(1);
  const packet=(await writes(page))[0]!.bytes;expect(packet.slice(2,-1)).toEqual([3,10,3,41,100,152,8,0,0,208,7]);
- await page.clock.runFor(500);await expect(slider).toBeEnabled();await expect(page.getByRole('slider',{name:'Servo 2 target slider'})).toBeDisabled();
- await slider.evaluate(el=>{(el as HTMLInputElement).value='2250';el.dispatchEvent(new Event('input',{bubbles:true}));});await slider.dispatchEvent('change');expect(await writes(page)).toHaveLength(2);
+ await page.clock.runFor(100);await expect(slider).toBeEnabled();await expect(page.getByRole('slider',{name:'Servo 2 target slider'})).toBeDisabled();
+ await slider.evaluate(el=>{(el as HTMLInputElement).value='2230';el.dispatchEvent(new Event('input',{bubbles:true}));});
+ await slider.evaluate(el=>{(el as HTMLInputElement).value='2250';el.dispatchEvent(new Event('input',{bubbles:true}));});await slider.dispatchEvent('change');expect(await writes(page)).toHaveLength(2);await page.clock.runFor(100);expect(await writes(page)).toHaveLength(3);expect((await writes(page)).at(-1)!.bytes[7]!+256*(await writes(page)).at(-1)!.bytes[8]!).toBe(2250);
  await page.clock.runFor(2500);await expect(page.getByRole('slider',{name:'Servo 2 target slider'})).toBeEnabled();
  await page.getByRole('button',{name:'Return slowly to Home'}).click();
  expect((await writes(page)).at(-1)!.bytes.slice(11,13)).toEqual([44,1]);

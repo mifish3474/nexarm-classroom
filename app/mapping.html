@@ -9,7 +9,7 @@
     <div class="actions"><button id="teacher-enable" disabled>Enable teacher controls</button></div>
     <p id="teacher-status" role="status">Disconnected.</p><p id="teacher-readiness"></p><p id="teacher-error" role="alert" hidden></p>
   </section>
-  <section class="panel"><h2>Joint sliders</h2><p>Release a slider to send its selected position, or enter a target and click Move. Slider moves use the displayed speed and acceleration, initially factory settings 2000 / 100. Only one joint moves at a time. Small jog controls remain available below each slider.</p>
+  <section class="panel"><h2>Joint sliders</h2><p>Drag a slider to control its joint live, with updates up to ten times per second. Only the newest target is retained. You can also enter a target and click Move. Slider moves use the displayed speed and acceleration, initially factory settings 2000 / 100. Only one joint moves at a time. Small jog controls remain available below each slider.</p>
     <div id="teacher-joints" class="joint-grid"></div><p id="teacher-motion-detail" role="status"></p><details><summary>Earlier Servo 3 test</summary><p>Approved comparison: one Servo 3 +20 move at factory speed 2000 / acceleration 100, starting from the current reading. Small jogs stay at 100 / 10; Home now uses 300 / 10.</p><button id="teacher-servo3-factory" disabled>Servo 3 +20 at factory settings</button></details><button id="teacher-diagnostic-export" class="secondary">Export movement diagnostics</button>
     <p class="note">Increasing values may raise or lower a joint, or open or close the gripper. Keep its pinch area clear. These teacher controls rely on your view of the arm; mechanical and collision limits are not calibrated.</p>
   </section>

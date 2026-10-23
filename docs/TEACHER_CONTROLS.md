@@ -1,18 +1,43 @@
-# Teacher slider testing: 0.7.0-dev.16
+# Teacher slider testing: 0.7.0-dev.19
 
 Current workflow:
 
-1. Open /mapping.html, confirm dev.16, Connect, confirm clearance, and Enable.
-2. Review the actual reading and target for one joint. Release its slider to send
-   the selected target, or enter a numeric target and click Move. Slider defaults
+1. Open /mapping.html, confirm dev.19, Connect, confirm clearance, and Enable.
+2. Review the actual reading and target for one joint. Drag its slider to send
+   live targets, or enter a numeric target and click Move. Slider defaults
    are factory speed 2000 / acceleration 100; both fields can be edited.
-3. Test both directions, one joint at a time. The active joint can accept a new
-   target after half a second. A target that settles short is reported honestly
+3. Test both directions, one joint at a time. Live updates send at most ten times
+   per second; only the newest unsent target is retained. Releasing the slider
+   leaves the final target in effect. A target that settles short is reported honestly
    and permits a new manual target; it is not called a successful arrival.
-4. Test Stop, then re-enable. Release/restore controls remain in Manual positioning.
+4. Test Stop during dragging, then re-enable. Stop discards pending targets.
+   Release/restore controls remain in Manual positioning.
 5. Review the Home sweep and click Return slowly to Home. Speed is now 300,
    three times the old 100, with acceleration still 10. Home values are unchanged.
 6. Export diagnostics for unexpected behavior. Student live control remains off.
+
+Fast direction changes now account for earlier targets sent during the same
+unfinished movement. The 100-unit margin applies around that dispatched range;
+an overwritten pending target does not expand it. Once the move settles, a new
+move starts a fresh range. Tiny drag changes below 10 raw units are filtered;
+release still sends the exact final target once.
+
+For J2, observe whether vibration continues after releasing the slider with the
+mouse stationary. The app sends no automatic corrective movements. Use Stop if
+vibration persists and report whether the same behavior occurs in the factory
+controller. Input filtering is not a confirmed cure for physical vibration.
+
+Test S1 through S6 in sequence after a single Enable, allowing each move to
+finish before selecting the next joint. The completed slider no longer blocks
+another joint. Motion deviation margins are now 100 raw units for the moving
+joint and companions, up from 20. Manual slider completion accepts that companion
+variation; Home accuracy stays unchanged. A deviation fault disarms movement but
+leaves USB connected when the connection itself is healthy.
+
+Page hiding, disconnection, faults, and stale feedback discard unsent slider
+targets. Fresh feedback never automatically restores a discarded target. Numeric
+Move retains its half-second command interval. Other joints wait while the active
+joint moves; Home remains sequential.
 
 The remaining sections describe earlier versions and are historical.
 

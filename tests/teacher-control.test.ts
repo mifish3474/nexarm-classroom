@@ -67,6 +67,71 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it('allows rapid slider reversal within dispatched targets but not an overwritten pending target',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];pose[0]=2078;await f.ready(pose);f.control.enable(true);
+ f.control.liveJoint(1,2500);await flush();
+ f.control.liveJoint(1,3000);f.control.liveJoint(1,2038);
+ await f.feed(1200,pose);f.control.tick();await flush();
+ expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[7]!+256*f.writes[1]!.bytes[8]!).toBe(2038);
+ pose[0]=2463;await f.feed(1300,pose);
+ expect(f.control.snapshot().armed).toBe(true);expect(f.control.snapshot().home?.commandedPath).toEqual({servo:1,min:2038,max:2500});
+ pose[0]=2601;await f.feed(1400,pose);expect(f.control.snapshot().faulted).toBe(true);
+ expect(f.control.snapshot().message).toContain('from 2038 to 2500');f.control.disconnect();await flush();
+ });
+ it('drops old path allowances after settling or Stop and re-enable',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready(pose);f.control.enable(true);
+ f.control.liveJoint(1,2500);await flush();pose[0]=2500;
+ for(const at of [1200,1300,1400,1600])await f.feed(at,pose);
+ f.control.liveJoint(1,2400);await flush();pose[0]=2400;
+ for(const at of [1700,1800,1900,2100])await f.feed(at,pose);
+ f.control.liveJoint(1,2300);await flush();expect(f.control.snapshot().home?.commandedPath).toEqual({servo:1,min:2300,max:2400});
+ f.control.stop();await flush();await f.feed(2700,pose);f.control.enable(true);f.control.liveJoint(1,2350);await flush();
+ expect(f.control.snapshot().home?.commandedPath).toEqual({servo:1,min:2350,max:2400});f.control.disconnect();await flush();
+ });
+ it('filters tiny J2 input changes but sends the final released target once',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);f.control.liveJoint(2,2250);await flush();
+ for(const [at,target] of [[1200,2251],[1300,2256],[1400,2248]]){await f.feed(at!);f.control.liveJoint(2,target!);f.control.tick();await flush();}
+ expect(f.writes).toHaveLength(1);
+ f.control.liveJoint(2,2248,2000,100,true);await flush();expect(f.writes).toHaveLength(2);
+ expect(f.writes[1]!.bytes[7]!+256*f.writes[1]!.bytes[8]!).toBe(2248);
+ f.control.liveJoint(2,2248,2000,100,true);await flush();expect(f.writes).toHaveLength(2);
+ // Feedback alone, including oscillation, never requests a correction or retry.
+ const pose=[...TEACHER_HOME];for(let at=1500;at<=2500;at+=100){pose[1]=at%200?2230:2260;await f.feed(at,pose);f.control.tick();await flush();}
+ expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
+ });
+ it('hands live control between all six joints after completion without re-enabling',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);
+ for(let servo=1;servo<=6;servo++){
+   f.control.liveJoint(servo,pose[servo-1]!+50);await flush();expect(f.writes.at(-1)!.bytes[2]).toBe(servo);
+   const at=f.time();pose[servo-1]!+=50;
+   // Companion variation above the old margin must also allow completion.
+   pose[servo===1?1:0]!+=25;
+   for(const offset of [100,200,300,500])await f.feed(at+offset,pose);
+   expect(f.control.snapshot().home?.phase).toBe('Complete');expect(f.control.snapshot().armed).toBe(true);
+ }
+ expect(f.writes).toHaveLength(6);f.control.disconnect();await flush();
+ });
+ it('drops pending live input on stale feedback or an interrupted hanging write',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);f.control.liveJoint(3,2200);await flush();f.control.liveJoint(3,2250);
+ f.setTime(1700);f.control.tick();await f.feed(1800);f.control.tick();await flush();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ const g=fixture({hang:true});await g.ready();g.control.enable(true);g.control.liveJoint(3,2200);await flush();g.control.liveJoint(3,2250);g.control.stop();g.finish();await flush();
+ await g.feed(1700);g.control.tick();expect(g.writes).toHaveLength(1);expect(g.control.snapshot().armed).toBe(false);g.control.disconnect();await flush();
+ });
+ it('coalesces live slider input at 100 ms and cancels pending targets on Stop',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);
+ f.control.liveJoint(3,2200);await flush();f.control.liveJoint(3,2220);f.control.liveJoint(3,2250);
+ expect(f.writes).toHaveLength(1);expect(f.control.snapshot().liveServo).toBe(3);
+ await f.feed(1200,pose);f.control.tick();await flush();expect(f.writes).toHaveLength(2);
+ expect(f.writes[1]!.bytes[7]!+256*f.writes[1]!.bytes[8]!).toBe(2250);
+ f.control.liveJoint(3,2300);f.control.stop();await flush();const count=f.writes.length;
+ for(let at=1300;at<=2000;at+=100){await f.feed(at,pose);f.control.tick();}
+ expect(f.writes).toHaveLength(count);expect(f.control.snapshot().armed).toBe(false);f.control.disconnect();await flush();
+ });
+ it('retargets after an early completion without the old half-second gate',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);f.control.liveJoint(3,2100);await flush();
+ for(const at of [1200,1300,1400])await f.feed(at);
+ f.control.liveJoint(3,2200);await flush();expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
+ });
  it('accepts absolute slider targets, retargets only the moving joint, and triples Home speed',async()=>{
  const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);f.control.moveJoint(3,2200);await flush();
  expect(f.writes[0]!.bytes.slice(2,-1)).toEqual([3,10,3,41,100,152,8,0,0,208,7]);

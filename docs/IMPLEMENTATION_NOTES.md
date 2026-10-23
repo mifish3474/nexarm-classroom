@@ -1,4 +1,88 @@
-# Simulation and teacher control preview 0.7.0-dev.16
+# Simulation and teacher control preview 0.7.0-dev.19
+
+## Current update: fast slider reversals and small input changes
+
+The reported fault (S1 at 2463, newest path 2078 to 2038) exposed a problem with
+checking each live update as an isolated move. A still-moving slider now retains
+the range of targets actually dispatched for its joint. Later readings can travel
+toward an earlier target during a reversal, within the existing 100-unit margin.
+Overwritten pending targets do not widen this range. Settling, switching joints,
+Stop, disconnect, and fault end the operation; a later operation starts a new
+range. Arrival still concerns the newest target only. Reversal settling waits
+and deadlines allow for travel from the earlier dispatched targets. Export
+includes the commanded path range. Home and jog supervision retain their paths.
+
+Live input changes smaller than 10 raw units from the last dispatched target
+are suppressed to reduce small mouse-driven target changes. The release/change
+event sends the exact final target once, including a change below that threshold.
+Updates remain limited to ten per second, with one newest-target pending slot.
+Speeds, acceleration, holding commands, and Home values are unchanged.
+
+The teacher also reports J2 vibration during dragging and with the mouse still;
+the factory app vibrates less during movement and briefly before settling.
+Input filtering
+addresses a possible command source, not a verified physical cause. The browser
+does not issue feedback-driven corrections or automatic retries. Persistent
+vibration after input stops remains unresolved; it is not treated as successful settling or fixed by raising
+arrival tolerance. No firmware tuning or automatic torque release is introduced.
+
+Export retains up to 64 feedback samples per operation (within the existing
+100-operation history), in memory until local export, to investigate J2's
+position oscillation alongside the command profile. No data is uploaded.
+
+Validation: 146 unit tests, ten synthetic-USB Chrome browser tests, and the
+TypeScript/Vite build pass. Regression checks
+reproduce the reported fast reversal, reject travel beyond dispatched targets,
+reset the range after settling/Stop, budget reversal deadlines, suppress small
+J2 input changes, preserve the final release target, and verify that oscillating
+feedback alone sends no corrective command. Physical testing remains necessary.
+
+The following sections record earlier versions.
+
+## Current update: wider motion tolerance and slider handoff
+
+Teacher motion now permits 100 raw units of selected-joint overshoot beyond the
+commanded path and 100 raw units of companion-joint variation, replacing 20.
+These are feedback fault thresholds, not calibrated mechanical limits. Manual
+slider completion permits that companion variation rather than applying the old
+12-unit whole-pose check. The selected joint still needs settled target feedback;
+Home retains its existing arrival and final-pose accuracy checks. Speeds, Home
+targets, Stop, USB failure handling, and feedback deadlines are unchanged.
+
+A completed slider operation also retained ownership of its joint and rejected
+input on another slider. Ownership now permits handoff after completion while
+still blocking another joint during movement, a pending target, or a USB write.
+This addresses the report that only S1 responded; physical confirmation remains
+necessary. Synthetic checks exercise all six live sliders with one Enable.
+
+Validation: 141 unit tests and eight synthetic-USB Chrome browser tests pass,
+including all six live sliders after one Enable. Unit checks cover both sides of the 100-unit boundary,
+slider completion with companion drift, strict Home accuracy, and all-joint
+handoff. TypeScript/Vite build passes. Hardware has not been operated by Codex.
+
+The following sections record earlier versions.
+
+## Current update: live teacher sliders
+
+Dragging a slider now sends targets during input, at most once every 100 ms,
+through the existing shared USB writer. A single pending slot retains only the
+newest target; intermediate positions are replaced rather than replayed. The
+active slider stays enabled through writes and settling. Releasing it keeps the
+final target, with duplicate input/change events suppressed. Numeric entry still
+requires Move and retains the half-second interval.
+
+Stop immediately clears the pending target. Disconnection, page hiding, faults,
+and feedback older than 500 ms also discard unsent targets. Late write completion
+cannot restart canceled motion. Other joints and Home wait for the current joint.
+Slider defaults remain speed 2000 / acceleration 100; Home remains 300 / 10.
+No student live execution, dependency, or external request is added.
+
+Validation: 129 unit tests, seven targeted Chrome browser tests with synthetic
+USB, and TypeScript/Vite build pass. Checks cover input before release, duplicate
+events, newest-target replacement, early settling, Stop, stale feedback, hanging
+writes, and cancellation. Actual feel and smoothness require teacher testing.
+
+The following sections record earlier versions.
 
 ## Current focus: factory-style sliders and faster Home
 

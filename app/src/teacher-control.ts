@@ -29,7 +29,8 @@ const cards = labels.map((label, i) => {
   const target=field('Target',TEACHER_HOME[i]!,0,4095),speed=field('Speed',2000,1,3400),acceleration=field('Acceleration',100,1,254);
   const move=document.createElement('button');move.textContent='Move';move.setAttribute('aria-label',`Move servo ${i+1} to target`);
   const request=()=>{if(![target,speed,acceleration].every(input=>input.reportValidity()))return;act(()=>control?.moveJoint(i+1,Number(target.value),Number(speed.value),Number(acceleration.value)));};
-  slider.oninput=()=>{target.value=slider.value;};slider.onchange=request;
+  const liveRequest=(final=false)=>{target.value=slider.value;if(![speed,acceleration].every(input=>input.validity.valid))return;act(()=>control?.liveJoint(i+1,Number(slider.value),Number(speed.value),Number(acceleration.value),final));};
+  slider.oninput=()=>liveRequest();slider.onchange=()=>liveRequest(true);
   target.oninput=()=>{if(target.validity.valid)slider.value=target.value;};move.onclick=request;
   actions.append(minus,plus);
   const jogDetails=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Small +/-20 jogs';jogDetails.append(summary,actions);
@@ -57,7 +58,8 @@ function refresh() {
     if(value===undefined)card.initialized=false;
     else if(!card.initialized){card.slider.value=card.target.value=String(value);card.initialized=true;}
     const editable=state.canMove||state.sliderServo===i+1;
-    card.slider.disabled=card.target.disabled=card.speed.disabled=card.acceleration.disabled=card.move.disabled=!editable;
+    card.slider.disabled=!(editable||state.liveServo===i+1);
+    card.target.disabled=card.speed.disabled=card.acceleration.disabled=card.move.disabled=!editable;
     card.value.textContent = value === undefined ? '—' : String(value);
     card.minus.disabled = !state.canMove || value === undefined || value < 20;
     card.plus.disabled = !state.canMove || value === undefined || value > 4075;
