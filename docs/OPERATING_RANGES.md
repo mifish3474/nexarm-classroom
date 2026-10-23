@@ -1,4 +1,4 @@
-# Development operating ranges: dev.28
+# Development operating ranges: dev.29
 
 The operator supplied these ranges on 2026-10-23, based on factory-software
 values with adjustments during testing. The pairs are interpreted as low/high.
@@ -29,11 +29,15 @@ numeric targets show their joint-specific range; jogs beyond it are unavailable.
 Existing saved positions are preserved exactly, with visible per-joint warnings
 and disabled direct playback when invalid. No target is silently changed to an
 endpoint. Record a replacement inside the displayed ranges, select that new
-position in the block, then delete the old one when appropriate. Recording still
-captures actual readings even outside these ranges; its resulting record will
-be flagged. This helps explain why hand-placed poses may not be replayable.
+position in the block, then delete the old one when appropriate. The recording
+panel shows six live read-only boxes beside the position-name field, with each
+joint's range. Any invalid joint turns its box and the panel border red and
+shows an Out of range label. New recording is blocked until every joint is
+inside range, feedback is fresh and no motion/write is active. The controller
+revalidates the actual snapshot on capture; a stale enabled button cannot save
+invalid values. Exact range endpoints are allowed. Existing records are retained.
 
-Readings outside range do not disable Connect, Enable, capture or release/
+Readings outside range do not disable Connect, Enable or release/
 restore. A deliberate target back inside range remains available. Stop retains
 its existing behavior: attempt holds at fresh measured positions, even if those
 positions are outside the requested-movement ranges. Changing a Stop hold to a

@@ -1,6 +1,6 @@
 import type {TeacherRobotControl} from '../safety/TeacherRobotControl';
 import {NamedPositions} from './NamedPositions';
-import {poseIssues} from '../safety/OperatingRanges';
+import {poseIssues,OPERATING_RANGES,targetIssue} from '../safety/OperatingRanges';
 
 export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   const node=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
@@ -8,6 +8,14 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   // Access to storage can itself be denied; retain a usable memory-only list.
   const storage={getItem:(key:string)=>localStorage.getItem(key),setItem:(key:string,value:string)=>localStorage.setItem(key,value)};
   const saved=new NamedPositions(storage);
+  const readings=OPERATING_RANGES.map((range,i)=>{
+    const box=document.createElement('div');box.className='teach-reading';box.dataset.joint=String(i+1);
+    const label=document.createElement('label');label.textContent=`J${i+1}`;
+    const input=document.createElement('input');input.type='text';input.readOnly=true;input.value='—';input.setAttribute('aria-label',`J${i+1} reported position`);
+    const reference=document.createElement('small');reference.textContent=`Valid: ${range.min}–${range.max}${i===5?' · 1024 open':''}`;
+    const status=document.createElement('span');status.className='teach-reading-status';status.id=`teach-reading-status-${i+1}`;
+    input.setAttribute('aria-describedby',status.id);label.append(input);box.append(label,reference,status);node('teach-readings').append(box);return {box,input,status};
+  });
   let error='',live=false,preparing=false,previousConnection='Disconnected';
   const moveButtons:{button:HTMLButtonElement;issue:string}[]=[];
   function drawSaved(){
@@ -40,8 +48,16 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     node<HTMLButtonElement>('pose-record').disabled=isPreparing||!state?.canCapture||!saved.canAdd||!name.value.trim();
     const text=state?`${state.manualPhase}: ${state.manualMessage}${state.manualReason?` ${state.manualReason}`:''}`:'Connect the robot to release holding or record measured positions.';
     if(node('teach-status').textContent!==text)node('teach-status').textContent=text;
-    const readings=state?.positions?`${state.canCapture?'Current readings':'Latest readings'}: ${state.positions.map((value,i)=>`S${i+1} ${value}`).join(' · ')}`:'Waiting for six measured positions.';
-    if(node('teach-readings').textContent!==readings)node('teach-readings').textContent=readings;
+    const issues=state?.positions?poseIssues(state.positions):[];
+    node('pose-recording').classList.toggle('out-of-range',issues.length>0);
+    readings.forEach(({box,input,status},i)=>{
+      const value=state?.positions?.[i],issue=value===undefined?null:targetIssue(i+1,value);
+      input.value=value===undefined?'—':String(value);input.setAttribute('aria-invalid',String(!!issue));box.classList.toggle('out-of-range',!!issue);
+      const text=value===undefined?'Waiting for reading':issue?'Out of range':state?.feedbackFresh?'In range · live':'In range · last reading';
+      if(status.textContent!==text)status.textContent=text;
+    });
+    const captureStatus=issues.length?`Cannot record: ${issues.join(' ')}`:isPreparing?'Wait for program preparation.':!state?.feedbackFresh?'Waiting for fresh live readings. Recording is disabled.':!state.canCapture?state.captureReason:!saved.canAdd?'Export or delete an old position before recording another.':!name.value.trim()?'All joints are in range. Enter a position name to record.':'All joints are in range. Ready to record.';
+    if(node('pose-capture-status').textContent!==captureStatus)node('pose-capture-status').textContent=captureStatus;
     node('teach-error').textContent=error;node('teach-error').hidden=!error;
     name.disabled=isPreparing||!!state?.busy;
   }

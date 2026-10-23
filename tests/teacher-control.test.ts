@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TeacherRobotControl } from '../app/src/safety/TeacherRobotControl';
 import { jogPlan, slowHomePlan, slowHomeStepCount, TEACHER_HOME, HOME_ORDER } from '../app/src/safety/TeacherControlPlan';
 import { MANUAL_STATE_KEY } from '../app/src/safety/ManualPositioning';
+import {OPERATING_RANGES} from '../app/src/safety/OperatingRanges';
 
 const flush = async () => { for (let i = 0; i < 35; i++) await Promise.resolve(); };
 const locks = {request: async (_name: string, _options: unknown, run: (lease: object) => Promise<void>) => run({})} as unknown as LockManager;
@@ -67,6 +68,15 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it.each([1,2,3,4,5,6])('blocks capturing out-of-range J%s readings without writing and restores capture once valid',async servo=>{
+   const f=fixture();await f.ready();const range=OPERATING_RANGES[servo-1]!,pose=[...TEACHER_HOME];
+   for(const value of [range.min-1,range.max+1]){
+     pose[servo-1]=value;await f.feed(f.time()+100,pose);expect(f.control.snapshot().canCapture).toBe(false);expect(f.control.snapshot().captureReason).toContain(`J${servo}`);
+     expect(()=>f.control.capturePosition()).toThrow(`J${servo}`);expect(f.writes).toHaveLength(0);
+   }
+   for(const value of [range.min,range.max]){pose[servo-1]=value;await f.feed(f.time()+100,pose);expect(f.control.snapshot().canCapture).toBe(true);expect(f.control.capturePosition()).toEqual(pose);}
+   expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
+ });
  it('rejects later out-of-range program poses before the first write and retains Enable',async()=>{
    const f=fixture();await f.ready();f.control.enable(true);
    const invalid=[1968,1335,3144,3407,2109,2397];
@@ -77,7 +87,7 @@ describe('smooth teacher controls',()=>{
  });
  it('checks slider, jog and factory comparison targets without blocking read-only out-of-range feedback or Stop holds',async()=>{
    const f=fixture(),outside=[2050,2150,3003,3084,2000,1080];await f.ready(outside);f.control.enable(true);
-   expect(f.control.capturePosition()).toEqual(outside);
+   expect(f.control.snapshot().positions).toEqual(outside);expect(()=>f.control.capturePosition()).toThrow('Cannot record position');
    expect(()=>f.control.moveJoint(3,2901)).toThrow('2000–2900');expect(()=>f.control.liveJoint(4,3001)).toThrow('1250–3000');
    expect(()=>f.control.jog(3,20)).toThrow('J3');expect(()=>f.control.compareServo3Factory()).toThrow('J3');expect(f.writes).toHaveLength(0);
    f.control.moveJoint(3,2900);await flush();expect(f.writes[0]!.bytes[7]!+256*f.writes[0]!.bytes[8]!).toBe(2900);

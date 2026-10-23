@@ -10,7 +10,7 @@ import {interpret} from '../runtime/instructions';
 import type {PlannedStep} from '../runtime/instructions';
 
 import { TEACHER_HOME } from './TeacherControlPlan';
-import {assertJointTarget,assertPoseTargets,OPERATING_RANGES} from './OperatingRanges';
+import {assertJointTarget,assertPoseTargets,OPERATING_RANGES,poseIssues} from './OperatingRanges';
 
 export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableStream<Uint8Array> | null; }
 type Operation = 'Jog' | 'Home' | 'Saved position' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
@@ -156,6 +156,7 @@ export class TeacherRobotControl {
   }
   snapshot() {
     const reason = this.movementReason(), idle = this.idleReason();
+    const captureReason=idle??(this.positions?(poseIssues(this.positions).join(' ')||null):'Wait for six current position readings.');
     return {connectionState: this.connectionState, positions: this.positions ? [...this.positions] : null,
       armed: this.armed, faulted: this.faulted, message: this.message, reason,
       canConnect: this.connectionState === 'Disconnected', canEnable: !this.armed && this.enableReason() === null,
@@ -165,7 +166,8 @@ export class TeacherRobotControl {
       program:this.program?{phase:this.program.phase,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'?this.program.index-1:null}:null,
       busy: this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
       manualPhase: this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
-      canCapture:idle===null&&this.positions!==null,captureReason:idle,
+      feedbackFresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.receivedAt<=500,
+      canCapture:captureReason===null,captureReason,
       canRelease: this.manual.phase === 'Normal' && idle === null,
       canRestore: ['Manual setup', 'Recovery required'].includes(this.manual.phase) && idle === null,
       canConfirmHolding: ['Confirm holding', 'Recovery required'].includes(this.manual.phase) && idle === null};
@@ -174,6 +176,7 @@ export class TeacherRobotControl {
   capturePosition():number[]{
     const reason=this.idleReason();if(reason)throw Error(reason);
     if(!this.positions)throw Error('Wait for six current position readings.');
+    assertPoseTargets(this.positions,'Cannot record position');
     this.recordEvent('capture','Measured position snapshot read. No robot command sent.');
     return [...this.positions];
   }

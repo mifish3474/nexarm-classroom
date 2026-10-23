@@ -1,6 +1,6 @@
-# Teach and use a position: dev.28
+# Teach and use a position: dev.29
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.28**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.29**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
 
 Live targets must fit the [current operating ranges](./OPERATING_RANGES.md).
@@ -14,8 +14,11 @@ is checked before its first movement; rejection retains the session Enable.
    confirmation and clicking **Release servos for hand positioning**. Motion
    programming is disabled during hand positioning.
 2. Verify the servos have released. Move the arm gently by hand while continuing
-   to support it. Never force a joint that still resists. The six measured raw
-   values update beside the recording controls.
+   to support it. Never force a joint that still resists. The six live value
+   boxes sit beside the naming field and show each joint's valid range. A box
+   turns red and says Out of range when invalid. Recording stays disabled until
+   all six joints are in range and feedback is fresh. Last readings are labeled
+   when feedback is stale or disconnected; they cannot be recorded.
 3. Hold the desired position, enter a label such as **Pickup**, and click
    **Record current position**. Recording reads the current six measured values;
    it sends no robot command. It can also capture a normally held pose without

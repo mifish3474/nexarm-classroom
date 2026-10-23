@@ -1,6 +1,29 @@
-# Classroom programming development preview 0.7.0-dev.28
+# Classroom programming development preview 0.7.0-dev.29
 
-## Current update: operator-provided operating ranges
+## Current update: live recording feedback and range gating
+
+The name/record section now includes six read-only live value boxes directly
+beside the naming field, each showing the exact operating range (J6 marks 1024
+open). Invalid joint boxes and the recording panel border turn red; Out of range
+labels and the adjacent recording status identify the offending joint(s).
+Layout stacks on small screens. Readings remain visible while disconnected or
+stale and are explicitly labeled as last readings rather than live values.
+
+Recording now requires all six values inside range, fresh feedback, idle motion/
+writer state and a name. The controller's capture method independently validates
+the current snapshot, and snapshot.canCapture/captureReason expose range failures.
+All exact endpoints are accepted. This supersedes dev.28's ability to capture an
+invalid vector and flag it afterward. Existing saved data remains untouched.
+No movement, torque or session-enable behavior changed.
+
+Validation: 199 unit tests and TypeScript/Vite build pass. Unit tests cover both
+out-of-range sides and exact endpoints on every joint, with no USB writes.
+Browser coverage checks live updates, displayed ranges, red styling and text,
+disabled recording for each joint, stale-feedback recovery, no rejected saves,
+valid snapshot persistence, proximity to the name field and narrow-screen fit.
+
+## Previous update: operator-provided operating ranges (dev.28)
+
 
 The operator supplied low/high ranges based on the factory UI and adjustments
 during testing: J1 900–3000; J2 1200–2600; J3 2000–2900; J4 1250–3000;

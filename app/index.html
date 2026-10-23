@@ -24,9 +24,12 @@
       <p><strong>Support the arm before releasing it; it can fall when holding is removed.</strong> Keep fingers away from joints and the gripper. Move gently only after verifying the servos released; never force a resisting joint.</p>
       <label class="connection-confirm"><input type="checkbox" id="teach-support"> I am supporting the arm, with clear pinch areas, an empty gripper and the power cutoff within reach.</label>
       <div class="actions"><button id="teach-release" class="secondary" disabled>Release servos for hand positioning</button><button id="teach-restore" disabled>Restore servo holding</button></div>
-      <p id="teach-status" role="status">Connect the robot to teach a position.</p><p id="teach-readings"></p>
-      <label>Position name, such as Pickup or Dropoff <input type="text" id="pose-name" maxlength="40" autocomplete="off"></label>
-      <button id="pose-record" disabled>Record current position</button>
+      <p id="teach-status" role="status">Connect the robot to teach a position.</p>
+      <div class="pose-recording" id="pose-recording"><div>
+        <label>Position name, such as Pickup or Dropoff <input type="text" id="pose-name" maxlength="40" autocomplete="off"></label>
+        <button id="pose-record" aria-describedby="pose-capture-status" disabled>Record current position</button>
+        <p id="pose-capture-status" role="status">Connect for live joint readings.</p>
+      </div><div id="teach-readings" class="teach-reading-grid" role="group" aria-label="Live joint positions and valid ranges"></div></div>
         <p class="note">Recording saves six measured values without moving the arm. Move to position sends all needed joints together at speed 600, acceleration 10. Check the whole sweep is clear; a saved endpoint does not establish a clear route.</p>
       <label class="connection-confirm"><input type="checkbox" id="teach-held"> I physically checked that holding is restored and the arm stays in its placed position.</label><button id="teach-confirm" disabled>Confirm holding restored</button>
       <p>Continue supporting the arm during restore. Confirm holding, then use Enable robot before running another program.</p><p id="teach-error" role="alert" hidden></p>
