@@ -1,7 +1,13 @@
-# Teach and use a position: dev.27
+# Teach and use a position: dev.28
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.27**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.28**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
+
+Live targets must fit the [current operating ranges](./OPERATING_RANGES.md).
+Existing saved poses outside these ranges show per-joint warnings and cannot
+play back. Reposition and record a replacement, then choose it in the relevant
+block. Existing records are never silently adjusted. The entire live program
+is checked before its first movement; rejection retains the session Enable.
 
 1. Secure the base, empty the gripper, clear pinch areas, and keep the physical
    power cutoff accessible. Support the arm's weight before checking the support

@@ -28,6 +28,17 @@ async function seedPositions(page:Page){
    {id:'home',name:'Home',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}
  ]})));
 }
+test('invalid recorded targets are flagged and prevent the entire live program without clearing Enable',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[{id:'t2',name:'t2',positions:[1968,1335,3144,3407,2109,2397],capturedAt:'2026-10-23T00:00:00Z'}]})));
+ await station(page);await connect(page);await enable(page);await page.getByText('Release, record, and restore',{exact:true}).click();
+ await expect(page.locator('#saved-positions')).toContainText('J3 target 3144 is outside its operating range 2000–2900');await expect(page.locator('#saved-positions')).toContainText('J4 target 3407');
+ await expect(page.getByRole('button',{name:'Move to position t2',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'Load short practice program',exact:true}).click();await page.getByRole('button',{name:'Add position block',exact:true}).click();await page.getByRole('button',{name:'Run program',exact:true}).click();
+ await expect(page.locator('#run-status')).toContainText('Saved position "t2": J3 target 3144');expect(await writes(page)).toHaveLength(0);await expect(page.locator('#robot-status')).toContainText('Robot enabled');
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!).poses[0].positions)).toEqual([1968,1335,3144,3407,2109,2397]);
+ await page.getByRole('button',{name:'Load short practice program',exact:true}).click();await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);
+ await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
 test('saved pose buttons move a batch only after Enable and wait for measured settling',async({page})=>{
  await seedPositions(page);await station(page);await connect(page);await page.getByText('Release, record, and restore',{exact:true}).click();
  const move=page.getByRole('button',{name:'Move to position Pickup',exact:true});await expect(move).toBeDisabled();await enable(page);await move.click();await page.clock.runFor(100);

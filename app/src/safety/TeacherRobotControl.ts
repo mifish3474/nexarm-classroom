@@ -10,6 +10,7 @@ import {interpret} from '../runtime/instructions';
 import type {PlannedStep} from '../runtime/instructions';
 
 import { TEACHER_HOME } from './TeacherControlPlan';
+import {assertJointTarget,assertPoseTargets,OPERATING_RANGES} from './OperatingRanges';
 
 export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableStream<Uint8Array> | null; }
 type Operation = 'Jog' | 'Home' | 'Saved position' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
@@ -55,6 +56,8 @@ export class TeacherRobotControl {
     // Development testing only. The bounded language validates IDs and raw
     // encoding values; protected robot-specific limits are a student-release gate.
     const steps=interpret(instructions);
+    // Validate the entire program before the first write, including later poses.
+    for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
     this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
     this.program={steps,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,phase:'Running',message:'Running your program.'};
     this.advanceProgram();this.changed();
@@ -82,6 +85,7 @@ export class TeacherRobotControl {
   liveJoint(servo:number,target:number,speed=2000,acceleration=100,final=false){
     if(this.program?.phase==='Running')throw Error('Stop the program before using manual controls.');
     absoluteJointPlan(this.positions??[],servo,target,speed,acceleration);
+    assertJointTarget(servo,target);
     const active=this.liveServo();
     if(!this.armed||this.manual.blocked||!this.visible()||this.connectionState!=='Listening'||this.now()-this.receivedAt>500)throw Error('Enable controls and wait for fresh readings.');
     if((active&&active!==servo&&(this.route?.activeRun||this.writeInFlight||this.liveTarget))||(this.route?.activeRun&&!(this.operation==='Slider'&&active===servo))||this.manual.pending)throw Error('Another joint or operation is active.');
@@ -196,6 +200,7 @@ export class TeacherRobotControl {
     else if(same){if(!this.armed||this.manual.blocked||this.connectionState!=='Listening'||!this.visible()||this.writeInFlight||this.now()-this.receivedAt>500||this.now()-this.lastCommandAt<interval)throw Error('Wait for fresh feedback and the half-second interval.');}
     else {const reason=this.movementReason();if(reason)throw Error(reason);}
     const plan=absoluteJointPlan(this.positions!,servo,target,speed,acceleration);
+    assertJointTarget(servo,target);
     const previousPath=same?this.route!.pathBounds():null;
     if(same)this.route!.stop();this.sliderInterval=interval;this.start(plan,'Slider',previousPath);
   }
@@ -211,10 +216,12 @@ export class TeacherRobotControl {
   }
   moveToPosition(target:readonly number[]){
     const reason=this.movementReason();if(reason)throw Error(reason);
+    assertPoseTargets(target,'Saved position');
     const plan=absolutePosePlan(this.positions!,target);
     this.liveTarget=null;this.lastLive=null;this.start(plan,'Saved position');
   }
   private start(plan: ReturnType<typeof smoothPlan>, operation: Operation,previousPath?:CommandedPath|null) {
+    for(const step of plan.steps)assertJointTarget(step.servo,step.target);
     this.retain();
     const poseProgram=operation==='Program'&&this.program?.steps[this.program.index-1]?.kind==='pose';
     this.route = operation==='Home'||operation==='Saved position'||poseProgram?new ConcurrentHomeMotion(this.positions!,this.now(),plan,operation==='Home'?'Home':'saved position'):new SmoothTeacherMotion(this.positions!, this.now(), plan,previousPath); this.operation = operation;
@@ -368,6 +375,7 @@ export class TeacherRobotControl {
   disconnect() { this.stop(); this.connection.disconnect(); }
   report() {
     return {format: 'nexarm-teacher-control-session', schemaVersion: 1, capturedAt: new Date().toISOString(),
+      operatingRanges:{source:'Operator-provided factory-software ranges, adjusted during development; 2026-10-23',protectedStudentPolicy:false,joints:OPERATING_RANGES.map((range,i)=>({servo:i+1,...range}))},
       diagnostics:{clock:'page monotonic milliseconds',state:this.connectionState,message:this.message,feedbackAgeMs:Number.isFinite(this.receivedAt)?this.now()-this.receivedAt:null,
         writePending:this.writeInFlight,powerAndTorqueState:'not measured',
         writes:this.writes.map(entry=>({...entry,bytes:[...entry.bytes],positions:entry.positions?[...entry.positions]:null})),

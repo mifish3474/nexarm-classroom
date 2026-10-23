@@ -3,7 +3,10 @@
 Updated 2026-10-23.
 
 The current build is for development hardware testing. The product owner has
-deferred station limits so they do not block Run during this stage. Student
+deferred protected student station policy during this stage. Operator-provided
+development operating ranges now reject invalid movement goals; see
+[the current ranges](./OPERATING_RANGES.md). No stricter student margins are
+implemented. Student
 groups will iterate independently; there will be no per-program teacher approval.
 
 ## Required before student release: protected robot limits
@@ -51,4 +54,5 @@ instruction expansion, servo ID/numeric/encoding checks, speed 600 and
 acceleration 10 for programs, feedback path/settling/deadline supervision, Stop,
 60-second/100-movement budgets, cancellation on mode/visibility/connection
 changes, and the existing holding recovery interlock. Station limits are not
-enforced in the current development build.
+enforced as protected policy in the current development build. Fixed development
+operating ranges are enforced for targets through the current motion controller.

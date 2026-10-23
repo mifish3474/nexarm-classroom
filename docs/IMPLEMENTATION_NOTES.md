@@ -1,6 +1,39 @@
-# Classroom programming development preview 0.7.0-dev.27
+# Classroom programming development preview 0.7.0-dev.28
 
-## Current update: consistent settling tolerance
+## Current update: operator-provided operating ranges
+
+The operator supplied low/high ranges based on the factory UI and adjustments
+during testing: J1 900–3000; J2 1200–2600; J3 2000–2900; J4 1250–3000;
+J5 1024–3072; J6 1024–2731 (1024 open). These are fixed development goal bounds,
+not protected student policy or independently verified mechanical limits.
+No stricter student margins were added. See [operating ranges](./OPERATING_RANGES.md).
+
+The shared current motion controller validates whole Blockly programs before
+the first write, including later saved poses. Invalid targets identify their
+joint/range without disarming the session or silently changing targets. Pose
+lists flag existing invalid data and disable direct replay while preserving
+records/export. Sliders use the joint ranges; jogs, Home, absolute moves, live
+targets and the factory comparison validate through the same controller.
+Out-of-range readings remain observable and a request to a valid target remains
+possible. Recording preserves actual measurements; resulting invalid poses are
+flagged. Fresh Stop holds deliberately retain measured targets outside these
+ranges rather than commanding an unrequested move to a boundary.
+
+The diagnostic report showed repeatable shortfalls on both S3 and S4 during t2,
+not a command flood or a feedback gap. Its requested targets exceed the new
+ranges. Existing t1 also has J3 outside range and needs replacement. Hardware
+limits, power/torque state and underlying cause remain unverified. No servo
+settings or movement profiles were changed.
+
+Validation: 193 unit tests, all 37 browser tests, and TypeScript/Vite build pass.
+Tests cover exact endpoints and invalid targets on all six joints, rejecting a
+later invalid pose before any program write, retaining Enable after rejection,
+preserving stored data, bounded sliders, returning from an out-of-range reading,
+and fresh Stop holds outside range. All automated USB streams are synthetic;
+the existing Blockly bundle-size warning remains. No physical moves were sent.
+
+## Previous update: consistent settling tolerance (dev.27)
+
 
 The reported Servo 4 move from 3084 to 2720 timed out at 2730, a 10-unit
 residual. The per-joint settle check required ±9 while the existing final pose

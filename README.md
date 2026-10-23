@@ -12,8 +12,9 @@ six virtual joints, an animated arm illustration, a Blockly repeat-loop lesson,
 manual simulation jogging, Stop, and Reset Simulation. Simulation is the default
 and does not request USB. Station robot mode runs the same bounded Blockly
 programs through the shared motion controller after the session is connected/enabled.
-Station limits are deferred during development; protected teacher/admin limits
-are required before student release in [the roadmap](docs/ROADMAP.md).
+Operator-provided [development operating ranges](docs/OPERATING_RANGES.md) are
+checked before live movement. Stricter protected teacher/admin student limits
+remain required before student release in [the roadmap](docs/ROADMAP.md).
 The intended classroom workflow lets students edit and rerun without teacher
 approval for each program. Follow [the classroom testing guide](docs/CLASSROOM_PROGRAMMING.md).
 The main page also supports [hand-positioned named pose recording](docs/TEACHING_POSITIONS.md):

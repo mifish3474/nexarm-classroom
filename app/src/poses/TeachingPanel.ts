@@ -1,5 +1,6 @@
 import type {TeacherRobotControl} from '../safety/TeacherRobotControl';
 import {NamedPositions} from './NamedPositions';
+import {poseIssues} from '../safety/OperatingRanges';
 
 export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   const node=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
@@ -8,16 +9,17 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   const storage={getItem:(key:string)=>localStorage.getItem(key),setItem:(key:string,value:string)=>localStorage.setItem(key,value)};
   const saved=new NamedPositions(storage);
   let error='',live=false,preparing=false,previousConnection='Disconnected';
-  const moveButtons:HTMLButtonElement[]=[];
+  const moveButtons:{button:HTMLButtonElement;issue:string}[]=[];
   function drawSaved(){
     const list=node('saved-positions');list.replaceChildren();moveButtons.length=0;
     for(const pose of saved.list()){
       const row=document.createElement('li'),label=document.createElement('strong'),values=document.createElement('p'),remove=document.createElement('button');
       label.textContent=pose.name;values.textContent=pose.positions.map((value,i)=>`S${i+1}: ${value}`).join(' · ');
+      const issue=poseIssues(pose.positions).join(' '),warning=document.createElement('p');warning.className='note';warning.textContent=issue?`${issue} Record a replacement within range; this saved position is unchanged.`:'';warning.hidden=!issue;
       remove.textContent='Delete';remove.className='secondary';remove.setAttribute('aria-label',`Delete position ${pose.name}`);
       const move=document.createElement('button');move.textContent='Move to position';move.setAttribute('aria-label',`Move to position ${pose.name}`);
-      move.onclick=()=>act(()=>{const control=getControl();if(!control)throw Error('Connect and enable the robot.');control.moveToPosition(pose.positions);});moveButtons.push(move);
-      remove.onclick=()=>act(()=>{saved.remove(pose.id);drawSaved();});row.append(label,values,move,remove);list.append(row);
+      move.onclick=()=>act(()=>{const control=getControl();if(!control)throw Error('Connect and enable the robot.');control.moveToPosition(pose.positions);});moveButtons.push({button:move,issue});
+      remove.onclick=()=>act(()=>{saved.remove(pose.id);drawSaved();});row.append(label,values,warning,move,remove);list.append(row);
     }
     const count=saved.list().length;
     node('pose-storage-status').textContent=`${count}/32 positions. ${count===32?'Export or delete an old position to record another. ':''}${saved.message}`;
@@ -28,7 +30,7 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   function refresh(robotMode:boolean,isPreparing:boolean){
     live=robotMode;preparing=isPreparing;node('teach-panel').hidden=!live;
     const state=getControl()?.snapshot();
-    moveButtons.forEach(button=>{button.disabled=isPreparing||!state?.canMove;button.title=state?.reason??'Move all needed joints together at speed 600, acceleration 10.';});
+    moveButtons.forEach(({button,issue})=>{button.disabled=!!issue||isPreparing||!state?.canMove;button.title=issue||state?.reason||'Move all needed joints together at speed 600, acceleration 10.';});
     if(state&&state.manualPhase!=='Normal')node<HTMLDetailsElement>('teach-details').open=true;
     if(previousConnection==='Listening'&&state?.connectionState!=='Listening'){support.checked=false;held.checked=false;}
     previousConnection=state?.connectionState??'Disconnected';

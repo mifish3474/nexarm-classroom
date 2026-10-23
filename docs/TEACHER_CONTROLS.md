@@ -1,4 +1,9 @@
-# Robot setup control testing: 0.7.0-dev.26
+# Robot setup control testing: 0.7.0-dev.28
+
+Sliders, numeric moves and jogs use the operator-provided
+[operating ranges](./OPERATING_RANGES.md). Stricter student policy remains future
+work. An out-of-range measured position stays visible; choose an explicit
+in-range target to return. Targets are rejected rather than silently clamped.
 
 The setup controls remain available for commissioning and recovery. Students now
 run Blockly independently on the main page after a session
@@ -7,7 +12,7 @@ no per-program teacher review or approval action.
 
 Current workflow:
 
-1. Open /mapping.html, confirm dev.26, Connect, confirm clearance, and Enable.
+1. Open /mapping.html, confirm dev.28, Connect, confirm clearance, and Enable.
 2. Review the actual reading and target for one joint. Drag its slider to send
    live targets, or enter a numeric target and click Move. Slider defaults
    are factory speed 2000 / acceleration 100; both fields can be edited.

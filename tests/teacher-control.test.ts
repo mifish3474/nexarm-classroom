@@ -67,6 +67,23 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it('rejects later out-of-range program poses before the first write and retains Enable',async()=>{
+   const f=fixture();await f.ready();f.control.enable(true);
+   const invalid=[1968,1335,3144,3407,2109,2397];
+   expect(()=>f.control.runProgram([{kind:'move',blockId:'first',servo:1,target:2130},{kind:'pose',blockId:'bad',positionId:'t2',name:'t2',positions:invalid}])).toThrow('Saved position "t2": J3 target 3144');
+   expect(f.writes).toHaveLength(0);expect(f.control.snapshot().armed).toBe(true);expect(f.control.snapshot().program).toBeNull();
+   expect(()=>f.control.moveToPosition(invalid)).toThrow('J4 target 3407');expect(f.writes).toHaveLength(0);
+   f.control.runProgram([{kind:'move',blockId:'ok',servo:1,target:2130}]);await flush();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it('checks slider, jog and factory comparison targets without blocking read-only out-of-range feedback or Stop holds',async()=>{
+   const f=fixture(),outside=[2050,2150,3003,3084,2000,1080];await f.ready(outside);f.control.enable(true);
+   expect(f.control.capturePosition()).toEqual(outside);
+   expect(()=>f.control.moveJoint(3,2901)).toThrow('2000–2900');expect(()=>f.control.liveJoint(4,3001)).toThrow('1250–3000');
+   expect(()=>f.control.jog(3,20)).toThrow('J3');expect(()=>f.control.compareServo3Factory()).toThrow('J3');expect(f.writes).toHaveLength(0);
+   f.control.moveJoint(3,2900);await flush();expect(f.writes[0]!.bytes[7]!+256*f.writes[0]!.bytes[8]!).toBe(2900);
+   f.control.stop();await flush();expect(f.writes[1]!.bytes[7]!+256*f.writes[1]!.bytes[8]!).toBe(3003);
+   expect(f.control.report().operatingRanges.protectedStudentPolicy).toBe(false);f.control.disconnect();await flush();
+ });
  it('advances Blockly after Servo 4 stably settles ten units from its saved target',async()=>{
    const f=fixture(),before=[2050,2150,2100,3084,2000,1080],target=[...before];target[3]=2720;
    await f.ready(before);f.control.enable(true);f.control.runProgram([{kind:'pose',blockId:'pose',positionId:'p',name:'P',positions:target},{kind:'move',blockId:'next',servo:1,target:2130}]);await flush();
@@ -171,8 +188,8 @@ describe('smooth teacher controls',()=>{
  });
  it('runs without station configuration and ignores stale saved station settings',async()=>{
  const f=fixture({stored:new Map([['nexarm.classroom-profile.v1','invalid obsolete setup']])});await f.ready();f.control.enable(true);
- f.control.runProgram([{kind:'move',blockId:'x',servo:1,target:4095}]);await flush();
- const packet=f.writes[0]!.bytes;expect(packet[7]!+256*packet[8]!).toBe(4095);expect(packet.slice(11,13)).toEqual([88,2]);
+ f.control.runProgram([{kind:'move',blockId:'x',servo:1,target:3000}]);await flush();
+ const packet=f.writes[0]!.bytes;expect(packet[7]!+256*packet[8]!).toBe(3000);expect(packet.slice(11,13)).toEqual([88,2]);
  expect(f.control.report().program?.stationLimitsEnforced).toBe(false);f.control.disconnect();await flush();
  });
  it('Stop cancels the program, holds the active joint and requires no teacher to re-enable',async()=>{

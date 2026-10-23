@@ -34,6 +34,15 @@ async function enable(page:Page) {
 const writes = (page:Page) => page.evaluate(() => (window as unknown as {teacherRobot:{writes:{at:number;bytes:number[]}[]}}).teacherRobot.writes.flatMap(write=>{
  const frames:typeof write[]=[];for(let offset=0;offset<write.bytes.length;){const length=write.bytes[offset+3]!+4;frames.push({at:write.at,bytes:write.bytes.slice(offset,offset+length)});offset+=length;}return frames;
 }));
+test('sliders use the supplied ranges and out-of-range readings do not block a return inside range',async({page})=>{
+ await robot(page,[2050,2150,3003,2200,2000,1080]);await connect(page);await enable(page);
+ const limits=[[900,3000],[1200,2600],[2000,2900],[1250,3000],[1024,3072],[1024,2731]];
+ for(let i=0;i<6;i++){const slider=page.getByRole('slider',{name:`Servo ${i+1} target slider`});await expect(slider).toHaveAttribute('min',String(limits[i]![0]));await expect(slider).toHaveAttribute('max',String(limits[i]![1]));}
+ await expect(page.getByRole('button',{name:'Servo 3 plus 20',exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Servo 3 minus 20',exact:true})).toBeDisabled();
+ await expect(page.locator('[data-servo-value="3"]')).toHaveText('3003');expect(await writes(page)).toHaveLength(0);
+ await page.getByRole('spinbutton',{name:'Servo 3 target',exact:true}).fill('2900');await page.getByRole('button',{name:'Move servo 3 to target',exact:true}).click();await page.clock.runFor(800);expect((await writes(page))[0]!.bytes[7]!+256*(await writes(page))[0]!.bytes[8]!).toBe(2900);
+ await expect(page.locator('[data-servo-value="3"]')).toHaveText('2905');await page.getByRole('button',{name:'Disconnect',exact:true}).click();
+});
 
 test('approved Servo 3 comparison uses factory settings without changing normal controls',async({page})=>{
  await robot(page);await page.getByText('Earlier Servo 3 test',{exact:true}).click();const comparison=page.getByRole('button',{name:'Servo 3 +20 at factory settings'});
@@ -49,7 +58,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.27');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.28');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled(); await enable(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {

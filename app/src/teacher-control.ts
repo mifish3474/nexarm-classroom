@@ -3,6 +3,7 @@ import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
 import { HOME_SPEED } from './safety/SmoothTeacherMotion';
 import { TEACHER_HOME } from './safety/TeacherControlPlan';
+import {OPERATING_RANGES,targetIssue} from './safety/OperatingRanges';
 
 const node = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const clearance = node<HTMLInputElement>('teacher-clearance'), support = node<HTMLInputElement>('teacher-support');
@@ -11,10 +12,11 @@ const serial = (navigator as Navigator & {serial?: {requestPort(): Promise<Teach
 let control: TeacherRobotControl | null = null, error = '', previouslyArmed = false;
 const labels = ['Base', 'Shoulder', 'Elbow', 'Wrist pitch', 'Wrist roll', 'Gripper'];
 const cards = labels.map((label, i) => {
+  const range=OPERATING_RANGES[i]!;
   const card = document.createElement('div'); card.className = 'joint-card';
   const title = document.createElement('h3'); title.textContent = `Servo ${i + 1} · ${label}`;
   const value = document.createElement('strong'); value.dataset.servoValue = String(i + 1); value.textContent = '—';
-  const home = document.createElement('span'); home.className = 'target'; home.textContent = `Home: ${TEACHER_HOME[i]}`;
+  const home = document.createElement('span'); home.className = 'target'; home.textContent = `Home: ${TEACHER_HOME[i]} · Operating range: ${range.min}–${range.max}${i===5?' (1024 = open)':''}`;
   const actions = document.createElement('div'); actions.className = 'jog-controls';
   const minus = document.createElement('button'), plus = document.createElement('button');
   minus.textContent = '−20'; plus.textContent = '+20'; minus.disabled = plus.disabled = true;
@@ -23,10 +25,10 @@ const cards = labels.map((label, i) => {
     button.addEventListener('keydown', event => { if (event.repeat) event.preventDefault(); });
     button.onclick = () => act(() => control?.jog(i + 1, delta));
   }
-  const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='4095';slider.step='1';slider.value=String(TEACHER_HOME[i]);slider.setAttribute('aria-label',`Servo ${i+1} target slider`);
+  const slider=document.createElement('input');slider.type='range';slider.min=String(range.min);slider.max=String(range.max);slider.step='1';slider.value=String(TEACHER_HOME[i]);slider.setAttribute('aria-label',`Servo ${i+1} target slider`);
   const fields=document.createElement('div');fields.className='servo-fields';
   function field(name:string,start:number,min:number,max:number){const label=document.createElement('label');label.textContent=name;const input=document.createElement('input');input.type='number';input.required=true;input.min=String(min);input.max=String(max);input.step='1';input.value=String(start);input.setAttribute('aria-label',`Servo ${i+1} ${name.toLowerCase()}`);label.append(input);fields.append(label);return input;}
-  const target=field('Target',TEACHER_HOME[i]!,0,4095),speed=field('Speed',2000,1,3400),acceleration=field('Acceleration',100,1,254);
+  const target=field('Target',TEACHER_HOME[i]!,range.min,range.max),speed=field('Speed',2000,1,3400),acceleration=field('Acceleration',100,1,254);
   const move=document.createElement('button');move.textContent='Move';move.setAttribute('aria-label',`Move servo ${i+1} to target`);
   const request=()=>{if(![target,speed,acceleration].every(input=>input.reportValidity()))return;act(()=>control?.moveJoint(i+1,Number(target.value),Number(speed.value),Number(acceleration.value)));};
   const liveRequest=(final=false)=>{target.value=slider.value;if(![speed,acceleration].every(input=>input.validity.valid))return;act(()=>control?.liveJoint(i+1,Number(slider.value),Number(speed.value),Number(acceleration.value),final));};
@@ -61,12 +63,12 @@ function refresh() {
     card.slider.disabled=!(editable||state.liveServo===i+1);
     card.target.disabled=card.speed.disabled=card.acceleration.disabled=card.move.disabled=!editable;
     card.value.textContent = value === undefined ? '—' : String(value);
-    card.minus.disabled = !state.canMove || value === undefined || value < 20;
-    card.plus.disabled = !state.canMove || value === undefined || value > 4075;
+    card.minus.disabled = !state.canMove || value === undefined || targetIssue(i+1,value-20)!==null;
+    card.plus.disabled = !state.canMove || value === undefined || targetIssue(i+1,value+20)!==null;
     card.minus.title = value === undefined ? 'Wait for readings.' : `Target ${value - 20}`;
     card.plus.title = value === undefined ? 'Wait for readings.' : `Target ${value + 20}`;
   });
-  node<HTMLButtonElement>('teacher-servo3-factory').disabled=!state.canMove||!state.positions||state.positions[2]!>4075;
+  node<HTMLButtonElement>('teacher-servo3-factory').disabled=!state.canMove||!state.positions||targetIssue(3,state.positions[2]!+20)!==null;
   const command=state.home?.command;
   const homeCommands=state.operation==='Home'?state.home?.commands:null;
   node('teacher-motion-detail').textContent=['Fault','Settled short'].includes(state.home?.phase??'')?state.home!.message:homeCommands?.length?`Home: ${homeCommands.map(c=>`S${c.servo} reported ${c.actual}, target ${c.target}, remaining ${c.error}`).join('; ')}. Speed ${state.home?.speed}, acceleration ${state.home?.acceleration}.`:command?`Servo ${command.servo}: start ${command.from}, target ${command.target}, reported ${command.actual}, remaining ${command.error} raw units. Speed ${state.home?.speed}, acceleration ${state.home?.acceleration}.`:'No movement command sent yet.';

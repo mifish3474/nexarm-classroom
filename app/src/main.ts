@@ -8,6 +8,7 @@ import type { ServoId } from './protocol/NexArmCodec';
 import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
 import {createTeachingPanel} from './poses/TeachingPanel';
+import {OPERATING_RANGES} from './safety/OperatingRanges';
 
 
 
@@ -23,6 +24,7 @@ let preparing=false,session=0,control:TeacherRobotControl|null=null,previouslyAr
 let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
 const robotMode=()=>destination.value==='robot';
 const teaching=createTeachingPanel(()=>control);
+element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join('; ')}. J6: 1024 = open. These are operator-provided development ranges; protected student policy comes later.`;
 const editor=createEditor(element('blockly-editor'),()=>teaching.list()),draw=createArmIllustration(element('arm-illustration'));
 function positionOptions(){
   const select=element<HTMLSelectElement>('program-position'),previous=select.value;select.replaceChildren();
