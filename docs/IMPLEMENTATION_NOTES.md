@@ -1,4 +1,58 @@
-# Simulation and teacher control preview 0.7.0-dev.20
+# Classroom programming development preview 0.7.0-dev.21
+
+## Current update: independent student Blockly runs
+
+The product owner clarified that a teacher approval workflow for each program
+is infeasible for 10–20 groups. Students must edit, run, observe, and iterate
+independently. The application now provides Simulation (default) and Station
+robot destinations in the same Blockly workspace. There is no per-program
+teacher review, approval marker, required prior simulation, or fixed pilot gate.
+The earlier approval requirements do not imply classroom approval of every run.
+
+Station setup supplies six explicitly tested joint ranges and program speed
+(1–600; acceleration 10), saved locally once per browser station. No guessed
+ranges or inherited Home windows are supplied. These are operator-configured
+constraints, not collision detection or certified mechanical limits. They must
+match the robot assigned to the station. Missing/invalid settings leave
+simulation usable and block live program runs. Storage failure permits a clearly
+labeled memory-only setup. Clear removes only station settings, preserving the
+independent holding/recovery interlock.
+
+Students select Station robot, Connect, confirm the clear area/assigned robot,
+Enable once per session, and Run. A successful run leaves controls enabled for
+the next edit/run. The bounded interpreter supports sequence and repeat, with
+at most 100 expanded movements and a 60-second live-run budget. Each step sends
+the existing position/speed/acceleration frame through TeacherRobotControl,
+waits for settled feedback, and then advances. All planned targets and initial
+positions are checked against a copied station profile before the first write;
+positions are checked during execution and before every step. Manual controls
+and overlapping programs cannot interrupt the sequence without Stop.
+
+Stop cancels future steps and attempts the existing measured-position hold.
+Faults, missing feedback, hidden pages, disconnection, and mode changes cancel
+the sequence and disarm; students can inspect and re-enable without a teacher
+approval action. No sequence resumes automatically or automatically returns Home.
+Editing/loading a lesson after normal completion does not disarm. Worker
+preparation is canceled on Stop/mode changes. Simulation does not request USB.
+
+The robot setup page retains the tested sliders, concurrent Home at 600 / 10,
+and release/restore controls. New student runs use the same writer, USB lease,
+holding interlock, and feedback supervisor. This is a development test build;
+managed student-account compatibility, physical classroom profiles, and full
+classroom acceptance remain to be demonstrated. Student programs are not saved
+yet. No accounts, network data transfers, or dependencies were added.
+
+See [classroom testing steps](./CLASSROOM_PROGRAMMING.md).
+
+Validation: 161 unit tests, 27 browser checks across the regression and targeted
+classroom runs, and the TypeScript/Vite build pass. Browser checks cover editing
+and rerunning after one Enable, out-of-range rejection before writes, Stop and
+student recovery, saved setup without arming, mode-switch cancellation, and Stop
+remaining available after a fault. Existing simulation, manual control, Home,
+reference, and commissioning regressions pass. No real USB movement was executed
+by the assistant.
+
+The following sections record earlier versions.
 
 ## Current update: concurrent Home at doubled speed
 

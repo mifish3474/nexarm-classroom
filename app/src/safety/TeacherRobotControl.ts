@@ -6,11 +6,15 @@ import { ConcurrentHomeMotion } from './ConcurrentHomeMotion';
 import { ManualPositioning } from './ManualPositioning';
 import { SmoothTeacherMotion, smoothPlan, MOTION_SPEED, MOTION_ACCELERATION, HOME_SPEED, absoluteJointPlan } from './SmoothTeacherMotion';
 import type { CommandedPath } from './SmoothTeacherMotion';
+import {classroomProfile,checkClassroomPositions} from './ClassroomProfile';
+import type {ClassroomProfile} from './ClassroomProfile';
+import {interpret} from '../runtime/instructions';
+import type {PlannedStep} from '../runtime/instructions';
 
 import { TEACHER_HOME } from './TeacherControlPlan';
 
 export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableStream<Uint8Array> | null; }
-type Operation = 'Jog' | 'Home' | 'Servo 3 factory comparison' | 'Slider';
+type Operation = 'Jog' | 'Home' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
 type SliderTarget={servo:number;target:number;speed:number;acceleration:number};
 const LIVE_TARGET_DEADBAND=10;
 
@@ -28,7 +32,7 @@ export class TeacherRobotControl {
   private connectedAt = 0;
   private armed = false;
   private faulted = false;
-  private message = 'Connect to read positions, then enable teacher controls.';
+  private message = 'Connect to read positions, then enable robot controls.';
   private writeInFlight = false;
   private pending: Promise<void> | null = null;
   private lastCommandAt = -Infinity;
@@ -41,11 +45,36 @@ export class TeacherRobotControl {
   private liveTarget:SliderTarget|null=null;
   private lastLive:SliderTarget|null=null;
   private sliderInterval=500;
+  private program:{steps:PlannedStep[];profile:ClassroomProfile;index:number;at:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
+  private cancelProgram(phase:'Stopped'|'Fault',message:string){if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
+  runProgram(instructions:unknown,profileInput:unknown){
+    const reason=this.movementReason();if(reason)throw Error(reason);
+    const profile=classroomProfile(profileInput),steps=interpret(instructions);
+    checkClassroomPositions(this.positions!,profile);
+    for(const step of steps){const limit=profile.limits[step.servo-1]!;if(step.target<limit.min||step.target>limit.max)throw Error(`Block target ${step.target} for S${step.servo} is outside the station range ${limit.min}–${limit.max}.`);}
+    this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
+    this.program={steps,profile,index:0,at:this.now(),phase:'Running',message:'Running your program.'};
+    this.advanceProgram();this.changed();
+  }
+  private advanceProgram(){
+    const program=this.program;if(program?.phase!=='Running'||this.route?.activeRun)return;
+    if(!this.armed||this.connectionState!=='Listening'||!this.visible()){this.fault('Program canceled because the robot session changed.');return;}
+    if(this.writeInFlight||this.now()-this.receivedAt>500)return;
+    if(program.index===program.steps.length){program.phase='Completed';program.message='Program complete. Edit your blocks and run again.';this.message=program.message;return;}
+    if(this.now()-this.lastCommandAt<500)return;
+    try{
+      checkClassroomPositions(this.positions!,program.profile);
+      const step=program.steps[program.index]!;
+      const plan=absoluteJointPlan(this.positions!,step.servo,step.target,program.profile.speed,program.profile.acceleration);
+      program.index++;this.start({...plan,manual:false},'Program');
+    }catch(error){this.fault(error instanceof Error?error.message:'Program movement could not start.');}
+  }
   private liveServo(){
     if(!this.armed||this.manual.blocked||!this.visible()||this.connectionState!=='Listening'||this.now()-this.receivedAt>500)return null;
     return this.liveTarget?.servo??(this.operation==='Slider'&&(this.route?.phase==='Running'||this.lastLive!==null)?(this.route?.status().command?.servo??this.route?.status().next?.servo):null);
   }
   liveJoint(servo:number,target:number,speed=2000,acceleration=100,final=false){
+    if(this.program?.phase==='Running')throw Error('Stop the program before using manual controls.');
     absoluteJointPlan(this.positions??[],servo,target,speed,acceleration);
     const active=this.liveServo();
     if(!this.armed||this.manual.blocked||!this.visible()||this.connectionState!=='Listening'||this.now()-this.receivedAt>500)throw Error('Enable controls and wait for fresh readings.');
@@ -73,6 +102,7 @@ export class TeacherRobotControl {
       if (state === 'Listening') {
         this.connectedAt = this.now(); this.message = 'Connected. Positions are read-only until you enable controls.';
       } else {
+        this.cancelProgram('Fault','Robot connection ended.');
         this.armed = false; this.liveTarget=null;this.lastLive=null; this.generation++;
         this.manual.interrupt('Connection ended.', this.positions ?? []);
         if (this.route?.activeRun) this.route.fail('Connection lost. Future steps canceled.');
@@ -86,7 +116,7 @@ export class TeacherRobotControl {
   connect(select: () => Promise<TeacherPort>) {
     if (this.connectionState !== 'Disconnected' || !this.visible()) return;
     this.manual = new ManualPositioning(this.storage);
-    this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = false; this.route = null; this.operation = null;
+    this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = false; this.route = null; this.operation = null;this.program=null;
      this.parser.reset();  this.positions = null; this.receivedAt = -Infinity;
     this.connection.connect(async () => {
       const port = await select(); this.port = port;
@@ -99,6 +129,7 @@ export class TeacherRobotControl {
     if (this.connectionState !== 'Listening') return 'Connect to the robot.';
     if (!this.visible()) return 'Keep this page visible.';
     if (this.writeInFlight || this.manual.pending) return 'Waiting for the current write to finish.';
+    if(this.program?.phase==='Running')return 'Program is running. Stop it before using manual controls.';
     if (this.route?.activeRun) return 'Movement is in progress. Other clicks are not queued.';
     if (this.now()-this.receivedAt>500) return 'Waiting for current position feedback; controls remain enabled.';
     if (this.now()-this.lastCommandAt<500) return 'Finishing the half-second command interval.';
@@ -109,7 +140,7 @@ export class TeacherRobotControl {
     return this.idleReason();
   }
   private movementReason(): string | null {
-    if (!this.armed) return 'Enable teacher controls first.';
+    if (!this.armed) return 'Enable robot controls first.';
     return this.enableReason();
   }
   snapshot() {
@@ -120,7 +151,8 @@ export class TeacherRobotControl {
       enableReason: this.enableReason(), canMove: reason === null&&!this.liveTarget,liveServo:this.liveServo(),
       sliderServo:this.operation==='Slider'&&this.route?.phase==='Running'&&this.armed&&!this.manual.blocked&&this.visible()&&!this.writeInFlight&&this.now()-this.receivedAt<=500&&this.now()-this.lastCommandAt>=500?this.route.status().next?.servo:null,
       home: this.route?.status() ?? null, operation: this.operation,
-      busy: this.writeInFlight || !!this.route?.activeRun || this.manual.pending,
+      program:this.program?{phase:this.program.phase,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'?this.program.index-1:null}:null,
+      busy: this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
       manualPhase: this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
       canRelease: this.manual.phase === 'Normal' && idle === null,
       canRestore: ['Manual setup', 'Recovery required'].includes(this.manual.phase) && idle === null,
@@ -131,7 +163,7 @@ export class TeacherRobotControl {
     const reason = this.enableReason();
     if (!confirmed || reason) throw new Error(reason ?? 'Confirm holding, clearance, and physical cutoff access.');
     this.armed = true; this.faulted = false;
-    this.message = 'Teacher controls enabled. Each jog click sends one step; Home runs only when clicked.';
+    this.message = 'Robot controls enabled. Run a program or choose a manual action.';
     this.changed();
   }
   jog(servo: number, delta: number) {
@@ -167,7 +199,7 @@ export class TeacherRobotControl {
     this.route = operation==='Home'?new ConcurrentHomeMotion(this.positions!,this.now(),plan):new SmoothTeacherMotion(this.positions!, this.now(), plan,previousPath); this.operation = operation;
     if (this.route.phase === 'Complete') { this.message = this.route.message; this.changed(); return; }
     this.route.start(this.positions!, this.now());
-    this.message = operation === 'Home' ? 'Returning to Teacher Home with all needed joints moving together.' : 'Jogging one joint. Wait for feedback before another click.';
+    this.message = operation === 'Home' ? 'Returning to Teacher Home with all needed joints moving together.' : operation==='Program'?'Running your Blockly program, one joint at a time.':'Jogging one joint. Wait for feedback before another click.';
     this.pump(); this.changed();
   }
   private pump() {
@@ -195,7 +227,7 @@ export class TeacherRobotControl {
     if (this.route?.phase === 'Complete') {
       this.lastMovingServos=[];
 
-      this.message = this.operation === 'Home' ? 'Home reached within 9 raw units. Inspect the pose; no correction loop runs.' : 'Jog finished.';
+      this.message = this.operation === 'Home' ? 'Home reached within 9 raw units. Inspect the pose; no correction loop runs.' : this.operation==='Program'?'Program step settled.':'Jog finished.';
     }
     this.changed();
   }
@@ -255,6 +287,9 @@ export class TeacherRobotControl {
       if (!positions) continue;
 
       this.positions = positions; this.receivedAt = at;
+      if(this.program?.phase==='Running'){
+        try{checkClassroomPositions(positions,this.program.profile);}catch(error){this.fault(error instanceof Error?error.message:'Station range exceeded.');continue;}
+      }
       if (this.route?.phase === 'Running') {
         this.route.observe(positions, at);
         const phase = this.route.status().phase;
@@ -266,6 +301,7 @@ export class TeacherRobotControl {
   tick() {
     if (this.connectionState !== 'Listening') return;
     if (!this.visible()) { this.disconnect(); return; }
+    if(this.program?.phase==='Running'&&this.now()-this.program.at>=60000){this.fault('Program reached its 60-second time limit. Edit it into a shorter sequence.');return;}
     if(this.now()-this.receivedAt>500)this.liveTarget=null;
     if(this.writeInFlight && this.now()-this.writeStartedAt>=2000 && !this.faulted){this.fault('USB write did not finish within two seconds. Delivery is uncertain.');return;}
     if (this.manual.pending && this.now() - this.manual.pendingSince >= 2000) {
@@ -279,19 +315,21 @@ export class TeacherRobotControl {
       this.route.checkDeadline(this.now());
       if (this.route.status().phase === 'Fault') { this.fault(this.route.message); return; }
     }
-    this.flushLive();this.pump(); this.changed();
+    this.flushLive();this.advanceProgram();this.pump(); this.changed();
   }
 
   private retain() {
     if (this.route) this.history = [...this.history, {operation: this.operation, at: new Date().toISOString(), result: this.route.report()}].slice(-100);
   }
   private fault(message: string) {
+    this.cancelProgram('Fault',message);
     const moving=this.route?.activeRun;
     this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = true; this.generation++;
     if (this.route?.activeRun) this.route.fail(message);
     this.manual.interrupt(message, this.positions ?? []);  this.message = message+(moving?' Future targets canceled. Use Stop or the physical cutoff to intervene in the current movement.':''); this.changed();
   }
   stop() {
+    this.cancelProgram('Stopped','Stopped. Edit your program and run again when ready.');
     this.liveTarget=null;this.lastLive=null;
     const moving=this.lastMovingServos; this.lastMovingServos=[];
     this.armed = false; this.generation++; this.route?.stop();
@@ -306,6 +344,7 @@ export class TeacherRobotControl {
   report() {
     return {format: 'nexarm-teacher-control-session', schemaVersion: 1, capturedAt: new Date().toISOString(),
       home: [...TEACHER_HOME], latest: this.positions ? [...this.positions] : null,
+      program:this.program?{...this.program,steps:this.program.steps.map(step=>({...step})),profile:classroomProfile(this.program.profile)}:null,
       operations: [...this.history, ...(this.route ? [{operation: this.operation, result: this.route.report()}] : [])],
       manualPositioning: this.manual.report()};
   }

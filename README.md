@@ -7,10 +7,14 @@ The root `index.html` is the working **Connection Lab v0.6.1** prototype. It
 supports teacher-tested USB communication and small individual-servo commands;
 it is not a student-ready safety-controlled programming environment.
 
-The separate `app/` entry now contains a simulation-only development preview:
+The separate `app/` entry now contains a classroom programming development preview:
 six virtual joints, an animated arm illustration, a Blockly repeat-loop lesson,
-manual simulation jogging, Stop, and Reset Simulation. It has no USB connection
-or live movement capability. A separate teacher page provides read-only USB
+manual simulation jogging, Stop, and Reset Simulation. Simulation is the default
+and does not request USB. Station robot mode runs the same bounded Blockly
+programs through the shared motion controller after station ranges are configured
+and the session is connected/enabled. Students can edit and rerun without teacher
+approval for each program. Follow [the classroom testing guide](docs/CLASSROOM_PROGRAMMING.md).
+A separate setup page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from the footer.
 That page links to direct teacher controls at `/mapping.html`: reusable +/-20
 buttons on every servo and a slow return to the teacher-requested Home

@@ -17,3 +17,4 @@
 .teacher-control .actions{position:static}
 
 .teacher-control input[type=range]{padding:0;width:100%;height:36px;accent-color:#086b73}.servo-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}.servo-fields label{font-size:.8rem}.servo-fields input{margin-top:4px;padding:6px}.teacher-control .joint-grid{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:650px){.teacher-control .joint-grid{grid-template-columns:1fr}}
+.classroom-connection{margin-bottom:24px}.classroom-connection details{margin-top:16px}.classroom-connection .joint-card{font-size:.85rem}.classroom-connection .joint-card input{margin-top:6px}.classroom-connection #station-speed{max-width:160px;margin-left:8px}

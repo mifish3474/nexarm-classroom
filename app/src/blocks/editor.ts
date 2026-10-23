@@ -7,10 +7,10 @@ for (const [key, value] of Object.entries(English)) if (typeof value === 'string
 Blockly.setLocale(messages);
 Blockly.defineBlocksWithJsonArray([
   { type: 'lesson_start', message0: 'When Run clicked', nextStatement: null, colour: 175, tooltip: 'The program begins here.' },
-  { type: 'lesson_move', message0: 'move virtual joint %1 to %2', args0: [
+  { type: 'lesson_move', message0: 'move joint %1 to %2', args0: [
     { type: 'field_dropdown', name: 'SERVO', options: ['1','2','3','4','5','6'].map(id => [id, id]) },
     { type: 'field_number', name: 'TARGET', value: 2128, min: 0, max: 4095, precision: 1 },
-  ], previousStatement: null, nextStatement: null, colour: 205, tooltip: 'Simulated raw target only; these are not physical safety limits.' },
+  ], previousStatement: null, nextStatement: null, colour: 205, tooltip: 'Raw target. Robot mode enforces the station movement limits.' },
   { type: 'lesson_repeat', message0: 'repeat %1 times', args0: [{ type: 'field_number', name: 'COUNT', value: 2, min: 1, max: 20, precision: 1 }], message1: 'do %1', args1: [{ type: 'input_statement', name: 'BODY' }], previousStatement: null, nextStatement: null, colour: 35, tooltip: 'Run the blocks inside this loop the specified number of times.' },
 ]);
 
@@ -38,6 +38,13 @@ export function createEditor(container: HTMLElement) {
     workspace.getTopBlocks(false)[0]?.setDeletable(false);
   };
   lesson();
+  const teacherLesson=()=>{
+    workspace.clear();
+    Blockly.serialization.workspaces.load({blocks:{languageVersion:0,blocks:[{
+      type:'lesson_start',x:20,y:24,next:{block:{type:'lesson_move',fields:{SERVO:'1',TARGET:2130},next:{block:{type:'lesson_move',fields:{SERVO:'1',TARGET:2050}}}}},
+    }]}},workspace);
+    workspace.getTopBlocks(false)[0]?.setDeletable(false);
+  };
   new ResizeObserver(() => Blockly.svgResize(workspace)).observe(container);
 
   const compile = (): Instruction[] => {
@@ -57,5 +64,5 @@ export function createEditor(container: HTMLElement) {
     };
     return chain(roots[0]!.getNextBlock(), 0);
   };
-  return { workspace, compile, lesson, highlight: (id: string | null) => workspace.highlightBlock(id) };
+  return { workspace, compile, lesson, teacherLesson, highlight: (id: string | null) => workspace.highlightBlock(id) };
 }

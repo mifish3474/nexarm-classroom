@@ -67,6 +67,47 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ const station=()=>({schemaVersion:1,limits:TEACHER_HOME.map(value=>({min:value-300,max:value+300})),speed:600,acceleration:10});
+ const program=[{kind:'move',blockId:'out',servo:1,target:2130},{kind:'repeat',blockId:'repeat',count:2,body:[{kind:'move',blockId:'up',servo:3,target:2180},{kind:'move',blockId:'down',servo:3,target:2100}]},{kind:'move',blockId:'back',servo:1,target:2050}];
+ it('runs an edited Blockly sequence twice under one enable without teacher approvals',async()=>{
+ const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);
+ for(let run=0;run<2;run++){
+   f.control.runProgram(program,station());await flush();const start=f.time();let applied=f.writes.length-1;
+   expect(()=>f.control.jog(2,20)).toThrow('Program');expect(()=>f.control.liveJoint(1,2200)).toThrow('Stop the program');
+   expect(()=>f.control.returnHome()).toThrow('Program');expect(()=>f.control.runProgram(program,station())).toThrow('Program');
+   for(let at=start+100;at<=start+5000&&f.control.snapshot().program?.phase==='Running';at+=100){
+     if(f.writes.length>applied){const b=f.writes.at(-1)!.bytes;pose[b[2]!-1]=b[7]!+256*b[8]!;applied=f.writes.length;}
+     await f.feed(at,pose);f.control.tick();await flush();
+   }
+   expect(f.control.snapshot().program).toMatchObject({phase:'Completed',completed:6,total:6});expect(f.control.snapshot().armed).toBe(true);
+   await f.feed(f.time()+500,pose);
+ }
+ expect(f.writes).toHaveLength(12);f.control.disconnect();await flush();
+ });
+ it('rejects missing station limits, invalid blocks and out-of-range targets before any program write',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);
+ expect(()=>f.control.runProgram(program,null)).toThrow('station');
+ expect(()=>f.control.runProgram([{kind:'serialWrite',blockId:'x'}],station())).toThrow();
+ expect(()=>f.control.runProgram([{kind:'move',blockId:'x',servo:2,target:4095}],station())).toThrow('station range');
+ expect(f.writes).toEqual([]);expect(f.control.snapshot().armed).toBe(true);f.control.disconnect();await flush();
+ });
+ it('freezes station limits and cancels all remaining program steps on an excursion',async()=>{
+ const f=fixture(),profile=station(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);f.control.runProgram(program,profile);await flush();
+ profile.limits[1]!.max=4095;pose[1]!+=301;await f.feed(1200,pose);
+ expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().armed).toBe(false);
+ await f.feed(1800);f.control.tick();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it('Stop cancels the program, holds the active joint and requires no teacher to re-enable',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program,station());await flush();f.control.stop();await flush();
+ expect(f.control.snapshot().program?.phase).toBe('Stopped');expect(f.writes).toHaveLength(2);
+ await f.feed(1700);f.control.tick();expect(f.writes).toHaveLength(2);f.control.enable(true);f.control.runProgram(program,station());await flush();expect(f.writes).toHaveLength(3);f.control.disconnect();await flush();
+ });
+ it('enforces the total run budget and cannot resume after an interrupted write',async()=>{
+ const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program,station());await flush();f.setTime(61100);f.control.tick();
+ expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().message).toContain('60-second');f.control.disconnect();await flush();
+ const g=fixture({hang:true});await g.ready();g.control.enable(true);g.control.runProgram(program,station());await flush();g.control.stop();g.finish();await flush();await g.feed(1700);g.control.tick();
+ expect(g.writes).toHaveLength(1);expect(g.control.snapshot().program?.phase).toBe('Stopped');g.control.disconnect();await flush();
+ });
  it('allows rapid slider reversal within dispatched targets but not an overwritten pending target',async()=>{
  const f=fixture(),pose=[...TEACHER_HOME];pose[0]=2078;await f.ready(pose);f.control.enable(true);
  f.control.liveJoint(1,2500);await flush();

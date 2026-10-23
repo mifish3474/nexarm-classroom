@@ -1,5 +1,12 @@
 # NexArm Classroom architecture and implementation outline
 
+Classroom workflow clarification (2026-10-23): students must iterate independently
+across 10–20 robot stations. Station limits are configured once; students Connect
+and Enable per session, then edit/run without teacher approval of each program.
+Historical references below to teacher approval do not introduce a per-run
+classroom approval queue. See IMPLEMENTATION_NOTES.md and CLASSROOM_PROGRAMMING.md
+for the implemented workflow and current development limits.
+
 Date: 2026-10-22  
 Status: Proposed implementation design; no new hardware movement authorized  
 Baseline: Working Connection Lab v0.6.1, commit `8d4f110`

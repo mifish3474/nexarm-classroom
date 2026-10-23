@@ -11,16 +11,21 @@
   <main class="shell">
     <header class="masthead">
       <div><p class="eyebrow">MRFISH.APP / CODING &amp; ROBOTICS</p><h1>NexArm Classroom</h1><p class="app-version" data-app-version>Version %APP_VERSION%</p></div>
-      <span class="mode">Learn / Simulate</span>
+      <span class="mode" id="mode-label">Learn / Simulate</span>
     </header>
     <section class="intro"><p class="eyebrow">SIMULATION LAB · FIRST DEVELOPMENT PREVIEW</p>
-      <h2>Predict. Run. Observe.</h2><p>Explore six virtual joints. This preview works entirely in your browser and has no robot connection.</p>
+      <h2>Predict. Run. Observe.</h2><p>Build a program, try it in simulation, or run it on your station's robot. Everything stays in this browser. Simulation is the default.</p>
+    </section>
+    <section class="panel classroom-connection"><label for="execution-mode">Run destination</label> <select id="execution-mode"><option value="simulation">Simulation</option><option value="robot">Station robot</option></select>
+      <div id="robot-controls" hidden><p>Use this station's assigned robot and keep its sweep and gripper clear. Connect reads positions without moving. The physical power cutoff must be within reach.</p><div class="actions"><button id="robot-connect">Connect robot</button><button id="robot-disconnect" class="secondary" disabled>Disconnect robot</button></div><label class="connection-confirm"><input type="checkbox" id="robot-clearance"> This is the station's assigned robot and the robot area is clear.</label><button id="robot-enable" disabled>Enable robot</button><p id="robot-status" role="status">Disconnected.</p>
+      <details><summary>Station setup: movement limits</summary><p>Set these once for this robot and its workspace. Enter tested minimum and maximum raw values for each joint. The encoder range 0–4095 is not a mechanical safety range, and these limits do not detect collisions. Students can then run and edit programs without per-run teacher approval.</p><div id="station-limits" class="joint-grid"></div><label>Program speed (1–600)<input id="station-speed" type="number" min="1" max="600" step="1" value="600" required></label><p>Program acceleration is 10. Runs are limited to 100 movements and 60 seconds.</p><div class="actions"><button id="station-save" class="secondary">Save station setup</button><button id="station-clear" class="secondary">Clear station setup</button></div><p id="station-status" role="status"></p><a href="./mapping.html">Robot setup controls: sliders, Home, release and restore</a></details></div>
     </section>
     <div class="layout">
       <section class="panel program" aria-labelledby="program-heading">
         <p class="eyebrow">01 / BUILD A PATTERN</p><h2 id="program-heading">Make it repeat</h2>
         <p>The starter repeats an elbow movement twice. Predict what changes if you set repeat to 3. Change it, run, and compare.</p>
         <div class="actions"><button id="run">Run program</button><button id="stop" class="stop" disabled>Stop</button><button id="lesson" class="secondary">Reload lesson</button></div>
+        <button id="practice-lesson" class="secondary">Load short practice program</button>
         <div id="blockly-editor" aria-label="Blockly program workspace"></div>
         <p id="run-status" role="status">Ready to simulate.</p>
         <details><summary>Program steps and keyboard editing</summary><p class="note">Edit the same program using number fields below. Drag blocks in the workspace to change its structure. Reload lesson restores the starter.</p><div id="keyboard-fields"></div><ol id="instructions"></ol></details>
@@ -28,7 +33,7 @@
       </section>
       <section class="panel" aria-labelledby="robot-heading">
         <div class="panel-heading"><div><p class="eyebrow">02 / OBSERVE THE STATE</p><h2 id="robot-heading">Your virtual robot</h2></div><span id="state" class="badge">Idle</span></div>
-        <p>These are simulated raw values, not calibrated angles or physical safety limits. The preview does not model collisions.</p>
+        <p>These are raw joint values, not calibrated angles. The illustration does not model collisions or certify a physical path.</p>
         <div id="arm-illustration" class="arm-illustration"></div>
         <p class="note">Illustration only · J1–J6 mapping, lengths, and motion are for learning, not a measured NexArm model.</p>
         <div id="joints" class="joint-grid"></div>
@@ -36,7 +41,7 @@
         <p class="note">Reset affects only the virtual robot. Nothing is sent over USB.</p>
       </section>
     </div>
-    <footer>Development preview %APP_VERSION% · No accounts or uploads · Changes are not saved when you reload. <a href="./commissioning.html">Teacher: read-only reference inspection</a></footer>
+    <footer>Development preview %APP_VERSION% · No accounts or uploads · Programs are not saved yet; station limits are stored in this browser. <a href="./commissioning.html">Read-only reference inspection</a></footer>
   </main>
   <script type="module" src="/src/main.ts"></script>
 </body>
