@@ -23,7 +23,7 @@ export class ProgramRunner {
           if (!data || typeof data !== 'object') throw new Error('Invalid interpreter response.');
           if (typeof data.error === 'string') throw new Error(data.error);
           if (!Array.isArray(data.steps)) throw new Error('Invalid interpreter plan.');
-          const plan = interpret(data.steps.map(step => ({ ...step, kind: 'move' })));
+          const plan = interpret(data.steps.map(step => ({ ...step, kind: step.kind??'move' })));
           finish(); resolve(plan);
         } catch (error) { finish(); reject(error); }
       };

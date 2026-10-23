@@ -8,22 +8,27 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   const storage={getItem:(key:string)=>localStorage.getItem(key),setItem:(key:string,value:string)=>localStorage.setItem(key,value)};
   const saved=new NamedPositions(storage);
   let error='',live=false,preparing=false,previousConnection='Disconnected';
+  const moveButtons:HTMLButtonElement[]=[];
   function drawSaved(){
-    const list=node('saved-positions');list.replaceChildren();
+    const list=node('saved-positions');list.replaceChildren();moveButtons.length=0;
     for(const pose of saved.list()){
       const row=document.createElement('li'),label=document.createElement('strong'),values=document.createElement('p'),remove=document.createElement('button');
       label.textContent=pose.name;values.textContent=pose.positions.map((value,i)=>`S${i+1}: ${value}`).join(' · ');
       remove.textContent='Delete';remove.className='secondary';remove.setAttribute('aria-label',`Delete position ${pose.name}`);
-      remove.onclick=()=>act(()=>{saved.remove(pose.id);drawSaved();});row.append(label,values,remove);list.append(row);
+      const move=document.createElement('button');move.textContent='Move to position';move.setAttribute('aria-label',`Move to position ${pose.name}`);
+      move.onclick=()=>act(()=>{const control=getControl();if(!control)throw Error('Connect and enable the robot.');control.moveToPosition(pose.positions);});moveButtons.push(move);
+      remove.onclick=()=>act(()=>{saved.remove(pose.id);drawSaved();});row.append(label,values,move,remove);list.append(row);
     }
     const count=saved.list().length;
     node('pose-storage-status').textContent=`${count}/32 positions. ${count===32?'Export or delete an old position to record another. ':''}${saved.message}`;
     node<HTMLButtonElement>('pose-export').disabled=saved.list().length===0;
+    document.dispatchEvent(new Event('named-positions-changed'));
   }
   function act(action:()=>void){error='';try{action();}catch(caught){error=caught instanceof Error?caught.message:'Action could not complete.';}refresh(live,preparing);}
   function refresh(robotMode:boolean,isPreparing:boolean){
     live=robotMode;preparing=isPreparing;node('teach-panel').hidden=!live;
     const state=getControl()?.snapshot();
+    moveButtons.forEach(button=>{button.disabled=isPreparing||!state?.canMove;button.title=state?.reason??'Move all needed joints together at speed 600, acceleration 10.';});
     if(state&&state.manualPhase!=='Normal')node<HTMLDetailsElement>('teach-details').open=true;
     if(previousConnection==='Listening'&&state?.connectionState!=='Listening'){support.checked=false;held.checked=false;}
     previousConnection=state?.connectionState??'Disconnected';
@@ -51,5 +56,5 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     link.href=url;link.download='nexarm-named-positions.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
   support.onchange=held.onchange=name.oninput=()=>refresh(live,preparing);
-  drawSaved();return {refresh};
+  drawSaved();return {refresh,list:()=>saved.list()};
 }

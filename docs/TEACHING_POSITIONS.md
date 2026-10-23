@@ -1,6 +1,6 @@
-# Teach a position: dev.25
+# Teach and use a position: dev.26
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.25**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.26**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
 
 1. Secure the base, empty the gripper, clear pinch areas, and keep the physical
@@ -34,7 +34,36 @@ message says **Memory only**; export before reloading or closing. Individual
 Delete and Clear saved positions affect only pose records. Import is not yet
 implemented, so keep exported backups for the later import feature.
 
-This version records poses; it has no move-to-pose button or Blockly pose block.
-A recorded endpoint does not establish a collision-free route to that endpoint.
+To test one saved position, restore/confirm holding and Enable, check the full
+movement sweep, then click **Move to position** beside that position. All needed
+joints receive targets together at speed 600 / acceleration 10, using the same
+executor as Home. Wait for completion and inspect the measured values. Joints
+have independent arrival times. An already reached pose sends no command.
+Use Stop to cancel and attempt holds at the latest measured positions.
+
+To connect positions in code:
+
+1. Click **New empty program**. This removes the starter's movements.
+2. Choose a name in **Saved position for new block**, then **Add position block**.
+3. Click **Add wait block** for a one-second pause. Edit its seconds in Blockly
+   or under **Program steps and keyboard editing** (0–10 seconds).
+4. Choose a second position and add another position block. For example:
+   `Pickup → wait 1 second → Dropoff → wait 1 second → Pickup`.
+5. Drag blocks to change their order or place the sequence inside Repeat.
+   Each position block's dropdown can select a different saved position.
+6. Try Simulation first; its illustration shows joint targets, not calibrated
+   robot geometry. For hardware, select Station robot, Connect/Enable if needed,
+   inspect the starting pose and combined sweep, then Run program.
+7. Every move waits for all commanded joints to settle before the next block.
+   Test Stop during a short sequence; later blocks must not run. Inspect the arm
+   before enabling and running again. Successful runs retain the session enable.
+
+A missing/deleted position blocks Run until its block selects a valid position.
+Each run copies its targets; editing or deleting records cannot change an active
+run. Programs are limited to 100 expanded steps (including waits) and 60 seconds.
+Programs are lost on reload even though their saved positions persist locally.
+
+Playback connects endpoints; it does not reproduce the path used while moving
+the arm by hand. A recorded endpoint does not establish a collision-free route.
 The workflow is available for development testing. Student release still requires
 validated support/pinch-zone training and protected motion policy in ROADMAP.md.

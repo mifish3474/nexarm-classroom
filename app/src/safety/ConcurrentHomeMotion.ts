@@ -11,10 +11,10 @@ export class ConcurrentHomeMotion {
   private latest:readonly number[];
   private dispatched=false;
   private failure: {message:string;positions:number[]}|null=null;
-  constructor(private readonly before:readonly number[],at:number,private readonly plan:ReturnType<typeof smoothPlan>){
+  constructor(private readonly before:readonly number[],at:number,private readonly plan:ReturnType<typeof smoothPlan>,private readonly label='Home'){
     this.before=[...before];this.latest=[...before];this.steps=plan.steps.map(step=>({...step}));
     this.joints=this.steps.map(step=>new SmoothTeacherMotion(before,at,{...plan,steps:[step]},null,true));
-    if(!this.steps.length){this.phase='Complete';this.message='Already within Home tolerance.';}
+    if(!this.steps.length){this.phase='Complete';this.message=`Already within ${label} tolerance.`;}
   }
   get speed(){return this.plan.speed;}
   get acceleration(){return this.plan.acceleration;}
@@ -28,7 +28,7 @@ export class ConcurrentHomeMotion {
     this.checkDeadline(at);
     if(this.phase!=='Running'||this.dispatched)return null;
     const steps=this.joints.map(joint=>joint.next(at));
-    if(steps.some(step=>!step)){this.fail('Home group could not prepare all joint targets.');return null;}
+    if(steps.some(step=>!step)){this.fail(`${this.label} group could not prepare all joint targets.`);return null;}
     this.dispatched=true;return this.steps;
   }
   written(at:number){if(this.phase==='Running')this.joints.forEach(joint=>joint.written(at));}
@@ -39,13 +39,13 @@ export class ConcurrentHomeMotion {
     for(let i=0;i<6;i++){
       const step=this.steps.find(step=>step.servo===i+1),from=this.before[i]!,target=step?.target??from;
       if(positions[i]!<Math.min(from,target)-MOTION_DEVIATION_MARGIN||positions[i]!>Math.max(from,target)+MOTION_DEVIATION_MARGIN){
-        this.fail(`Home servo ${i+1} reported ${positions[i]} outside its commanded path from ${from} to ${target} (${MOTION_DEVIATION_MARGIN}-unit margin).`);return;
+        this.fail(`${this.label} servo ${i+1} reported ${positions[i]} outside its commanded path from ${from} to ${target} (${MOTION_DEVIATION_MARGIN}-unit margin).`);return;
       }
     }
     for(const joint of this.joints){joint.observe(positions,at);if(joint.phase==='Fault'){this.fail(joint.message);return;}}
     if(this.joints.every(joint=>joint.phase==='Complete')){
-      if(positions.some((value,i)=>Math.abs(value-this.plan.target[i]!)>12)){this.fail('Final pose differs from the requested Home pose.');return;}
-      this.phase='Complete';this.message='All Home joints settled.';
+      if(positions.some((value,i)=>Math.abs(value-this.plan.target[i]!)>12)){this.fail(`Final pose differs from the requested ${this.label} pose.`);return;}
+      this.phase='Complete';this.message=`All ${this.label} joints settled.`;
     }
   }
   checkDeadline(at:number){
@@ -65,7 +65,7 @@ export class ConcurrentHomeMotion {
       completedWaypoints:statuses.filter(status=>status.phase==='Complete').length,totalSteps:this.steps.length,
       next:waiting?.next??null,command:waiting?.command??commands[0]??null,commands};
   }
-  report(){return {...this.status(),mode:'concurrent-home',before:[...this.before],latest:[...this.latest],target:[...this.plan.target],
+  report(){return {...this.status(),mode:this.label==='Home'?'concurrent-home':'concurrent-position',before:[...this.before],latest:[...this.latest],target:[...this.plan.target],
     steps:this.steps.map(step=>({...step})),joints:this.joints.map(joint=>joint.report()),
     failure:this.failure?{...this.failure,positions:[...this.failure.positions]}:null};}
 }

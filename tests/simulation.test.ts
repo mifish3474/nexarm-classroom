@@ -4,6 +4,17 @@ import { EXAMPLE, RobotSimulator } from '../app/src/simulation/RobotSimulator';
 describe('simulation operation ownership', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+  it('moves pose joints together, freezes targets and observes the full wait before the next move',()=>{
+    const simulator=new RobotSimulator(),positions=[2068,2068,2068,2068,2068,2068];
+    simulator.run([{kind:'pose',positionId:'p',name:'Pickup',positions},{kind:'wait',durationMs:1000},{servo:1,target:2088}]);positions.fill(0);
+    vi.advanceTimersByTime(160);expect(simulator.snapshot().positions).toEqual(Array(6).fill(2068));
+    vi.advanceTimersByTime(960);expect(simulator.snapshot().positions).toEqual(Array(6).fill(2068));
+    vi.runAllTimers();expect(simulator.snapshot().positions).toEqual([2088,2068,2068,2068,2068,2068]);
+  });
+  it('Stop during a wait cancels later pose movement',()=>{
+    const simulator=new RobotSimulator();simulator.run([{kind:'wait',durationMs:1000},{kind:'pose',positionId:'p',name:'P',positions:Array(6).fill(2100)}]);
+    vi.advanceTimersByTime(500);simulator.stop();vi.runAllTimers();expect(simulator.snapshot().positions).toEqual(Array(6).fill(2048));
+  });
 
   it('runs the bounded example deterministically without hardware', () => {
     const simulator = new RobotSimulator();

@@ -1,15 +1,17 @@
-# Programming development test: dev.25
+# Programming development test: dev.26
 
 The user confirms Blockly motion is working after identifying the selected J3
 block. Diagnostic export remains available for unexpected behavior. To release,
 physically position, and name a measured pose, see [Teach a position](./TEACHING_POSITIONS.md).
+That guide also covers Move to position and Blockly sequences of saved positions
+with Wait and Repeat. Start with New empty program when using only saved poses.
 
 Station limits are deferred for this development stage. There is no station
 setup requirement, student-editable limit panel, or per-program teacher approval.
 Protected limits are a required [student-release roadmap item](./ROADMAP.md).
 The current build is for development hardware testing.
 
-1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.25**.
+1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.26**.
 2. Build or edit a program. Choose **Simulation** for practice without USB, or
    **Station robot** for hardware testing. Simulation remains the default.
 3. In robot mode, click **Connect robot**, check the assigned robot / clear-area
@@ -23,7 +25,7 @@ The current build is for development hardware testing.
    settled feedback between steps. Successful runs leave the robot enabled so
    you can edit and Run again. There are no saved-limit checks in this build.
 6. Test **Stop** during a run. It cancels subsequent blocks and attempts a hold
-   at the active joint's measured position. It remains available after a fault
+   at every commanded joint's measured position. It remains available after a fault
    while USB is connected. Inspect the result, recheck clearance and Enable to
    continue. There is no automatic return or retry. Software Stop is not a
    certified emergency stop.
@@ -32,7 +34,7 @@ The current build is for development hardware testing.
 
 Input validation still checks joints 1–6, finite whole-number raw targets within
 0–4095, repeat expansion, and program size. That range is an encoding constraint,
-not a measured mechanical limit. A live run is capped at 100 movements and 60
+not a measured mechanical limit. A live run is capped at 100 steps (including waits) and 60
 seconds; existing feedback, path/deviation, settling and write checks remain.
 
 If holding is unverified, use the separate setup controls to restore/confirm it.

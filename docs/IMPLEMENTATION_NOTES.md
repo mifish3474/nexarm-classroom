@@ -1,6 +1,48 @@
-# Classroom programming development preview 0.7.0-dev.25
+# Classroom programming development preview 0.7.0-dev.26
 
-## Current update: hand-positioned named pose recording
+## Current update: saved-position motion and Blockly sequences
+
+Saved positions now have a Move to position button. This reuses the concurrent
+Home executor at speed 600 / acceleration 10: one batch of individual servo
+targets, independent settling supervision, no automatic retries or correction
+loop. Needed joints start together; their arrival times are not synchronized.
+Holding confirmation, session Enable, fresh readings and exclusive motion/writer
+ownership remain required. Already reached positions send no command. Stop
+attempts fresh holds for all commanded joints and cancels subsequent blocks.
+
+Blockly now supports Move to saved position and Wait (0–10 seconds), alongside
+joint moves and Repeat. New empty program and accessible append buttons support
+building a sequence without retaining the starter's movements. Position dropdowns
+use stable local IDs; compilation rejects missing/deleted references before any
+write. Each Run freezes the selected six-target vectors. Deleting a saved pose
+during a run does not alter an already prepared movement. Names are text only.
+Simulation animates pose joints together and honors waits without requesting USB.
+
+The bounded interpreter and worker-response validation accept pose/wait steps;
+the live executor waits for every commanded joint to settle before a subsequent
+block, with the existing 500 ms write interval. Waits send no commands and cancel
+on Stop, mode/visibility/connection changes or stale feedback. Limits remain
+100 expanded steps (including waits), repeat count 20 and 60 seconds per run.
+
+This is endpoint replay, not recorded hand-guided trajectory playback, Cartesian
+interpolation or collision checking. The operator must check the combined sweep.
+Protected station policy and student physical procedures remain roadmap gates;
+no student-editable limits, extra approvals, accounts or network storage were added.
+Programs still do not persist across reload; positions remain in local storage
+with the existing export/delete and memory-only fallback behavior.
+
+See [teaching and replay testing](./TEACHING_POSITIONS.md). Automated USB checks
+use simulated streams; physical motion requires testing on the actual arm.
+Validation: 177 unit tests, the full 35-test browser regression, and TypeScript/
+Vite build pass. After refreshing dynamic dropdown caches and tightening the
+simulation wait budget, all 17 classroom/simulation browser tests pass again.
+Coverage includes grouped pose packets, independent settling, frozen targets,
+timed waits, Stop, stale feedback, missing-position rejection and repair, and
+running the same pose sequence in simulation and with simulated USB. Vite retains
+the existing warning about the Blockly bundle exceeding 500 kB.
+
+## Previous update: hand-positioned named pose recording (dev.25)
+
 
 The user requested release, physical positioning, then recording and naming the
 pose. The main robot page now provides Teach a position, using the same verified

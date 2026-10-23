@@ -18,7 +18,7 @@ groups will iterate independently; there will be no per-program teacher approval
   or storing an editable browser value does not provide administrator protection.
   Define robot/profile matching and checks after reconnects or hardware changes.
 - Enforce the active policy inside the shared motion gateway for every movement
-  source, including Blockly, manual movement, Home, and future saved-pose replay.
+  source, including Blockly, manual movement, Home, and saved-pose replay.
   Students still Connect/Enable per session and run independently within policy.
 - Make missing, invalid, stale, or incompatible protected policy block live
   movement in the student release. Keep simulation available. Do not reuse the
@@ -36,9 +36,11 @@ groups will iterate independently; there will be no per-program teacher approval
 ## Programming and classroom usability
 
 - Local project saving, export/import, recovery, and deletion without accounts.
-- Wait blocks, conditionals, variables, functions, and bounded virtual events.
-- Named position capture is implemented in dev.25; add Blockly pose references
-  and replay after route/policy validation. Add pose import/project portability.
+- Conditionals, variables, functions, and bounded virtual events. Wait blocks
+  are implemented in dev.26.
+- Named position capture, direct replay and Blockly pose sequences are available
+  for development testing in dev.26. Validate routes/policy and hand-positioning
+  procedures before student release. Add pose import/project portability.
 - Keyboard accessibility and classroom testing across 10–20 robot stations.
 - Measured simulation geometry and XYZ research after hardware calibration.
 

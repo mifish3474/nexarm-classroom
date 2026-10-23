@@ -18,7 +18,10 @@ The intended classroom workflow lets students edit and rerun without teacher
 approval for each program. Follow [the classroom testing guide](docs/CLASSROOM_PROGRAMMING.md).
 The main page also supports [hand-positioned named pose recording](docs/TEACHING_POSITIONS.md):
 support/release the arm, capture its measured positions, then restore/confirm holding.
-Named positions save locally with export and deletion; playback is not implemented yet.
+Named positions save locally with export and deletion. Move to position buttons
+and Blockly position blocks replay them with combined-joint motion at 600/10;
+Wait and Repeat connect them into sequences. Each move waits for settling.
+New empty program starts a sequence without the starter's joint movements.
 A separate setup page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from the footer.
 That page links to direct teacher controls at `/mapping.html`: reusable +/-20

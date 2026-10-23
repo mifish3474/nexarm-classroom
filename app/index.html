@@ -27,7 +27,7 @@
       <p id="teach-status" role="status">Connect the robot to teach a position.</p><p id="teach-readings"></p>
       <label>Position name, such as Pickup or Dropoff <input type="text" id="pose-name" maxlength="40" autocomplete="off"></label>
       <button id="pose-record" disabled>Record current position</button>
-      <p class="note">Recording saves the six current measured values without moving the arm. Named positions do not play back yet.</p>
+        <p class="note">Recording saves six measured values without moving the arm. Move to position sends all needed joints together at speed 600, acceleration 10. Check the whole sweep is clear; a saved endpoint does not establish a clear route.</p>
       <label class="connection-confirm"><input type="checkbox" id="teach-held"> I physically checked that holding is restored and the arm stays in its placed position.</label><button id="teach-confirm" disabled>Confirm holding restored</button>
       <p>Continue supporting the arm during restore. Confirm holding, then use Enable robot before running another program.</p><p id="teach-error" role="alert" hidden></p>
       <h3>Saved positions</h3><ul id="saved-positions"></ul><p id="pose-storage-status" role="status"></p><div class="actions"><button id="pose-export" class="secondary" disabled>Export saved positions</button><button id="pose-clear" class="secondary">Clear saved positions</button></div><p class="note">Names and measured positions stay in this browser. Use position labels, not student names. Export a copy before using a different browser or device.</p>
@@ -37,11 +37,13 @@
         <p class="eyebrow">01 / BUILD A PATTERN</p><h2 id="program-heading">Make it repeat</h2>
         <p>The starter repeats an elbow movement twice. Predict what changes if you set repeat to 3. Change it, run, and compare.</p>
         <div class="actions"><button id="run">Run program</button><button id="stop" class="stop" disabled>Stop</button><button id="lesson" class="secondary">Reload lesson</button></div>
-        <button id="practice-lesson" class="secondary">Load short practice program</button>
+        <div class="actions"><button id="practice-lesson" class="secondary">Load short practice program</button><button id="new-program" class="secondary">New empty program</button></div>
+        <div class="actions"><label>Saved position for new block <select id="program-position"></select></label><button id="add-position" class="secondary">Add position block</button><button id="add-wait" class="secondary">Add wait block</button></div>
+        <p class="note">These buttons append blocks to your program. Drag blocks to reorder them or place them inside Repeat.</p>
         <div id="blockly-editor" aria-label="Blockly program workspace"></div>
         <p id="run-status" role="status">Ready to simulate.</p>
         <details><summary>Program steps and keyboard editing</summary><p class="note">Edit the same program using number fields below. Drag blocks in the workspace to change its structure. Reload lesson restores the starter.</p><div id="keyboard-fields"></div><ol id="instructions"></ol></details>
-        <p class="note">Work is not saved yet. Repeat is capped at 20; programs are limited to 100 movements. Pause and other block families arrive later.</p>
+        <p class="note">Connect Move to saved position blocks to make a sequence. Add Wait or Repeat blocks as needed. Each move settles before the next block. Programs are not saved yet; repeat is capped at 20, with 100 steps and 60 seconds per run.</p>
       </section>
       <section class="panel" aria-labelledby="robot-heading">
         <div class="panel-heading"><div><p class="eyebrow">02 / OBSERVE THE STATE</p><h2 id="robot-heading">Your virtual robot</h2></div><span id="state" class="badge">Idle</span></div>

@@ -7,6 +7,16 @@ export const MOTION_DEVIATION_MARGIN=100;
 type Step={servo:number;from:number;target:number;delta:number;packet:string};
 type Command={servo:number;from:number;target:number;actual:number;error:number;elapsedMs:number;deadlineMs:number};
 export type CommandedPath={servo:number;min:number;max:number};
+export function absolutePosePlan(positions:readonly number[],targetValues:readonly number[],profile={speed:HOME_SPEED,acceleration:MOTION_ACCELERATION}){
+  for(const values of [positions,targetValues])if(values.length!==6||values.some(n=>!Number.isInteger(n)||n<0||n>4095))throw Error('Six valid positions required.');
+  const target=[...targetValues],steps:Step[]=[];
+  for(const servo of HOME_ORDER){
+    const from=positions[servo-1]!,to=target[servo-1]!;
+    const packet=encodeSpeedPosition(servo,to,profile.speed,profile.acceleration);
+    if(Math.abs(to-from)>9)steps.push({servo,from,target:to,delta:to-from,packet:[...packet].map(n=>n.toString(16).padStart(2,'0')).join(' ')});
+  }
+  return {target,steps,...profile,manual:false};
+}
 export function smoothPlan(positions:readonly number[],servo?:number,delta?:number,profile={speed:MOTION_SPEED,acceleration:MOTION_ACCELERATION}){
   if(positions.length!==6||positions.some(n=>!Number.isInteger(n)||n<0||n>4095))throw Error('Six valid positions required.');
   if(servo!==undefined&&(!Number.isInteger(servo)||servo<1||servo>6||![-20,20].includes(delta!)))throw Error('Choose a joint and +/-20.');

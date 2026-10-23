@@ -4,7 +4,7 @@ import { FrameParser, decodePositions } from '../protocol/FrameParser';
 import { encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
 import { ConcurrentHomeMotion } from './ConcurrentHomeMotion';
 import { ManualPositioning } from './ManualPositioning';
-import { SmoothTeacherMotion, smoothPlan, MOTION_SPEED, MOTION_ACCELERATION, HOME_SPEED, absoluteJointPlan } from './SmoothTeacherMotion';
+import { SmoothTeacherMotion, smoothPlan, MOTION_SPEED, MOTION_ACCELERATION, HOME_SPEED, absoluteJointPlan, absolutePosePlan } from './SmoothTeacherMotion';
 import type { CommandedPath } from './SmoothTeacherMotion';
 import {interpret} from '../runtime/instructions';
 import type {PlannedStep} from '../runtime/instructions';
@@ -12,7 +12,7 @@ import type {PlannedStep} from '../runtime/instructions';
 import { TEACHER_HOME } from './TeacherControlPlan';
 
 export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableStream<Uint8Array> | null; }
-type Operation = 'Jog' | 'Home' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
+type Operation = 'Jog' | 'Home' | 'Saved position' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
 type SliderTarget={servo:number;target:number;speed:number;acceleration:number};
 const LIVE_TARGET_DEADBAND=10;
 const PROGRAM_SPEED=600,PROGRAM_ACCELERATION=10;
@@ -48,7 +48,7 @@ export class TeacherRobotControl {
   private liveTarget:SliderTarget|null=null;
   private lastLive:SliderTarget|null=null;
   private sliderInterval=500;
-  private program:{steps:PlannedStep[];speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
+  private program:{steps:PlannedStep[];speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;waitUntil:number|null;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
   private cancelProgram(phase:'Stopped'|'Fault',message:string){if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
   runProgram(instructions:unknown){
     const reason=this.movementReason();if(reason)throw Error(reason);
@@ -56,18 +56,22 @@ export class TeacherRobotControl {
     // encoding values; protected robot-specific limits are a student-release gate.
     const steps=interpret(instructions);
     this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
-    this.program={steps,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),phase:'Running',message:'Running your program.'};
+    this.program={steps,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,phase:'Running',message:'Running your program.'};
     this.advanceProgram();this.changed();
   }
   private advanceProgram(){
     const program=this.program;if(program?.phase!=='Running'||this.route?.activeRun)return;
     if(!this.armed||this.connectionState!=='Listening'||!this.visible()){this.fault('Program canceled because the robot session changed.');return;}
     if(this.writeInFlight||this.now()-this.receivedAt>500)return;
+    if(program.waitUntil!==null){if(this.now()<program.waitUntil)return;program.waitUntil=null;program.message='Running your program.';}
     if(program.index===program.steps.length){program.phase='Completed';program.message='Program complete. Edit your blocks and run again.';this.message=program.message;return;}
     if(this.now()-this.lastCommandAt<500)return;
     try{
       const step=program.steps[program.index]!;
-      const plan=absoluteJointPlan(this.positions!,step.servo,step.target,program.speed,program.acceleration);
+      if(step.kind==='wait'){
+        this.retain();this.route=null;program.index++;program.waitUntil=this.now()+step.durationMs;program.message=`Waiting ${step.durationMs/1000} seconds.`;this.message=program.message;return;
+      }
+      const plan=step.kind==='pose'?absolutePosePlan(this.positions!,step.positions,{speed:program.speed,acceleration:program.acceleration}):absoluteJointPlan(this.positions!,step.servo,step.target,program.speed,program.acceleration);
       program.index++;this.start({...plan,manual:false},'Program');
     }catch(error){this.fault(error instanceof Error?error.message:'Program movement could not start.');}
   }
@@ -205,12 +209,18 @@ export class TeacherRobotControl {
     const reason = this.movementReason(); if (reason) throw new Error(reason);
     this.start(smoothPlan(this.positions!,undefined,undefined,{speed:HOME_SPEED,acceleration:MOTION_ACCELERATION}), 'Home');
   }
+  moveToPosition(target:readonly number[]){
+    const reason=this.movementReason();if(reason)throw Error(reason);
+    const plan=absolutePosePlan(this.positions!,target);
+    this.liveTarget=null;this.lastLive=null;this.start(plan,'Saved position');
+  }
   private start(plan: ReturnType<typeof smoothPlan>, operation: Operation,previousPath?:CommandedPath|null) {
     this.retain();
-    this.route = operation==='Home'?new ConcurrentHomeMotion(this.positions!,this.now(),plan):new SmoothTeacherMotion(this.positions!, this.now(), plan,previousPath); this.operation = operation;
+    const poseProgram=operation==='Program'&&this.program?.steps[this.program.index-1]?.kind==='pose';
+    this.route = operation==='Home'||operation==='Saved position'||poseProgram?new ConcurrentHomeMotion(this.positions!,this.now(),plan,operation==='Home'?'Home':'saved position'):new SmoothTeacherMotion(this.positions!, this.now(), plan,previousPath); this.operation = operation;
     if (this.route.phase === 'Complete') { this.message = this.route.message; this.changed(); return; }
     this.route.start(this.positions!, this.now());
-    this.message = operation === 'Home' ? 'Returning to Teacher Home with all needed joints moving together.' : operation==='Program'?'Running your Blockly program, one joint at a time.':'Jogging one joint. Wait for feedback before another click.';
+    this.message = operation === 'Home' ? 'Returning to Teacher Home with all needed joints moving together.' : operation==='Saved position'?'Moving to saved position with all needed joints together.':operation==='Program'?'Running your Blockly program. Waiting for each move to settle.':'Jogging one joint. Wait for feedback before another click.';
     this.pump(); this.changed();
   }
   private pump() {
@@ -238,7 +248,7 @@ export class TeacherRobotControl {
     if (this.route?.phase === 'Complete') {
       this.lastMovingServos=[];
 
-      this.message = this.operation === 'Home' ? 'Home reached within 9 raw units. Inspect the pose; no correction loop runs.' : this.operation==='Program'?'Program step settled.':'Jog finished.';
+      this.message = this.operation === 'Home' ? 'Home reached within 9 raw units. Inspect the pose; no correction loop runs.' : this.operation==='Saved position'?'Saved position reached within feedback tolerance.':this.operation==='Program'?'Program step settled.':'Jog finished.';
     }
     this.changed();
   }
@@ -321,7 +331,7 @@ export class TeacherRobotControl {
       this.fault('Holding write deadline exceeded. Physical holding needs confirmation.'); return;
     }
     if (this.receivedAt === -Infinity ? this.now() - this.connectedAt > 2000 : this.now() - this.receivedAt > 1500) {
-      if (this.route?.activeRun && !this.faulted) this.fault('Movement canceled after 1.5 seconds without valid feedback.'); this.changed(); return;
+      if ((this.route?.activeRun||this.program?.phase==='Running') && !this.faulted) this.fault('Movement canceled after 1.5 seconds without valid feedback.'); this.changed(); return;
     }
     // Ask the feedback supervisor to check its deadline even while a write hangs.
     if (this.route?.phase === 'Running') {
@@ -363,7 +373,7 @@ export class TeacherRobotControl {
         writes:this.writes.map(entry=>({...entry,bytes:[...entry.bytes],positions:entry.positions?[...entry.positions]:null})),
         events:this.events.map(entry=>({...entry,positions:entry.positions?[...entry.positions]:null}))},
       home: [...TEACHER_HOME], latest: this.positions ? [...this.positions] : null,
-      program:this.program?{...this.program,steps:this.program.steps.map(step=>({...step}))}:null,
+      program:this.program?{...this.program,steps:this.program.steps.map(step=>step.kind==='pose'?({...step,positions:[...step.positions]}):({...step}))}:null,
       operations: [...this.history, ...(this.route ? [{operation: this.operation, result: this.route.report()}] : [])],
       manualPositioning: this.manual.report()};
   }

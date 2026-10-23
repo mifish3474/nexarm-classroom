@@ -67,6 +67,41 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it('moves a saved pose in one batch, freezes its target and skips an already reached pose',async()=>{
+   const f=fixture(),target=TEACHER_HOME.map(n=>n+100),expected=[...target];await f.ready();
+   expect(()=>f.control.moveToPosition(target)).toThrow('Enable');f.control.enable(true);
+   expect(()=>f.control.moveToPosition([1,2])).toThrow('Six valid');expect(f.writes).toHaveLength(0);
+   f.control.moveToPosition(target);target.fill(0);await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes).toHaveLength(84);
+   for(let i=0;i<84;i+=14){const b=f.writes[0]!.bytes.slice(i,i+14);expect(b[7]!+256*b[8]!).toBe(expected[b[2]!-1]);expect(b.slice(11,13)).toEqual([88,2]);expect(b[6]).toBe(10);}
+   expect(()=>f.control.moveToPosition(expected)).toThrow('progress');
+   for(const at of [1300,1400,1500,1700])await f.feed(at,expected);
+   expect(f.control.snapshot().home?.phase).toBe('Complete');f.control.moveToPosition(expected);await flush();expect(f.writes).toHaveLength(1);
+   f.control.disconnect();await flush();
+ });
+ it('waits for all pose joints and a timed pause before dispatching the next pose block',async()=>{
+   const f=fixture(),target=TEACHER_HOME.map(n=>n+100);await f.ready();f.control.enable(true);
+   const instructions=[{kind:'pose',blockId:'p',positionId:'p',name:'Pickup',positions:target},{kind:'wait',blockId:'w',durationMs:1000},{kind:'pose',blockId:'b',positionId:'b',name:'Back',positions:[...TEACHER_HOME]}];
+   f.control.runProgram(instructions);await flush();target.fill(0);expect(f.writes[0]!.bytes).toHaveLength(84);
+   const pose=TEACHER_HOME.map(n=>n+100);pose[5]=TEACHER_HOME[5]!;
+   for(const at of [1300,1400,1500,1700]){await f.feed(at,pose);f.control.tick();await flush();}expect(f.writes).toHaveLength(1);
+   pose[5]!+=100;for(const at of [1800,1900,2000]){await f.feed(at,pose);f.control.tick();await flush();}
+   expect(f.control.snapshot().program?.message).toContain('Waiting');
+   for(let at=2100;at<3000;at+=100){await f.feed(at,pose);f.control.tick();await flush();}expect(f.writes).toHaveLength(1);
+   await f.feed(3000,pose);f.control.tick();await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes).toHaveLength(84);
+   for(const at of [3200,3300,3400,3500]){await f.feed(at);f.control.tick();await flush();}
+   expect(f.control.snapshot().program?.phase).toBe('Completed');f.control.disconnect();await flush();
+ });
+ it('Stop holds every commanded saved-pose joint and cancels subsequent blocks',async()=>{
+   const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram([{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:TEACHER_HOME.map(n=>n+300)},{kind:'move',blockId:'later',servo:1,target:2300}]);await flush();
+   await f.feed(1200,TEACHER_HOME.map(n=>n+20));f.control.stop();await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes).toHaveLength(84);
+   for(let at=1300;at<=3000;at+=100){await f.feed(at,TEACHER_HOME.map(n=>n+20));f.control.tick();await flush();}expect(f.writes).toHaveLength(2);expect(f.control.snapshot().program?.phase).toBe('Stopped');f.control.disconnect();await flush();
+ });
+ it('cancels a wait on Stop or stale feedback without sending the next pose',async()=>{
+   for(const stop of [true,false]){
+     const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram([{kind:'wait',blockId:'w',durationMs:1000},{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:TEACHER_HOME.map(n=>n+100)}]);
+     if(stop)f.control.stop();f.setTime(2800);f.control.tick();await flush();expect(f.writes).toHaveLength(0);expect(f.control.snapshot().program?.phase).toBe(stop?'Stopped':'Fault');f.control.disconnect();await flush();
+   }
+ });
  it('captures fresh hand-positioned measurements without writing and rejects stale or moving capture',async()=>{
  const f=fixture(),pose=[2070,2160,2080,2190,2010,1100];await f.ready();f.control.setHolding(false,true);await flush();await f.feed(1700,pose);
  const count=f.writes.length,recorded=f.control.capturePosition();expect(recorded).toEqual(pose);recorded[0]=0;expect(f.control.snapshot().positions).toEqual(pose);expect(f.writes).toHaveLength(count);

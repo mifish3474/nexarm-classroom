@@ -22,6 +22,41 @@ async function enable(page:Page){
 async function connect(page:Page){
  await page.locator('#execution-mode').selectOption('robot');await page.getByRole('button',{name:'Connect robot',exact:true}).click();await page.clock.runFor(1200);
 }
+async function seedPositions(page:Page){
+ await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[
+   {id:'pickup',name:'Pickup',positions:[2130,2230,2180,2280,2080,1160],capturedAt:'2026-10-23T00:00:00Z'},
+   {id:'home',name:'Home',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}
+ ]})));
+}
+test('saved pose buttons move a batch only after Enable and wait for measured settling',async({page})=>{
+ await seedPositions(page);await station(page);await connect(page);await page.getByText('Release, record, and restore',{exact:true}).click();
+ const move=page.getByRole('button',{name:'Move to position Pickup',exact:true});await expect(move).toBeDisabled();await enable(page);await move.click();await page.clock.runFor(100);
+ await expect(move).toBeDisabled();await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();
+ expect(await writes(page)).toHaveLength(1);expect((await writes(page))[0]).toHaveLength(84);await page.clock.runFor(1000);
+ await expect(page.locator('#state')).toHaveText('Complete');await expect(move).toBeEnabled();
+ expect(await page.locator('.joint-card strong').allTextContents()).toEqual(['2130','2230','2180','2280','2080','1160']);
+ await page.getByRole('button',{name:'Move to position Home',exact:true}).click();await page.clock.runFor(1000);await expect(page.locator('#state')).toHaveText('Complete');expect(await writes(page)).toHaveLength(2);
+ await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
+test('Blockly chains named positions and a wait, runs in simulation and on hardware without extra enable',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));await seedPositions(page);await station(page);
+ await page.getByRole('button',{name:'New empty program',exact:true}).click();await page.locator('#program-position').selectOption('pickup');await page.getByRole('button',{name:'Add position block',exact:true}).click();
+ await page.getByRole('button',{name:'Add wait block',exact:true}).click();await page.locator('#program-position').selectOption('home');await page.getByRole('button',{name:'Add position block',exact:true}).click();
+ await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(22000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(0);
+ await connect(page);await enable(page);await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(700);
+ expect(await writes(page)).toHaveLength(1);await expect(page.locator('#run-status')).toContainText('Waiting');await page.clock.runFor(600);expect(await writes(page)).toHaveLength(1);
+ await page.clock.runFor(1600);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);
+ for(const command of await writes(page)){expect(command).toHaveLength(84);expect(command.slice(6,7)).toEqual([10]);expect(command.slice(11,13)).toEqual([88,2]);}
+ await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(3000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(4);expect(errors).toEqual([]);
+ await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
+test('a deleted position blocks compilation without sending commands',async({page})=>{
+ await seedPositions(page);await station(page);await connect(page);await enable(page);await page.getByRole('button',{name:'New empty program',exact:true}).click();
+ await page.locator('#program-position').selectOption('pickup');await page.getByRole('button',{name:'Add position block',exact:true}).click();await page.getByText('Release, record, and restore',{exact:true}).click();await page.getByRole('button',{name:'Delete position Pickup',exact:true}).click();
+ await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('saved position is missing');expect(await writes(page)).toHaveLength(0);
+ await page.getByText('Program steps and keyboard editing',{exact:true}).click();await page.locator('#keyboard-fields select').selectOption('home');await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(0);
+ await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+});
 test('students edit and rerun Blockly programs without another enable or teacher approval',async({page})=>{
  const errors:string[]=[],requests:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
  await station(page);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);
