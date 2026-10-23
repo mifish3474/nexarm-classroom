@@ -35,11 +35,23 @@ export class TeacherRobotControl {
   private faulted = false;
   private message = 'Connect to read positions, then enable robot controls.';
   private writeInFlight = false;
+  private writeUncertain=false;
   private pending: Promise<void> | null = null;
   private lastCommandAt = -Infinity;
   private generation = 0;
   private writeStartedAt=-Infinity;
   private lastMovingServos:number[]=[];
+  private readySamples:{at:number;positions:number[]}[]=[];
+  private updateDirectSession(){
+    if(!this.options.directSession||this.idleReason()!==null||this.readySamples.length!==3||!this.positions)return;
+    const samples=this.readySamples;
+    if(samples[2]!.at-samples[0]!.at<150||samples[0]!.at<this.now()-1000||this.positions.some((_,i)=>Math.max(...samples.map(sample=>sample.positions[i]!))-Math.min(...samples.map(sample=>sample.positions[i]!))>9))return;
+    if(this.manual.phase==='Confirm holding'){
+      try{this.manual.finishRestoreFromFeedback(this.positions);this.message=this.manual.message;}
+      catch(error){this.fault(error instanceof Error?error.message:'Restore could not be recorded.');return;}
+    }
+    if(!this.manual.blocked&&!this.armed){this.armed=true;if(!this.faulted)this.message='Ready. Choose Run, a saved position, or a joint control. No movement starts automatically.';}
+  }
   private route: SmoothTeacherMotion | ConcurrentHomeMotion | null = null;
   private operation: Operation | null = null;
   private history: unknown[] = [];
@@ -105,13 +117,13 @@ export class TeacherRobotControl {
 
   constructor(locks: LockManager, private readonly storage: Pick<Storage, 'getItem' | 'setItem'>,
     private readonly now: () => number, private readonly visible: () => boolean,
-    private readonly changed: () => void) {
+    private readonly changed: () => void,private readonly options:{directSession?:boolean}={}) {
     this.manual = new ManualPositioning(storage);
     this.connection = new PassiveConnection((state, message) => {
       this.connectionState = state;
       this.recordEvent('connection',`${state}: ${message}`);
       if (state === 'Listening') {
-        this.connectedAt = this.now(); this.message = 'Connected. Positions are read-only until you enable controls.';
+        this.connectedAt = this.now(); this.message = this.options.directSession?'Connected. Waiting for fresh stable position feedback.':'Connected. Positions are read-only until you enable controls.';
       } else {
         this.cancelProgram('Fault','Robot connection ended.');
         this.armed = false; this.liveTarget=null;this.lastLive=null; this.generation++;
@@ -127,6 +139,8 @@ export class TeacherRobotControl {
   connect(select: () => Promise<TeacherPort>) {
     if (this.connectionState !== 'Disconnected' || !this.visible()) return;
     this.manual = new ManualPositioning(this.storage);
+    this.readySamples=[];
+    this.writeUncertain=false;
     this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = false; this.route = null; this.operation = null;this.program=null;
      this.parser.reset();  this.positions = null; this.receivedAt = -Infinity;
     this.connection.connect(async () => {
@@ -139,6 +153,7 @@ export class TeacherRobotControl {
   private idleReason(): string | null {
     if (this.connectionState !== 'Listening') return 'Connect to the robot.';
     if (!this.visible()) return 'Keep this page visible.';
+    if(this.writeUncertain)return 'USB command delivery is uncertain. Disconnect and reconnect before another command.';
     if (this.writeInFlight || this.manual.pending) return 'Waiting for the current write to finish.';
     if(this.program?.phase==='Running')return 'Program is running. Stop it before using manual controls.';
     if (this.route?.activeRun) return 'Movement is in progress. Other clicks are not queued.';
@@ -147,11 +162,11 @@ export class TeacherRobotControl {
     return null;
   }
   private enableReason(): string | null {
-    if (this.manual.blocked) return 'Restore and physically confirm holding in Manual positioning below.';
+    if (this.manual.blocked) return this.options.directSession?'Servos released or restore incomplete. Use Restore servo holding, then wait for fresh stable readings.':'Restore and physically confirm holding in Manual positioning below.';
     return this.idleReason();
   }
   private movementReason(): string | null {
-    if (!this.armed) return 'Enable robot controls first.';
+    if (!this.armed) return this.options.directSession?(this.enableReason()??'Waiting for fresh stable readings before the next action.'):'Enable robot controls first.';
     return this.enableReason();
   }
   snapshot() {
@@ -165,7 +180,7 @@ export class TeacherRobotControl {
       home: this.route?.status() ?? null, operation: this.operation,
       program:this.program?{phase:this.program.phase,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'?this.program.index-1:null}:null,
       busy: this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
-      manualPhase: this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
+      manualPhase: this.options.directSession&&this.manual.phase==='Confirm holding'?'Restore settling':this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
       feedbackFresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.receivedAt<=500,
       canCapture:captureReason===null,captureReason,
       canRelease: this.manual.phase === 'Normal' && idle === null,
@@ -225,6 +240,7 @@ export class TeacherRobotControl {
   }
   private start(plan: ReturnType<typeof smoothPlan>, operation: Operation,previousPath?:CommandedPath|null) {
     for(const step of plan.steps)assertJointTarget(step.servo,step.target);
+    this.faulted=false;
     this.retain();
     const poseProgram=operation==='Program'&&this.program?.steps[this.program.index-1]?.kind==='pose';
     this.route = operation==='Home'||operation==='Saved position'||poseProgram?new ConcurrentHomeMotion(this.positions!,this.now(),plan,operation==='Home'?'Home':'saved position'):new SmoothTeacherMotion(this.positions!, this.now(), plan,previousPath); this.operation = operation;
@@ -276,6 +292,7 @@ export class TeacherRobotControl {
     } catch (error) { this.fault(error instanceof Error ? error.message : 'Holding setup could not be recorded.'); return; }
     this.write(encodeFactoryHolding(enabled), () => {
       this.manual.sent(enabled ? 'restore' : 'release', this.positions ?? []);
+      if(enabled&&this.options.directSession&&this.manual.phase==='Confirm holding')this.manual.message='Restore command sent. Waiting for fresh stable position feedback; continue supporting the arm. Physical holding is not measured.';
       this.message = this.manual.message; this.changed();
     });
   }
@@ -293,6 +310,7 @@ export class TeacherRobotControl {
       this.fault('Writer is unavailable. No command queued.'); return;
     }
     let writer: WritableStreamDefaultWriter<Uint8Array> | undefined;
+    this.readySamples=[];
     const generation = this.generation, started = this.now();
     const diagnostic:WriteDiagnostic={atMs:started,operation:this.operation,bytes:[...packet],positions:this.positions?[...this.positions]:null,finishedAtMs:null,outcome:'not-submitted'};
     this.writes=[...this.writes,diagnostic].slice(-200);
@@ -308,10 +326,10 @@ export class TeacherRobotControl {
       void this.pending.then(() => {
         diagnostic.outcome='stream-write-resolved';
         if (generation !== this.generation) return;
-        if (this.now() - started >= 2000) { this.fault('Write deadline exceeded; delivery may have occurred.'); return; }
+        if (this.now() - started >= 2000) { this.writeUncertain=true;this.fault('Write deadline exceeded; delivery may have occurred.'); return; }
         try { completed(); } catch (error) { this.fault(error instanceof Error ? error.message : 'Completion recording failed.'); }
-      }, () => { diagnostic.outcome='stream-write-rejected';if (generation === this.generation) this.fault('Write failed; delivery may have occurred. Inspect before enabling again.'); });
-    } catch { diagnostic.finishedAtMs=this.now();writer?.releaseLock(); this.writeInFlight = false; this.fault('Write could not complete. Inspect before enabling again.'); }
+      }, () => { diagnostic.outcome='stream-write-rejected';if (generation === this.generation){this.writeUncertain=true;this.fault('Write failed; delivery may have occurred. Disconnect and reconnect.');} });
+    } catch { diagnostic.finishedAtMs=this.now();writer?.releaseLock(); this.writeInFlight = false; this.writeUncertain=true;this.fault('Write could not complete. Disconnect and reconnect.'); }
     this.changed();
   }
 
@@ -328,7 +346,9 @@ export class TeacherRobotControl {
         const phase = this.route.status().phase;
         if (phase === 'Fault' || phase === 'Complete' || phase === 'Settled short') this.checkRoute();
       }
+      if(!this.writeInFlight)this.readySamples=[...this.readySamples,{at,positions:[...positions]}].slice(-3);
     }
+    this.updateDirectSession();
     this.changed();
   }
   tick() {
@@ -336,7 +356,7 @@ export class TeacherRobotControl {
     if (!this.visible()) { this.disconnect(); return; }
     if(this.program?.phase==='Running'&&this.now()-this.program.at>=60000){this.fault('Program reached its 60-second time limit. Edit it into a shorter sequence.');return;}
     if(this.now()-this.receivedAt>500)this.liveTarget=null;
-    if(this.writeInFlight && this.now()-this.writeStartedAt>=2000 && !this.faulted){this.fault('USB write did not finish within two seconds. Delivery is uncertain.');return;}
+    if(this.writeInFlight && this.now()-this.writeStartedAt>=2000 && !this.faulted){this.writeUncertain=true;this.fault('USB write did not finish within two seconds. Delivery is uncertain.');return;}
     if (this.manual.pending && this.now() - this.manual.pendingSince >= 2000) {
       this.fault('Holding write deadline exceeded. Physical holding needs confirmation.'); return;
     }
@@ -348,13 +368,14 @@ export class TeacherRobotControl {
       this.route.checkDeadline(this.now());
       if (this.route.status().phase === 'Fault') { this.fault(this.route.message); return; }
     }
-    this.flushLive();this.advanceProgram();this.pump(); this.changed();
+    this.updateDirectSession();this.flushLive();this.advanceProgram();this.pump(); this.changed();
   }
 
   private retain() {
     if (this.route) this.history = [...this.history, {operation: this.operation, at: new Date().toISOString(), result: this.route.report()}].slice(-100);
   }
   private fault(message: string) {
+    this.readySamples=[];
     this.recordEvent('fault',message);
     this.cancelProgram('Fault',message);
     const moving=this.route?.activeRun;
@@ -363,6 +384,7 @@ export class TeacherRobotControl {
     this.manual.interrupt(message, this.positions ?? []);  this.message = message+(moving?' Future targets canceled. Use Stop or the physical cutoff to intervene in the current movement.':''); this.changed();
   }
   stop() {
+    this.readySamples=[];
     this.recordEvent('stop','Stop requested. No torque-off command is requested.');
     this.cancelProgram('Stopped','Stopped. Edit your program and run again when ready.');
     this.liveTarget=null;this.lastLive=null;

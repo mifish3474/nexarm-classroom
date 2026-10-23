@@ -60,6 +60,11 @@ export class ManualPositioning {
     this.record('Operator physically confirmed holding restored', positions, false);
     this.phase = 'Normal'; this.message = 'Holding confirmed. Fresh evidence and separate movement clearance/Enable are still required.';
   }
+  finishRestoreFromFeedback(positions:readonly number[]){
+    if(this.phase!=='Confirm holding')throw Error('Send Restore holding before completing restore.');
+    this.record('Restore write completed and fresh position feedback stabilized; physical torque is not measured',positions,false);
+    this.phase='Normal';this.message='Restore completed; position feedback is stable. Physical holding is not measured.';
+  }
   interrupt(reason: string, positions: readonly number[]) {
     if (this.phase === 'Normal') return;
     if (this.phase === 'Release enabled') { this.phase = 'Normal'; this.message = 'Unsent release canceled. No holding command sent.'; return; }

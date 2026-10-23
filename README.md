@@ -11,14 +11,16 @@ The separate `app/` entry now contains a classroom programming development previ
 six virtual joints, an animated arm illustration, a Blockly repeat-loop lesson,
 manual simulation jogging, Stop, and Reset Simulation. Simulation is the default
 and does not request USB. Station robot mode runs the same bounded Blockly
-programs through the shared motion controller after the session is connected/enabled.
+programs through the shared motion controller after Connect and fresh stable
+readings. There are no repeated confirmation checkboxes or Enable controls.
 Operator-provided [development operating ranges](docs/OPERATING_RANGES.md) are
 checked before live movement. Stricter protected teacher/admin student limits
 remain required before student release in [the roadmap](docs/ROADMAP.md).
 The intended classroom workflow lets students edit and rerun without teacher
 approval for each program. Follow [the classroom testing guide](docs/CLASSROOM_PROGRAMMING.md).
 The main page also supports [hand-positioned named pose recording](docs/TEACHING_POSITIONS.md):
-support/release the arm, capture its measured positions, then restore/confirm holding.
+support/release the arm, capture its measured positions, then Restore holding.
+Fresh stable feedback completes restore readiness; physical holding is not measured.
 Named positions save locally with export and deletion. Move to position buttons
 and Blockly position blocks replay them with combined-joint motion at 600/10;
 Wait and Repeat connect them into sequences. Each move waits for settling.
@@ -31,8 +33,9 @@ buttons on every servo and a slow return to the teacher-requested Home
 Home starts the needed joints together with one continuous target per joint
 (speed 600 raw units/second, acceleration 10), with individual completion feedback.
 Stop attempts holds for all commanded joints at their latest measured positions and permits
-explicit re-enabling on the same connection. Optional manual release/restore
-retains the physical-holding confirmation and durable interrupted-setup interlock.
+a new explicit action on the same connection once fresh readings stabilize.
+Manual release/restore retains the durable interrupted-setup record across reload;
+an unfinished release requires an explicit Restore, with no confirmation button.
 The earlier mapping suite and Reference A return remain at `/mapping-tests.html`,
 with their original approval history; see [the earlier scope](docs/JOINT_SUITE_AND_HOME.md).
 Project saving is not implemented yet. The arm is an illustration, not a calibrated

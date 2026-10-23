@@ -18,9 +18,8 @@ function element<T extends HTMLElement>(id:string):T{
 const simulator=new RobotSimulator(),runner=new ProgramRunner();
 const run=element<HTMLButtonElement>('run'),stop=element<HTMLButtonElement>('stop'),lesson=element<HTMLButtonElement>('lesson');
 const practice=element<HTMLButtonElement>('practice-lesson'),destination=element<HTMLSelectElement>('execution-mode');
-const clearance=element<HTMLInputElement>('robot-clearance');
 const status=element('run-status');
-let preparing=false,session=0,control:TeacherRobotControl|null=null,previouslyArmed=false,interfaceError='';
+let preparing=false,session=0,control:TeacherRobotControl|null=null,interfaceError='';
 let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
 const robotMode=()=>destination.value==='robot';
 const teaching=createTeachingPanel(()=>control);
@@ -62,26 +61,14 @@ function refresh(){
   element<HTMLButtonElement>('robot-connect').disabled=!!robot&&!robot.canConnect;
   element<HTMLButtonElement>('robot-disconnect').disabled=!robot||['Disconnected','Closing'].includes(robot.connectionState);
   element<HTMLButtonElement>('robot-diagnostics').disabled=!control;
-  if(previouslyArmed&&!robot?.armed)clearance.checked=false;previouslyArmed=!!robot?.armed;
-  const enable=element<HTMLButtonElement>('robot-enable');
-  enable.disabled=!clearance.checked||!robot?.canEnable;
-  const blockers:string[]=[];
-  if(!robot?.armed){
-    if(!clearance.checked)blockers.push('Check the assigned robot / clear-area box.');
-    if(robot?.manualPhase&&robot.manualPhase!=='Normal')blockers.push('Holding is unverified. Use Teach a position below to restore and confirm holding, or open Robot setup controls.');
-    else if(!robot)blockers.push('Connect the robot.');
-    else if(robot.enableReason)blockers.push(robot.enableReason);
-  }
-  const readiness=robot?.armed?(robot.canMove?'Robot enabled. Ready to run.':robot.reason??'Wait for the current operation to finish.'):
-    blockers.length?`To enable: ${blockers.join(' ')}`:'Ready. Click Enable robot. Enabling does not move the arm.';
+  const readiness=robot?.canMove?'Ready. Choose Run or a saved position.':robot?.reason??'Connect the robot.';
   const readinessNode=element('robot-readiness');if(readinessNode.textContent!==readiness)readinessNode.textContent=readiness;
-  enable.title=blockers.join(' ');
 
   element('robot-status').textContent=robot?`${robot.connectionState} · ${robot.armed?'Robot enabled':'Robot disabled'} · ${robot.message}`:'Disconnected.';
   const state=preparing?'Preparing':live?robot?.program?.phase??(robot?.armed?'Ready':robot?.connectionState==='Listening'?'Disabled':'Disconnected'):simulated.status;
   element('state').textContent=state;
   if(live&&robot?.operation==='Saved position')element('state').textContent=robot.home?.phase??state;
-  status.textContent=preparing?'Checking your program…':live?robot?.program?.message??'Connect and Enable this station’s robot, then Run your program.':simulated.status==='Running'?'Simulating. Watch the highlighted block and virtual arm.':simulated.status==='Completed'?'Complete. Did the result match your prediction?':simulated.status==='Stopped'?'Stopped. Pending simulation steps were canceled.':'Ready to simulate.';
+  status.textContent=preparing?'Checking your program…':live?robot?.program?.message??'Connect this station’s robot, then Run your program.':simulated.status==='Running'?'Simulating. Watch the highlighted block and virtual arm.':simulated.status==='Completed'?'Complete. Did the result match your prediction?':simulated.status==='Stopped'?'Stopped. Pending simulation steps were canceled.':'Ready to simulate.';
   if(interfaceError)status.textContent=interfaceError;
   else if(live&&robot?.operation==='Saved position')status.textContent=robot.message;
   const positions=live?robot?.positions:simulated.positions;
@@ -129,7 +116,7 @@ run.onclick=async()=>{
     if(ownSession!==session||live!==robotMode())return;
     plan=result;preparing=false;element('instructions').replaceChildren();
     rows=plan.map(step=>{const row=document.createElement('li');row.textContent=step.kind==='pose'?`Move to ${step.name}: ${step.positions.join(', ')}`:step.kind==='wait'?`Wait ${step.durationMs/1000} seconds`:`Move ${live?'robot':'virtual'} joint ${step.servo} to ${step.target}`;element('instructions').append(row);return row;});
-    if(live){if(!control)throw Error('Connect and enable the robot first.');control.runProgram(instructions);refresh();}
+    if(live){if(!control)throw Error('Connect the robot first.');control.runProgram(instructions);refresh();}
     else simulator.run(plan);
   }catch(error){if(ownSession!==session)return;preparing=false;interfaceError=error instanceof Error?error.message:'Program could not run.';refresh();}
 };
@@ -138,24 +125,22 @@ element('reset').onclick=()=>{if(robotMode()){status.textContent='Switch to Simu
 lesson.onclick=()=>{cancel(false);editor.lesson();keyboardFields();if(!robotMode())simulator.reset();};
 practice.onclick=()=>{cancel(false);editor.teacherLesson();keyboardFields();if(!robotMode())simulator.reset();};
 element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();keyboardFields();if(!robotMode())simulator.reset();};
-destination.onchange=()=>{interfaceError='';cancel();control?.disconnect();clearance.checked=false;refresh();};
+destination.onchange=()=>{interfaceError='';cancel();control?.disconnect();refresh();};
 element('robot-connect').onclick=()=>{
   try{
     if(!robotMode())return;
     const serial=(navigator as Navigator&{serial?:{requestPort():Promise<TeacherPort>}}).serial;
     if(!serial||!navigator.locks)throw Error('Robot mode needs Chrome or Edge with Web Serial on HTTPS or localhost.');
-    control??=new TeacherRobotControl(navigator.locks,localStorage,()=>performance.now(),()=>!document.hidden,refresh);
+    control??=new TeacherRobotControl(navigator.locks,localStorage,()=>performance.now(),()=>!document.hidden,refresh,{directSession:true});
     control.connect(()=>serial.requestPort());
   }catch(error){element('robot-status').textContent=error instanceof Error?error.message:'Could not connect.';}
 };
 element('robot-disconnect').onclick=()=>{cancel();control?.disconnect();refresh();};
-element('robot-enable').onclick=()=>{try{control?.enable(clearance.checked);interfaceError='';refresh();}catch(error){interfaceError=error instanceof Error?error.message:'Could not enable.';refresh();}};
 element('robot-diagnostics').onclick=()=>{
   if(!control)return;
   const data=JSON.stringify(control.report(),null,2),url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
   const link=document.createElement('a');link.href=url;link.download='nexarm-robot-diagnostics.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
-clearance.onchange=()=>{if(!clearance.checked)cancel();refresh();};
 function leave(){cancel();control?.disconnect();}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)leave();});
 window.addEventListener('pagehide',leave);window.addEventListener('error',leave);window.addEventListener('unhandledrejection',leave);

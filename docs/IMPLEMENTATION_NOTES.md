@@ -1,6 +1,49 @@
-# Classroom programming development preview 0.7.0-dev.30
+# Classroom programming development preview 0.7.0-dev.31
 
-## Current update: J2 lower endpoint 525
+## Current update: direct testing without confirmation checkboxes or Enable
+
+At the user's request, the current classroom and setup pages now use direct
+sessions: Connect, wait for fresh stable readings, then Run or use joint controls.
+The movement-clearance, support and restored-holding checkboxes, confirmation
+buttons and Enable buttons were removed. Physical support/sweep instructions
+remain visible. Release and Restore remain deliberate actions; neither is sent
+on Connect/reload. No automatic program execution or continuation was added.
+
+Direct readiness needs three fresh six-joint samples over at least 150 ms with
+at most nine units of spread per joint, idle motion/writer and a valid connection.
+Stop and movement faults cancel queued work; stable fresh feedback permits a
+new explicit action without Enable. Fault details remain visible until the next
+action. A rejected or timed-out USB write requires reconnecting because delivery
+is uncertain. A stale/hidden/disconnected session cannot send a new command.
+
+Restore completes its local interlock after its write resolves and new stable
+feedback arrives, with no physical-confirmation button. The event explicitly
+states that physical torque is not measured. An interrupted release still
+persists across reload and requires an explicit Restore; merely returning
+feedback cannot clear that state. Position ranges and recording validation remain.
+The older controller confirmation API remains available for legacy callers;
+the current pages explicitly select direct-session behavior. Archived mapping
+tests retain their original workflows.
+
+The new report shows S3 2016 → 2838 stopping at 2810 after approximately 2.07 s
+and staying there through 6.66 s; timeout was at approximately 6.79 s. Other
+joints reached within tolerance. The factory test separately shows J3 3080 →
+3060 and J4 3197 → 3083, with other joints within 2–3 units. Its J3/J4 targets
+exceed current operating bounds. See [accuracy observations](./POSITION_ACCURACY_OBSERVATIONS.md).
+These observations do not establish the cause of shortfall. No target tolerance,
+speed, acceleration, correction loop or operating range was changed here.
+
+Validation: 204 unit tests, all 38 browser tests, and TypeScript/Vite build pass.
+Coverage includes direct Connect readiness without writes, no confirmation/Enable
+DOM controls, fresh stable Restore completion, stale/unstable restore blocking,
+interrupted-release recovery across reload, Stop/new Run without re-enabling,
+timeout recovery without replaying later blocks, and uncertain USB delivery.
+The browser regression was updated for automatic readiness after reconnect.
+All automated USB streams are synthetic; physical holding is not verified by
+these checks. The existing Blockly bundle-size warning remains.
+
+## Previous update: J2 lower endpoint 525 (dev.30)
+
 
 At the operator's request, J2's operating range is now 525–2600 (previously
 1200–2600). The shared range updates live recording boxes, recording validation,

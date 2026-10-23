@@ -4,7 +4,7 @@ import {poseIssues,OPERATING_RANGES,targetIssue} from '../safety/OperatingRanges
 
 export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   const node=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
-  const support=node<HTMLInputElement>('teach-support'),held=node<HTMLInputElement>('teach-held'),name=node<HTMLInputElement>('pose-name');
+  const name=node<HTMLInputElement>('pose-name');
   // Access to storage can itself be denied; retain a usable memory-only list.
   const storage={getItem:(key:string)=>localStorage.getItem(key),setItem:(key:string,value:string)=>localStorage.setItem(key,value)};
   const saved=new NamedPositions(storage);
@@ -16,7 +16,7 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     const status=document.createElement('span');status.className='teach-reading-status';status.id=`teach-reading-status-${i+1}`;
     input.setAttribute('aria-describedby',status.id);label.append(input);box.append(label,reference,status);node('teach-readings').append(box);return {box,input,status};
   });
-  let error='',live=false,preparing=false,previousConnection='Disconnected';
+  let error='',live=false,preparing=false;
   const moveButtons:{button:HTMLButtonElement;issue:string}[]=[];
   function drawSaved(){
     const list=node('saved-positions');list.replaceChildren();moveButtons.length=0;
@@ -26,7 +26,7 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
       const issue=poseIssues(pose.positions).join(' '),warning=document.createElement('p');warning.className='note';warning.textContent=issue?`${issue} Record a replacement within range; this saved position is unchanged.`:'';warning.hidden=!issue;
       remove.textContent='Delete';remove.className='secondary';remove.setAttribute('aria-label',`Delete position ${pose.name}`);
       const move=document.createElement('button');move.textContent='Move to position';move.setAttribute('aria-label',`Move to position ${pose.name}`);
-      move.onclick=()=>act(()=>{const control=getControl();if(!control)throw Error('Connect and enable the robot.');control.moveToPosition(pose.positions);});moveButtons.push({button:move,issue});
+      move.onclick=()=>act(()=>{const control=getControl();if(!control)throw Error('Connect the robot.');control.moveToPosition(pose.positions);});moveButtons.push({button:move,issue});
       remove.onclick=()=>act(()=>{saved.remove(pose.id);drawSaved();});row.append(label,values,warning,move,remove);list.append(row);
     }
     const count=saved.list().length;
@@ -40,11 +40,8 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     const state=getControl()?.snapshot();
     moveButtons.forEach(({button,issue})=>{button.disabled=!!issue||isPreparing||!state?.canMove;button.title=issue||state?.reason||'Move all needed joints together at speed 600, acceleration 10.';});
     if(state&&state.manualPhase!=='Normal')node<HTMLDetailsElement>('teach-details').open=true;
-    if(previousConnection==='Listening'&&state?.connectionState!=='Listening'){support.checked=false;held.checked=false;}
-    previousConnection=state?.connectionState??'Disconnected';
-    node<HTMLButtonElement>('teach-release').disabled=!support.checked||isPreparing||!state?.canRelease;
-    node<HTMLButtonElement>('teach-restore').disabled=!support.checked||isPreparing||!state?.canRestore;
-    node<HTMLButtonElement>('teach-confirm').disabled=!held.checked||isPreparing||!state?.canConfirmHolding;
+    node<HTMLButtonElement>('teach-release').disabled=isPreparing||!state?.canRelease;
+    node<HTMLButtonElement>('teach-restore').disabled=isPreparing||!state?.canRestore;
     node<HTMLButtonElement>('pose-record').disabled=isPreparing||!state?.canCapture||!saved.canAdd||!name.value.trim();
     const text=state?`${state.manualPhase}: ${state.manualMessage}${state.manualReason?` ${state.manualReason}`:''}`:'Connect the robot to release holding or record measured positions.';
     if(node('teach-status').textContent!==text)node('teach-status').textContent=text;
@@ -61,9 +58,8 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     node('teach-error').textContent=error;node('teach-error').hidden=!error;
     name.disabled=isPreparing||!!state?.busy;
   }
-  node('teach-release').onclick=()=>act(()=>{held.checked=false;getControl()?.setHolding(false,support.checked);});
-  node('teach-restore').onclick=()=>act(()=>getControl()?.setHolding(true,support.checked));
-  node('teach-confirm').onclick=()=>act(()=>{getControl()?.confirmHolding(held.checked);held.checked=false;support.checked=false;});
+  node('teach-release').onclick=()=>act(()=>getControl()?.setHolding(false,true));
+  node('teach-restore').onclick=()=>act(()=>getControl()?.setHolding(true,true));
   node('pose-record').onclick=()=>act(()=>{
     const control=getControl();if(!control)throw Error('Connect to read the robot positions.');
     saved.add(name.value,control.capturePosition());name.value='';drawSaved();
@@ -73,6 +69,6 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     const url=URL.createObjectURL(new Blob([saved.export()],{type:'application/json'})),link=document.createElement('a');
     link.href=url;link.download='nexarm-named-positions.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
-  support.onchange=held.onchange=name.oninput=()=>refresh(live,preparing);
+  name.oninput=()=>refresh(live,preparing);
   drawSaved();return {refresh,list:()=>saved.list()};
 }

@@ -6,10 +6,8 @@ import { TEACHER_HOME } from './safety/TeacherControlPlan';
 import {OPERATING_RANGES,targetIssue} from './safety/OperatingRanges';
 
 const node = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const clearance = node<HTMLInputElement>('teacher-clearance'), support = node<HTMLInputElement>('teacher-support');
-const held = node<HTMLInputElement>('teacher-held');
 const serial = (navigator as Navigator & {serial?: {requestPort(): Promise<TeacherPort>}}).serial;
-let control: TeacherRobotControl | null = null, error = '', previouslyArmed = false;
+let control: TeacherRobotControl | null = null, error = '';
 const labels = ['Base', 'Shoulder', 'Elbow', 'Wrist pitch', 'Wrist roll', 'Gripper'];
 const cards = labels.map((label, i) => {
   const range=OPERATING_RANGES[i]!;
@@ -47,13 +45,10 @@ function act(action: () => void) {
 function refresh() {
   if (!control) return;
   const state = control.snapshot();
-  if (previouslyArmed && !state.armed) clearance.checked = false;
-  previouslyArmed = state.armed;
   node<HTMLButtonElement>('teacher-connect').disabled = !state.canConnect;
   node<HTMLButtonElement>('teacher-disconnect').disabled = ['Disconnected', 'Closing'].includes(state.connectionState);
-  node<HTMLButtonElement>('teacher-enable').disabled = !clearance.checked || !state.canEnable;
   node('teacher-status').textContent = `${state.connectionState} · ${state.armed ? 'Controls enabled' : 'Controls off'} · ${state.message}`;
-  node('teacher-readiness').textContent = state.armed ? state.reason ?? 'Ready for your next jog or Home return.' : state.enableReason ?? (clearance.checked ? 'Ready: Enable teacher controls.' : 'Confirm the setup, then Enable teacher controls.');
+  node('teacher-readiness').textContent = state.reason ?? 'Ready for your next joint movement or Home return.';
   node('teacher-error').textContent = error; node('teacher-error').hidden = !error;
   cards.forEach((card, i) => {
     const value = state.positions?.[i];
@@ -83,30 +78,25 @@ function refresh() {
   progress.value = state.operation === 'Home' ? state.home?.completedWaypoints ?? 0 : 0;
   const report = state.operation === 'Home' ? state.home : null;
   node('teacher-home-status').textContent = report ? `${report.phase} · ${report.completedWaypoints}/${report.totalSteps} joints settled${runningHome ? ' · Moving together' : ''}` : 'No return started.';
-  node<HTMLButtonElement>('teacher-release').disabled = !support.checked || !state.canRelease;
-  node<HTMLButtonElement>('teacher-restore').disabled = !support.checked || !state.canRestore;
-  node<HTMLButtonElement>('teacher-confirm-holding').disabled = !held.checked || !state.canConfirmHolding;
+  node<HTMLButtonElement>('teacher-release').disabled = !state.canRelease;
+  node<HTMLButtonElement>('teacher-restore').disabled = !state.canRestore;
   node('teacher-manual-status').textContent = `${state.manualPhase}: ${state.manualMessage}${state.manualReason ? ` ${state.manualReason}` : ''}`;
   if (state.manualPhase !== 'Normal') node<HTMLDetailsElement>('teacher-manual-details').open = true;
 }
 if (serial && navigator.locks) {
-  try { control = new TeacherRobotControl(navigator.locks, localStorage, () => performance.now(), () => !document.hidden, refresh); }
+  try { control = new TeacherRobotControl(navigator.locks, localStorage, () => performance.now(), () => !document.hidden, refresh,{directSession:true}); }
   catch { node('teacher-status').textContent = 'Could not initialize local holding-state storage.'; node<HTMLButtonElement>('teacher-connect').disabled = true; }
 } else {
   node('teacher-status').textContent = 'Use Chrome or Edge with Web Serial on HTTPS or localhost.';
   node<HTMLButtonElement>('teacher-connect').disabled = true;
 }
 node('teacher-connect').onclick = () => act(() => control?.connect(() => serial!.requestPort()));
-node('teacher-disconnect').onclick = () => act(() => { clearance.checked = false; control?.disconnect(); });
-node('teacher-enable').onclick = () => act(() => control?.enable(clearance.checked));
+node('teacher-disconnect').onclick = () => act(() => control?.disconnect());
 node('teacher-servo3-factory').onclick=()=>act(()=>control?.compareServo3Factory());
 node('teacher-home').onclick = () => act(() => control?.returnHome());
-node('teacher-stop').onclick = () => act(() => { clearance.checked = false; control?.stop(); });
-clearance.onchange = () => act(() => { if (!clearance.checked) control?.stop(); });
-support.onchange = held.onchange = refresh;
-node('teacher-release').onclick = () => act(() => { control?.setHolding(false, support.checked); held.checked = false; });
-node('teacher-restore').onclick = () => act(() => { control?.setHolding(true, support.checked); held.checked = false; });
-node('teacher-confirm-holding').onclick = () => act(() => { control?.confirmHolding(held.checked); held.checked = support.checked = false; });
+node('teacher-stop').onclick = () => act(() => control?.stop());
+node('teacher-release').onclick = () => act(() => control?.setHolding(false,true));
+node('teacher-restore').onclick = () => act(() => control?.setHolding(true,true));
 node('teacher-export').onclick = () => {
   if (!control) return;
   const url = URL.createObjectURL(new Blob([JSON.stringify(control.report(), null, 2)], {type: 'application/json'}));
@@ -114,7 +104,7 @@ node('teacher-export').onclick = () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 node('teacher-diagnostic-export').onclick=()=>node<HTMLButtonElement>('teacher-export').click();
-const disconnect = () => { clearance.checked = false; control?.disconnect(); };
+const disconnect = () => control?.disconnect();
 document.addEventListener('visibilitychange', () => { if (document.hidden) disconnect(); });
 window.addEventListener('pagehide', disconnect); window.addEventListener('error', disconnect); window.addEventListener('unhandledrejection', disconnect);
 setInterval(() => control?.tick(), 50); refresh();

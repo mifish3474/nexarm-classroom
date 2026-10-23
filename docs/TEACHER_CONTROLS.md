@@ -1,4 +1,4 @@
-# Robot setup control testing: 0.7.0-dev.28
+# Robot setup control testing: 0.7.0-dev.31
 
 Sliders, numeric moves and jogs use the operator-provided
 [operating ranges](./OPERATING_RANGES.md). Stricter student policy remains future
@@ -7,12 +7,13 @@ in-range target to return. Targets are rejected rather than silently clamped.
 
 The setup controls remain available for commissioning and recovery. Students now
 run Blockly independently on the main page after a session
-Connect/Enable; see [classroom programming](./CLASSROOM_PROGRAMMING.md). There is
+Connect; see [classroom programming](./CLASSROOM_PROGRAMMING.md). There is
 no per-program teacher review or approval action.
 
 Current workflow:
 
-1. Open /mapping.html, confirm dev.28, Connect, confirm clearance, and Enable.
+1. Open /mapping.html, confirm dev.31, Connect and wait for fresh stable readings.
+   There are no clearance/support checkboxes, Enable or holding-confirmation buttons.
 2. Review the actual reading and target for one joint. Drag its slider to send
    live targets, or enter a numeric target and click Move. Slider defaults
    are factory speed 2000 / acceleration 100; both fields can be edited.
@@ -20,12 +21,13 @@ Current workflow:
    per second; only the newest unsent target is retained. Releasing the slider
    leaves the final target in effect. A target that settles short is reported honestly
    and permits a new manual target; it is not called a successful arrival.
-4. Test Stop during dragging, then re-enable. Stop discards pending targets.
+4. Test Stop during dragging, then wait for stable readings and choose a new
+   action directly. Stop discards pending targets and never resumes them.
    Release/restore controls remain in Manual positioning.
 5. Review clearance for all joints moving together, then click Return together
    to Home. Speed is now 600, doubled from 300, with acceleration still 10.
    Home values are unchanged. Shorter moves can finish first. Check Stop during
-   an early return; it attempts holds for all commanded joints. Then re-enable
+   an early return; it attempts holds for all commanded joints. Then wait for readings
    and let a return finish. Check the actual final pose and six readings.
 6. Export diagnostics for unexpected behavior. Student live control remains off.
 
@@ -40,12 +42,18 @@ mouse stationary. The app sends no automatic corrective movements. Use Stop if
 vibration persists and report whether the same behavior occurs in the factory
 controller. Input filtering is not a confirmed cure for physical vibration.
 
-Test S1 through S6 in sequence after a single Enable, allowing each move to
+Test S1 through S6 in sequence after Connect, allowing each move to
 finish before selecting the next joint. The completed slider no longer blocks
 another joint. Motion deviation margins are now 100 raw units for the moving
 joint and companions, up from 20. Manual slider completion accepts that companion
-variation; Home accuracy stays unchanged. A deviation fault disarms movement but
-leaves USB connected when the connection itself is healthy.
+variation; Home accuracy stays unchanged. A movement fault cancels the operation
+but leaves healthy USB connected. New stable readings allow a new explicit action.
+An uncertain USB write requires reconnecting. No old movement resumes on recovery.
+
+Release and Restore are one-click actions in Manual positioning. Continue to
+support the arm physically; no checkbox is required. Restore waits for its write
+and fresh stable positions, then makes controls ready. Torque is not measured.
+Interrupted release persists across reload and needs an explicit Restore command.
 
 Page hiding, disconnection, faults, and stale feedback discard unsent slider
 targets. Fresh feedback never automatically restores a discarded target. Numeric

@@ -41,7 +41,7 @@ inside range, feedback is fresh and no motion/write is active. The controller
 revalidates the actual snapshot on capture; a stale enabled button cannot save
 invalid values. Exact range endpoints are allowed. Existing records are retained.
 
-Readings outside range do not disable Connect, Enable or release/
+Readings outside range do not disable Connect, current-session readiness or release/
 restore. A deliberate target back inside range remains available. Stop retains
 its existing behavior: attempt holds at fresh measured positions, even if those
 positions are outside the requested-movement ranges. Changing a Stop hold to a

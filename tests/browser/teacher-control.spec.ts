@@ -28,14 +28,14 @@ async function robot(page: Page, initial = [2050,2150,2100,2200,2000,1080]) {
 async function connect(page:Page) {
   await page.getByRole('button',{name:'Connect',exact:true}).click(); await page.clock.runFor(1300);
 }
-async function enable(page:Page) {
-  await page.locator('#teacher-clearance').check(); await page.getByRole('button',{name:'Enable teacher controls'}).click();
+async function ready(page:Page) {
+  await expect(page.getByRole('button',{name:'Servo 1 minus 20',exact:true})).toBeEnabled();await expect(page.locator('#teacher-clearance, #teacher-enable, #teacher-support, #teacher-held, #teacher-confirm-holding')).toHaveCount(0);
 }
 const writes = (page:Page) => page.evaluate(() => (window as unknown as {teacherRobot:{writes:{at:number;bytes:number[]}[]}}).teacherRobot.writes.flatMap(write=>{
  const frames:typeof write[]=[];for(let offset=0;offset<write.bytes.length;){const length=write.bytes[offset+3]!+4;frames.push({at:write.at,bytes:write.bytes.slice(offset,offset+length)});offset+=length;}return frames;
 }));
 test('sliders use the supplied ranges and out-of-range readings do not block a return inside range',async({page})=>{
- await robot(page,[2050,2150,3003,2200,2000,1080]);await connect(page);await enable(page);
+ await robot(page,[2050,2150,3003,2200,2000,1080]);await connect(page);await ready(page);
  const limits=[[900,3000],[525,2600],[2000,2900],[1250,3000],[1024,3072],[1024,2731]];
  for(let i=0;i<6;i++){const slider=page.getByRole('slider',{name:`Servo ${i+1} target slider`});await expect(slider).toHaveAttribute('min',String(limits[i]![0]));await expect(slider).toHaveAttribute('max',String(limits[i]![1]));}
  await expect(page.getByRole('button',{name:'Servo 3 plus 20',exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Servo 3 minus 20',exact:true})).toBeDisabled();
@@ -46,7 +46,7 @@ test('sliders use the supplied ranges and out-of-range readings do not block a r
 
 test('approved Servo 3 comparison uses factory settings without changing normal controls',async({page})=>{
  await robot(page);await page.getByText('Earlier Servo 3 test',{exact:true}).click();const comparison=page.getByRole('button',{name:'Servo 3 +20 at factory settings'});
- await expect(comparison).toBeDisabled();await connect(page);await enable(page);expect(await writes(page)).toEqual([]);
+ await expect(comparison).toBeDisabled();await connect(page);await ready(page);expect(await writes(page)).toEqual([]);
  await comparison.click();await expect(comparison).toBeDisabled();
  const packet=(await writes(page))[0]!.bytes;
  expect(packet.slice(2,-1)).toEqual([3,10,3,41,100,72,8,0,0,208,7]);
@@ -58,9 +58,9 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.30');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.31');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
-  await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled(); await enable(page);
+  await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeEnabled(); await ready(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {
     const before=Number(await page.locator(`[data-servo-value="${servo}"]`).textContent()), count=(await writes(page)).length;
     const button=page.getByRole('button',{name:`Servo ${servo} ${direction} 20`}); await expect(button).toBeEnabled(); await button.click();
@@ -73,13 +73,13 @@ test('all twelve reusable jog controls work from live readings with no queued cl
   await page.setViewportSize({width:768,height:720}); expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.setViewportSize({width:1280,height:900}); await page.screenshot({path:'test-results/teacher-controls.png',fullPage:true});
   await page.getByRole('button',{name:'Disconnect',exact:true}).click(); await page.reload();await expect(page.locator('.joint-card')).toHaveCount(6);await page.locator('.joint-card details').evaluateAll(items=>items.forEach(item=>(item as HTMLDetailsElement).open=true)); expect(await writes(page)).toEqual([]);
-  await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled();await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeEnabled();
   expect(requests.every(url=>url.startsWith('http://127.0.0.1:4173/'))).toBe(true); expect(errors).toEqual([]);
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
 test('Home dispatches all targets together at 600 and completes with every joint settled',async({page})=>{
-  const home=[2050,2150,2100,2200,2000,1080];await robot(page,home.map(n=>n+25)); await connect(page); await enable(page);
+  const home=[2050,2150,2100,2200,2000,1080];await robot(page,home.map(n=>n+25)); await connect(page); await ready(page);
   await page.getByRole('button',{name:'Return together to Home'}).click();await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled();
   await page.clock.runFor(30000); await expect(page.locator('#teacher-home-status')).toContainText('Complete');
   const commands=await writes(page);expect(commands).toHaveLength(6);expect([...new Set(commands.map(w=>w.bytes[2]))]).toEqual([2,3,4,5,1,6]);
@@ -92,32 +92,32 @@ test('Home dispatches all targets together at 600 and completes with every joint
 });
 
 test('Stop cancels a long gripper return and permits a new Home run without reconnecting',async({page})=>{
-  await robot(page,[2050,2150,2100,2200,2000,2050]);await connect(page);await enable(page);
+  await robot(page,[2050,2150,2100,2200,2000,2050]);await connect(page);await ready(page);
   await expect(page.locator('#teacher-home-preview')).toContainText('1 joint movements');await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(100);
   await page.getByRole('button',{name:'Stop motion'}).click();const count=(await writes(page)).length;await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(count);
-  await expect(page.locator('#teacher-status')).toContainText('Listening');await expect(page.locator('#teacher-clearance')).not.toBeChecked();
-  await enable(page);await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(130000);
+  await expect(page.locator('#teacher-status')).toContainText('Listening');
+  await ready(page);await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(130000);
   await expect(page.locator('#teacher-home-status')).toContainText('Complete');await expect(page.locator('[data-servo-value="6"]')).toHaveText('1085');
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
-test('manual release and holding confirmation retain the reload interlock on the simpler page',async({page})=>{
-  await robot(page);await connect(page);await enable(page);await page.getByText('Manual positioning: release and restore holding',{exact:true}).click();
-  await page.locator('#teacher-support').check();await page.getByRole('button',{name:'Release all servos'}).click();await page.clock.runFor(1400);
-  expect((await writes(page))[0]!.bytes).toEqual([255,255,255,3,61,0,192]);await expect(page.locator('#teacher-clearance')).not.toBeChecked();
-  await expect(page.locator('#teacher-enable')).toBeDisabled();await page.getByRole('button',{name:'Restore servo holding'}).click();await page.clock.runFor(1400);
-  expect((await writes(page))[1]!.bytes).toEqual([255,255,255,3,61,1,191]);await page.locator('#teacher-held').check();await page.getByRole('button',{name:'Confirm holding restored'}).click();
-  await page.clock.runFor(1400);await enable(page);await page.locator('#teacher-support').check();await page.getByRole('button',{name:'Release all servos'}).click();await page.clock.runFor(1400);
+test('release and restore need no confirmation or Enable, and interrupted release still needs explicit Restore',async({page})=>{
+  await robot(page);await connect(page);await ready(page);await page.getByText('Manual positioning: release and restore holding',{exact:true}).click();
+  await page.getByRole('button',{name:'Release all servos'}).click();await page.clock.runFor(1400);
+  expect((await writes(page))[0]!.bytes).toEqual([255,255,255,3,61,0,192]);
+  await expect(page.getByRole('button',{name:'Servo 1 minus 20',exact:true})).toBeDisabled();await page.getByRole('button',{name:'Restore servo holding'}).click();await page.clock.runFor(1400);
+  expect((await writes(page))[1]!.bytes).toEqual([255,255,255,3,61,1,191]);
+  await ready(page);await page.getByRole('button',{name:'Release all servos'}).click();await page.clock.runFor(1400);
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();await page.reload();await expect(page.locator('.joint-card')).toHaveCount(6);await page.locator('.joint-card details').evaluateAll(items=>items.forEach(item=>(item as HTMLDetailsElement).open=true));await expect(page.locator('#teacher-manual-details')).toHaveAttribute('open','');
-  await connect(page);await expect(page.locator('#teacher-enable')).toBeDisabled();await page.locator('#teacher-held').check();await page.getByRole('button',{name:'Confirm holding restored'}).click();
-  expect(await writes(page)).toEqual([]);await page.clock.runFor(1400);await enable(page);await expect(page.getByRole('button',{name:'Servo 1 minus 20'})).toBeEnabled();
+  await connect(page);await expect(page.getByRole('button',{name:'Servo 1 minus 20',exact:true})).toBeDisabled();expect(await writes(page)).toEqual([]);
+  await page.getByRole('button',{name:'Restore servo holding'}).click();await page.clock.runFor(1400);expect(await writes(page)).toHaveLength(1);await ready(page);
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
 test('brief feedback delays pause buttons without disarming controls',async({page})=>{
-  await robot(page);await connect(page);await enable(page);
+  await robot(page);await connect(page);await ready(page);
   await page.evaluate(()=>(window as unknown as {teacherRobot:{paused:boolean}}).teacherRobot.paused=true);await page.clock.runFor(700);
-  await expect(page.locator('#teacher-status')).toContainText('Controls enabled');await expect(page.locator('#teacher-clearance')).toBeChecked();
+  await expect(page.locator('#teacher-status')).toContainText('Controls enabled');
   await expect(page.getByRole('button',{name:'Servo 2 plus 20'})).toBeDisabled();expect(await writes(page)).toEqual([]);
   await page.evaluate(()=>(window as unknown as {teacherRobot:{paused:boolean}}).teacherRobot.paused=false);await page.clock.runFor(1400);
   await page.getByRole('button',{name:'Servo 2 plus 20'}).click();await page.clock.runFor(1700);expect(await writes(page)).toHaveLength(1);
@@ -125,7 +125,7 @@ test('brief feedback delays pause buttons without disarming controls',async({pag
 });
 
 test('all six live sliders work in sequence after a single Enable',async({page})=>{
- await robot(page);await connect(page);await enable(page);
+ await robot(page);await connect(page);await ready(page);
  for(let servo=1;servo<=6;servo++){
   const slider=page.getByRole('slider',{name:`Servo ${servo} target slider`});await expect(slider).toBeEnabled();
   await slider.evaluate(el=>{const input=el as HTMLInputElement;input.value=String(Number(input.value)+50);input.dispatchEvent(new Event('input',{bubbles:true}));});
@@ -137,7 +137,7 @@ test('all six live sliders work in sequence after a single Enable',async({page})
 });
 
 test('fast slider reversal allows feedback still approaching the earlier dispatched target',async({page})=>{
- await robot(page,[2078,2150,2100,2200,2000,1080]);await connect(page);await enable(page);
+ await robot(page,[2078,2150,2100,2200,2000,1080]);await connect(page);await ready(page);
  const slider=page.getByRole('slider',{name:'Servo 1 target slider'});
  await slider.evaluate(el=>{(el as HTMLInputElement).value='2500';el.dispatchEvent(new Event('input',{bubbles:true}));});
  await page.clock.runFor(100);
@@ -149,7 +149,7 @@ test('fast slider reversal allows feedback still approaching the earlier dispatc
 });
 
 test('tiny J2 drag changes are filtered and releasing sends the exact final target once',async({page})=>{
- await robot(page);await connect(page);await enable(page);
+ await robot(page);await connect(page);await ready(page);
  const slider=page.getByRole('slider',{name:'Servo 2 target slider'});
  await slider.evaluate(el=>{(el as HTMLInputElement).value='2250';el.dispatchEvent(new Event('input',{bubbles:true}));});
  await page.clock.runFor(100);
@@ -162,7 +162,7 @@ test('tiny J2 drag changes are filtered and releasing sends the exact final targ
 });
 
  test('slider input sends live targets and coalesces intermediate values',async({page})=>{
- await robot(page);await connect(page);await enable(page);
+ await robot(page);await connect(page);await ready(page);
  const slider=page.getByRole('slider',{name:'Servo 3 target slider'});
  const target=page.getByRole('spinbutton',{name:'Servo 3 target',exact:true});await target.fill('');await page.getByRole('button',{name:'Move servo 3 to target'}).click();expect(await writes(page)).toHaveLength(0);await target.fill('2100');
  await slider.evaluate(el=>{(el as HTMLInputElement).value='2200';el.dispatchEvent(new Event('input',{bubbles:true}));});expect(await writes(page)).toHaveLength(1);

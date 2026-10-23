@@ -22,7 +22,8 @@ groups will iterate independently; there will be no per-program teacher approval
   Define robot/profile matching and checks after reconnects or hardware changes.
 - Enforce the active policy inside the shared motion gateway for every movement
   source, including Blockly, manual movement, Home, and saved-pose replay.
-  Students still Connect/Enable per session and run independently within policy.
+  Students Connect per session and run independently within policy, without
+  per-run teacher approvals or repeated confirmation/Enable controls.
 - Make missing, invalid, stale, or incompatible protected policy block live
   movement in the student release. Keep simulation available. Do not reuse the
   development exception as a student-facing toggle or silent fallback.
@@ -49,10 +50,13 @@ groups will iterate independently; there will be no per-program teacher approval
 
 ## Current development controls retained
 
-Explicit Connect/Enable, one shared writer and exclusive USB lease, bounded
+Explicit Connect and deliberate Run/manual actions, automatic readiness from
+fresh stable feedback, one shared writer and exclusive USB lease, bounded
 instruction expansion, servo ID/numeric/encoding checks, speed 600 and
 acceleration 10 for programs, feedback path/settling/deadline supervision, Stop,
 60-second/100-movement budgets, cancellation on mode/visibility/connection
-changes, and the existing holding recovery interlock. Station limits are not
+changes, and a durable interrupted-release record cleared by explicit Restore
+and fresh stable feedback. Position feedback does not measure holding power.
+Station limits are not
 enforced as protected policy in the current development build. Fixed development
 operating ranges are enforced for targets through the current motion controller.

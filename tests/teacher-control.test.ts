@@ -6,7 +6,7 @@ import {OPERATING_RANGES} from '../app/src/safety/OperatingRanges';
 
 const flush = async () => { for (let i = 0; i < 35; i++) await Promise.resolve(); };
 const locks = {request: async (_name: string, _options: unknown, run: (lease: object) => Promise<void>) => run({})} as unknown as LockManager;
-function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: boolean; stored?: Map<string, string>} = {}) {
+function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: boolean; stored?: Map<string, string>;directSession?:boolean} = {}) {
   let time = 0, visible = true, reader!: ReadableStreamDefaultController<Uint8Array>, finish!: () => void;
   const stored = options.stored ?? new Map<string, string>(), writes: {at: number; bytes: number[]}[] = [];
   const storage = {getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => {
@@ -19,7 +19,7 @@ function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: bool
       if (options.reject) return Promise.reject(new Error('USB write failed'));
       if (options.hang) return new Promise<void>(resolve => { finish = resolve; });
     }})};
-  const control = new TeacherRobotControl(locks, storage, () => time, () => visible, () => {});
+  const control = new TeacherRobotControl(locks, storage, () => time, () => visible, () => {},{directSession:options.directSession??false});
   const feed = async (at: number, positions: readonly number[] = TEACHER_HOME, weak = false) => {
     time = at;
     const body = [255, 26, 11, ...Array(12).fill(0), ...positions.flatMap(n => [n & 255, n >> 8])];
@@ -68,6 +68,37 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ it('direct sessions become ready after Connect without Enable and never write until an explicit move',async()=>{
+   const f=fixture({directSession:true});await f.ready();expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(0);
+   f.control.runProgram([{kind:'move',blockId:'a',servo:1,target:2130}]);await flush();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it('direct restore completes from new stable feedback without a confirmation or automatic movement',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.setHolding(false,true);await flush();await f.feed(1700);expect(f.control.snapshot().canMove).toBe(false);
+   f.control.setHolding(true,true);await flush();expect(f.control.snapshot().manualPhase).toBe('Restore settling');
+   await f.feed(1800);await f.feed(1900);expect(f.control.snapshot().canMove).toBe(false);
+   for(const at of [2000,2100,2200])await f.feed(at);f.control.tick();expect(f.control.snapshot().manualPhase).toBe('Normal');expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(2);
+   expect(f.control.report().manualPositioning.physicalTorqueState).toBe('not measured');expect(JSON.parse(f.stored.get(MANUAL_STATE_KEY)!).requiresHoldingVerification).toBe(false);
+   f.control.disconnect();await flush();
+ });
+ it('direct Stop and a settled-short timeout allow a new explicit Run without replaying canceled blocks',async()=>{
+   const f=fixture({directSession:true}),target=[...TEACHER_HOME];target[2]=2838;await f.ready();
+   const instructions=[{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:target},{kind:'move',blockId:'later',servo:1,target:2300}];f.control.runProgram(instructions);await flush();
+   const actual=[...target];actual[2]=2810;
+   for(let at=1200;at<=9000;at+=100){await f.feed(at,actual);f.control.tick();await flush();}
+   expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(1);
+   f.control.stop();await flush();const count=f.writes.length;for(const at of [9200,9300,9400,9600])await f.feed(at,actual);f.control.tick();expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(count);
+   f.control.runProgram([{kind:'move',blockId:'new',servo:1,target:2130}]);await flush();expect(f.writes).toHaveLength(count+1);expect(f.writes.at(-1)!.bytes[2]).toBe(1);f.control.disconnect();await flush();
+ });
+ it('direct readiness cannot clear an interrupted release on reload or stale/unstable restore readings',async()=>{
+   const stored=new Map([[MANUAL_STATE_KEY,JSON.stringify({requiresHoldingVerification:true,events:[]})]]),f=fixture({directSession:true,stored});await f.ready();expect(f.control.snapshot().canMove).toBe(false);expect(f.writes).toHaveLength(0);
+   f.control.setHolding(true,true);await flush();f.setTime(1700);f.control.tick();expect(f.control.snapshot().canMove).toBe(false);
+   for(let at=1800;at<=2400;at+=100){const pose=[...TEACHER_HOME];pose[0]+=at%200?20:0;await f.feed(at,pose);}expect(f.control.snapshot().canMove).toBe(false);
+   for(const at of [2500,2600,2700])await f.feed(at);expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it('direct sessions cannot become ready after an uncertain USB write or resume after reconnect',async()=>{
+   const f=fixture({directSession:true,reject:true});await f.ready();f.control.moveJoint(1,2130);await flush();
+   for(const at of [1300,1400,1500,1800])await f.feed(at);f.control.tick();expect(f.control.snapshot().canMove).toBe(false);expect(f.control.snapshot().reason).toContain('Disconnect and reconnect');expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
  it.each([1,2,3,4,5,6])('blocks capturing out-of-range J%s readings without writing and restores capture once valid',async servo=>{
    const f=fixture();await f.ready();const range=OPERATING_RANGES[servo-1]!,pose=[...TEACHER_HOME];
    for(const value of [range.min-1,range.max+1]){

@@ -2,11 +2,9 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="./favicon.svg"><title>NexArm · Teacher robot controls</title></head>
 <body><main class="shell teacher-control">
   <header class="masthead"><div><h1>Teacher robot controls</h1><p>Hardware testing only</p><p class="app-version" data-app-version>Version %APP_VERSION%</p></div><nav><a href="./">Simulator</a> · <a href="./commissioning.html">Read-only inspection</a></nav></header>
-  <section class="panel teacher-connection"><h2>Connect and enable</h2>
+  <section class="panel teacher-connection"><h2>Connect and control</h2>
     <p>Teacher use: secure the base, keep the arm’s sweep and gripper clear, and keep the physical power cutoff within reach. Connect reads positions and sends no movement.</p>
     <div class="actions"><button id="teacher-connect">Connect</button><button id="teacher-disconnect" class="secondary" disabled>Disconnect</button></div>
-    <label class="connection-confirm"><input id="teacher-clearance" type="checkbox"> I checked holding, movement clearance, empty gripper, and physical cutoff access.</label>
-    <div class="actions"><button id="teacher-enable" disabled>Enable teacher controls</button></div>
     <p id="teacher-status" role="status">Disconnected.</p><p id="teacher-readiness"></p><p id="teacher-error" role="alert" hidden></p>
   </section>
   <section class="panel"><h2>Joint sliders</h2><p>Drag a slider to control its joint live, with updates up to ten times per second. Only the newest target is retained. You can also enter a target and click Move. Slider moves use the displayed speed and acceleration, initially factory settings 2000 / 100. Only one joint moves at a time. Small jog controls remain available below each slider.</p>
@@ -18,16 +16,13 @@
     <p>Return starts all needed joints together at speed <strong>600 raw units per second</strong> and acceleration 10. This doubles the former Home speed of 300. Shorter moves finish first. Inspect clearance for the combined sweep before starting. Each joint receives its Home target once; there are no small target steps or pauses between joints.</p>
     <p id="teacher-home-preview"></p><div class="actions"><button id="teacher-home" disabled>Return together to Home</button></div>
     <progress id="teacher-home-progress" value="0" max="1" aria-label="Home return progress"></progress><p id="teacher-home-status" role="status">No return started.</p>
-    <p class="note">Home is this target pose; it does not reset servo calibration. A difference of up to 9 raw units is accepted without repeated corrections. Stop cancels the return and attempts holds for all commanded joints at their latest measured positions. Verify the physical result; use the power cutoff if necessary. USB remains connected.</p>
+    <p class="note">Home is this target pose; it does not reset servo calibration. A difference of up to 12 raw units is accepted without repeated corrections. Stop cancels the return and attempts holds for all commanded joints at their latest measured positions. Verify the physical result; use the power cutoff if necessary. USB remains connected.</p>
   </section>
   <section class="panel"><details id="teacher-manual-details"><summary>Manual positioning: release and restore holding</summary>
     <p><strong>Support the arm before releasing; it can fall.</strong> Keep fingers out of joint and jaw pinch areas. Gently place it only after confirming release; never force resistance. Continue supporting it during restore and verify that it holds the placed pose.</p>
-    <label class="connection-confirm"><input id="teacher-support" type="checkbox"> I am supporting the arm, with clear pinch areas, empty gripper, and cutoff access.</label>
     <div class="actions"><button id="teacher-release" class="secondary" disabled>Release all servos</button><button id="teacher-restore" disabled>Restore servo holding</button></div>
     <p id="teacher-manual-status" role="status"></p>
-    <label class="connection-confirm"><input id="teacher-held" type="checkbox"> I physically verified holding is restored and stable, with matching live readings.</label>
-    <button id="teacher-confirm-holding" disabled>Confirm holding restored</button>
-    <p class="note">An interrupted release leaves holding unverified across reload. Reconnect and restore or physically confirm holding before enabling movement. There is no automatic release or restore.</p>
+    <p class="note">An interrupted release leaves holding unverified across reload. Reconnect and click Restore servo holding. Controls become ready after fresh position readings stabilize; holding power is not measured. There is no automatic release or restore.</p>
   </details></section>
   <section class="panel"><details><summary>Session report and earlier commissioning tools</summary><p>Export keeps this session’s movements and readings in a local file. No names or uploads are needed. Session results stay in memory until export.</p><button id="teacher-export" class="secondary">Export session report</button><p><a href="./mapping-tests.html">Earlier joint-mapping tests and Reference A return</a> use the older reference pose and their original recorded approvals.</p></details></section>
   <button id="teacher-stop" class="stop">Stop motion</button>

@@ -1,17 +1,17 @@
-# Teach and use a position: dev.30
+# Teach and use a position: dev.31
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.30**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.31**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
 
 Live targets must fit the [current operating ranges](./OPERATING_RANGES.md).
 Existing saved poses outside these ranges show per-joint warnings and cannot
 play back. Reposition and record a replacement, then choose it in the relevant
 block. Existing records are never silently adjusted. The entire live program
-is checked before its first movement; rejection retains the session Enable.
+is checked before its first movement; rejection leaves controls available for editing.
 
 1. Secure the base, empty the gripper, clear pinch areas, and keep the physical
-   power cutoff accessible. Support the arm's weight before checking the support
-   confirmation and clicking **Release servos for hand positioning**. Motion
+   power cutoff accessible. Support the arm's weight before clicking
+   **Release servos for hand positioning**. There is no support checkbox. Motion
    programming is disabled during hand positioning.
 2. Verify the servos have released. Move the arm gently by hand while continuing
    to support it. Never force a joint that still resists. The six live value
@@ -25,13 +25,14 @@ is checked before its first movement; rejection retains the session Enable.
    releasing. It waits for fresh feedback and no active movement/write.
 4. You may record additional supported positions while released. Each must have
    a unique name. Use position labels rather than student names or identifiers.
-5. Still supporting the arm, click **Restore servo holding**. Verify the arm
-   holds the placed pose. Check the physical-holding confirmation, then click
-   **Confirm holding restored**. Only then remove support as appropriate.
-6. Use the normal clear-area confirmation and **Enable robot** before running
-   another program. No program or movement resumes automatically.
+5. Still supporting the arm, click **Restore servo holding**. Controls become
+   ready after its write finishes and fresh position readings stabilize. There
+   is no confirmation checkbox or button. The app does not measure holding power;
+   check the arm holds the placed pose before removing support.
+6. Choose Run or a saved position directly. There is no Enable step. No program
+   or movement resumes automatically after Restore or Stop.
 
-If interrupted, reconnect here and follow the displayed restore/confirmation
+If interrupted, reconnect here and follow the displayed Restore
 steps. There is no consumed-attempt lockout. Reload never restores holding or
 clears the pending verification automatically. Deleting saved poses does not
 change servo holding or bypass recovery.
@@ -43,7 +44,7 @@ message says **Memory only**; export before reloading or closing. Individual
 Delete and Clear saved positions affect only pose records. Import is not yet
 implemented, so keep exported backups for the later import feature.
 
-To test one saved position, restore/confirm holding and Enable, check the full
+To test one saved position, restore holding if released and check the full
 movement sweep, then click **Move to position** beside that position. All needed
 joints receive targets together at speed 600 / acceleration 10, using the same
 executor as Home. Wait for completion and inspect the measured values. Joints
@@ -61,13 +62,13 @@ To connect positions in code:
 5. Drag blocks to change their order or place the sequence inside Repeat.
    Each position block's dropdown can select a different saved position.
 6. Try Simulation first; its illustration shows joint targets, not calibrated
-   robot geometry. For hardware, select Station robot, Connect/Enable if needed,
+   robot geometry. For hardware, select Station robot and Connect if needed,
    inspect the starting pose and combined sweep, then Run program.
 7. Every move waits for all commanded joints to settle before the next block.
    Settling allows ±12 raw units from target, with three stable readings over
    at least 150 ms; a stable 10-unit residual can therefore complete.
    Test Stop during a short sequence; later blocks must not run. Inspect the arm
-   before enabling and running again. Successful runs retain the session enable.
+   before running again. Fresh stable readings make controls ready without Enable.
 
 A missing/deleted position blocks Run until its block selects a valid position.
 Each run copies its targets; editing or deleting records cannot change an active
