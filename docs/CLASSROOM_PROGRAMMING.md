@@ -1,4 +1,4 @@
-# Programming development test: dev.31
+# Programming development test: dev.35
 
 The user confirms Blockly motion is working after identifying the selected J3
 block. Diagnostic export remains available for unexpected behavior. To release,
@@ -12,7 +12,7 @@ setup requirement, student-editable limit panel, or per-program teacher approval
 Protected limits are a required [student-release roadmap item](./ROADMAP.md).
 The current build is for development hardware testing.
 
-1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.31**.
+1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.35**.
 2. Build or edit a program. Choose **Simulation** for practice without USB, or
    **Station robot** for hardware testing. Simulation remains the default.
 3. In robot mode, click **Connect robot** and wait for Ready. Fresh stable
@@ -22,8 +22,10 @@ The current build is for development hardware testing.
    Inspect the starting pose and movement clearance. Use **Robot setup controls**
    for manual positioning/Home if needed. Loading blocks does not reposition
    the robot. Keep the arm secured, gripper empty and physical cutoff accessible.
-5. Click **Run program**. Commands use speed 600 / acceleration 10 and wait for
-   settled feedback between steps. You can edit and Run again without extra
+5. Click **Run program**. Individual joint blocks use speed 600 / acceleration 10
+   and wait for settled feedback. Saved-position blocks use calculated speeds up
+   to 600 / acceleration 10 and advance when their planned frame time elapses;
+   exact arrival is not verified. Add Wait for an extra pause. You can edit and Run again without extra
    confirmation. All program targets are checked against the
    operating ranges before the first move. An invalid saved pose names its
    offending joints; record a replacement rather than forcing or clamping it.

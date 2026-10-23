@@ -1,6 +1,49 @@
-# Classroom programming development preview 0.7.0-dev.34
+# Classroom programming development preview 0.7.0-dev.35
 
-## Current update: shared ±30 pose accuracy
+## Current update: factory-style frame completion
+
+At the user's request, saved-position buttons, Blockly pose blocks and Home now
+advance on elapsed effective frame time. All six targets are sent, including
+small and zero-distance targets, in ID order with at least 2 ms between resolved
+writes. The frame clock starts after the final write completes. There is no
+pose-arrival tolerance, stable-sample gate, settling timeout, correction loop or
+automatic retry. A stationary 32-unit J3 shortfall no longer cancels the program.
+Completion says frame time elapsed; it does not claim exact physical arrival.
+Measured readings, targets and remaining errors stay separate in UI/diagnostics;
+reports identify `completionPolicy: elapsed-time`.
+
+The existing per-joint distance/time profile remains capped at speed 600 and
+acceleration 10. Effective duration extends when needed. Unlike factory caches,
+each frame still starts from fresh measured positions; targets never replace
+measurements. Target-range preflight, feedback freshness, path-deviation checks,
+write deadlines, exclusive USB ownership, cancellation, and 100-step/60-second
+program budgets remain. Explicit joint blocks, jogs and sliders retain their
+existing behavior. No persistent servo settings or new torque command changed.
+Consecutive pose frames do not inherit the individual-joint half-second command
+interval; the effective duration and resolved-write spacing govern progression.
+
+Stop retains the IDs of all submitted timed targets even after elapsed completion
+or a later individual-joint route, because time alone does not prove rest. During
+partial dispatch it holds only submitted IDs, including IDs from an earlier
+elapsed frame. Explicit completed release/restore clears that hold set so Stop
+cannot send old pose holds while hand positioning. No canceled program resumes.
+
+Testing: replay the previous sequence in dev.35. It should pass the former
+J3 32-unit timeout and continue at the planned frame time. Compare the live
+readings and physical result. Add a Wait block for an extra pause. Test Stop both
+during movement and after frame completion; test release/restore before recording.
+Historical entries below describe earlier versions, not the current arrival policy.
+
+Validation: 231 unit tests, all 40 browser checks, and TypeScript/Vite build pass.
+Regressions include stationary residuals of 14/30/32/86/100 units on every joint,
+unstable readings without an arrival gate, small-target dispatch, minimum frame
+time, 100 ms frames with no extra half-second pause, Stop during partial dispatch
+and after elapsed completion, release clearing old holds, and retained feedback/
+path/range/write guards. Browser robot tests use mocked serial feedback; physical
+validation on the arm remains with the operator. The existing Blockly bundle-size
+warning remains. Root Connection Lab v0.6.1 is unchanged.
+
+## Previous update: shared ±30 pose accuracy (dev.34)
 
 At the user's request, all six timed-pose joints now use the same ±30 allowance,
 replacing J3 ±30 / others ±12. This covers the reported S6 target 1512, actual

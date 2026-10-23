@@ -13,10 +13,10 @@
   </section>
   <section class="panel" id="teacher-home-panel"><h2>Your Home position</h2>
     <p class="home-values">S1 <strong>2050</strong> · S2 <strong>2150</strong> · S3 <strong>2100</strong> · S4 <strong>2200</strong> · S5 <strong>2000</strong> · S6 <strong>1080</strong></p>
-    <p>Home uses a one-second pose frame, extended when necessary to keep speeds at or below <strong>600 raw units per second</strong>, acceleration 10. Each needed joint receives its own calculated speed, in ID order with at least 2 ms between completed writes. Frame time and stable measured arrival are both required. No correction loop runs.</p>
+    <p>Home uses a one-second pose frame, extended when necessary to keep speeds at or below <strong>600 raw units per second</strong>, acceleration 10. All six targets receive calculated speeds, in ID order with at least 2 ms between completed writes. The return completes when frame time elapses, as in factory action playback. Exact arrival is not verified.</p>
     <p id="teacher-home-preview"></p><div class="actions"><button id="teacher-home" disabled>Return together to Home</button></div>
     <progress id="teacher-home-progress" value="0" max="1" aria-label="Home return progress"></progress><p id="teacher-home-status" role="status">No return started.</p>
-    <p class="note">Home is this target pose; it does not reset servo calibration. Home settling allows up to 30 raw units for each joint, without repeated corrections. Stop cancels the return and attempts holds for all commanded joints at their latest measured positions. Verify the physical result; use the power cutoff if necessary. USB remains connected.</p>
+    <p class="note">Home is this target pose; it does not reset servo calibration. Live readings may differ from targets; no correction loop runs. Stop cancels the return and attempts holds at the latest measured positions, including after frame time elapses. Verify the physical result; use the power cutoff if necessary. USB remains connected.</p>
   </section>
   <section class="panel"><details id="teacher-manual-details"><summary>Manual positioning: release and restore holding</summary>
     <p><strong>Support the arm before releasing; it can fall.</strong> Keep fingers out of joint and jaw pinch areas. Gently place it only after confirming release; never force resistance. Continue supporting it during restore and verify that it holds the placed pose.</p>

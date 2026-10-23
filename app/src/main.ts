@@ -74,7 +74,8 @@ function refresh(){
   const positions=live?robot?.positions:simulated.positions;
   cards.forEach((card,index)=>{
     const actual=positions?.[index];card.measured.textContent=actual===undefined?'—':String(actual);card.meter.value=actual??0;
-    card.target.textContent=live?'Live reported position':`Target ${simulated.targets[index]}`;
+    const command=live?robot?.home?.commands?.find(command=>command.servo===index+1):null;
+    card.target.textContent=live?(command&&actual!==undefined?`Target ${command.target} · remaining ${command.target-actual}`:'Live reported position'):`Target ${simulated.targets[index]}`;
     card.meter.setAttribute('aria-label',`Joint ${index+1} ${live?'reported':'simulated'} raw position`);
     card.buttons.forEach(button=>button.disabled=!!busy||live);
   });

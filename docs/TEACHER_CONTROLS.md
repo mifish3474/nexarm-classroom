@@ -1,11 +1,12 @@
-# Robot setup control testing: 0.7.0-dev.33
+# Robot setup control testing: 0.7.0-dev.35
 
 Home now uses a timed pose frame with individual calculated speeds, capped at
 600 and acceleration 10. Its requested one-second duration is extended for
-larger distances. Needed joints are sent in ID order with at least 2 ms between
-completed writes. Completion requires elapsed frame time and fresh stable pose
-readings. J3 pose accuracy is ±30 regardless of distance; other joints use ±12.
-Joints already within pose accuracy are skipped. Sliders and explicit small
+larger distances. All six targets are sent in ID order with at least 2 ms between
+completed writes. Completion means frame time elapsed, matching factory online
+actions. It does not require exact arrival or stable readings, and a shortfall
+does not trigger a settling timeout. Inspect live readings and the physical pose.
+No correction loop runs. Sliders and explicit small
 jogs retain their existing behavior. Blockly saved-pose blocks expose the frame
 duration; see [teaching positions](./TEACHING_POSITIONS.md).
 
@@ -21,7 +22,7 @@ no per-program teacher review or approval action.
 
 Current workflow:
 
-1. Open /mapping.html, confirm dev.33, Connect and wait for fresh stable readings.
+1. Open /mapping.html, confirm dev.35, Connect and wait for fresh stable readings.
    There are no clearance/support checkboxes, Enable or holding-confirmation buttons.
 2. Review the actual reading and target for one joint. Drag its slider to send
    live targets, or enter a numeric target and click Move. Slider defaults
@@ -55,7 +56,7 @@ Test S1 through S6 in sequence after Connect, allowing each move to
 finish before selecting the next joint. The completed slider no longer blocks
 another joint. Motion deviation margins are now 100 raw units for the moving
 joint and companions, up from 20. Manual slider completion accepts that companion
-variation; Home accuracy stays unchanged. A movement fault cancels the operation
+variation; Home uses elapsed frame time. A movement fault cancels the operation
 but leaves healthy USB connected. New stable readings allow a new explicit action.
 An uncertain USB write requires reconnecting. No old movement resumes on recovery.
 
@@ -67,7 +68,7 @@ Interrupted release persists across reload and needs an explicit Restore command
 Page hiding, disconnection, faults, and stale feedback discard unsent slider
 targets. Fresh feedback never automatically restores a discarded target. Numeric
 Move retains its half-second command interval. Other joints wait while the active
-joint moves; Home starts the needed joints together.
+joint moves; Home sends all six targets together.
 
 The remaining sections describe earlier versions and are historical.
 

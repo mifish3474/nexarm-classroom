@@ -4,13 +4,13 @@ import type {Page} from '@playwright/test';
 async function station(page:Page){
  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+100));
  await page.addInitScript(()=>{
-  const home=[2050,2150,2100,2200,2000,1080],positions=[...home],targets=[...home];let speed=600;
+  const home=[2050,2150,2100,2200,2000,1080],positions=[...home],targets=[...home],speeds=Array(6).fill(600);
   const state={positions,writes:[] as number[][],requests:0,paused:false,holding:true,j3Offset:0};Object.assign(window,{classroomRobot:state});
   Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>{state.requests++;let timer:ReturnType<typeof setInterval>;return {
    open:async()=>{},close:async()=>clearInterval(timer),readable:new ReadableStream<Uint8Array>({start(controller){timer=setInterval(()=>{
-    if(state.paused)return;if(state.holding)positions.forEach((value,i)=>{const delta=targets[i]!-(i===2?state.j3Offset:0)-value;positions[i]=value+Math.sign(delta)*Math.min(Math.abs(delta),speed*.1);});
+    if(state.paused)return;if(state.holding)positions.forEach((value,i)=>{const delta=targets[i]!-(i===2?state.j3Offset:0)-value;positions[i]=value+Math.sign(delta)*Math.min(Math.abs(delta),speeds[i]*.1);});
     const body=[255,26,11,...Array(12).fill(0),...positions.flatMap(value=>[value&255,value>>8])];controller.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255]));
-   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;){const b=bytes.slice(offset,offset+bytes[offset+3]!+4);if(b[2]===255&&b[4]===61){state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);}else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){targets[b[2]!-1]=b[7]!+256*b[8]!;speed=b[11]!+256*b[12]!;}offset+=b.length;}}})
+   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;){const b=bytes.slice(offset,offset+bytes[offset+3]!+4);if(b[2]===255&&b[4]===61){state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);}else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){targets[b[2]!-1]=b[7]!+256*b[8]!;speeds[b[2]!-1]=b[11]!+256*b[12]!;}offset+=b.length;}}})
   };}}});
  });
  await page.goto('/');
@@ -28,26 +28,27 @@ async function seedPositions(page:Page){
    {id:'home',name:'Home',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}
  ]})));
 }
-test('J3 2811 to saved 2838 is already within pose accuracy and honors its editable duration with no write',async({page})=>{
+test('J3 2811 to saved 2838 sends the small target and completes on its editable duration without arrival',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[{id:'near',name:'Near',positions:[2050,2150,2838,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}]})));
  await station(page);await connect(page);await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{holding:boolean;positions:number[]}}).classroomRobot;s.holding=false;s.positions[2]=2811;});await page.clock.runFor(300);
  await page.getByRole('button',{name:'New empty program',exact:true}).click();await page.getByRole('button',{name:'Add position block',exact:true}).click();await page.getByText('Program steps and keyboard editing',{exact:true}).click();
  await page.getByRole('spinbutton',{name:/pose duration seconds/}).fill('2');await page.getByRole('spinbutton',{name:/pose duration seconds/}).dispatchEvent('change');
- await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1500);await expect(page.locator('#state')).toHaveText('Running');expect(await writes(page)).toHaveLength(0);
- await page.clock.runFor(700);await expect(page.locator('#state')).toHaveText('Completed');await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2811');expect(await writes(page)).toHaveLength(0);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+ await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1500);await expect(page.locator('#state')).toHaveText('Running');expect(await writes(page)).toHaveLength(6);
+ const command=(await writes(page))[2]!;expect(command[2]).toBe(3);expect(command[7]!+256*command[8]!).toBe(2838);
+ await page.clock.runFor(700);await expect(page.locator('#state')).toHaveText('Completed');await expect(page.locator('#run-status')).toContainText('timing complete');await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2811');expect(await writes(page)).toHaveLength(6);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
-test('a measured 28-unit J3 offset settles and continues through Blockly without retries',async({page})=>{
+test('a measured 32-unit J3 offset advances through Blockly by frame time without retries',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[
    {id:'reach',name:'Reach',positions:[2050,2150,2838,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'},
    {id:'home',name:'Home',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}]})));
  await station(page);await connect(page);await page.getByRole('button',{name:'New empty program',exact:true}).click();
  await page.locator('#program-position').selectOption('reach');await page.getByRole('button',{name:'Add position block',exact:true}).click();await page.getByRole('button',{name:'Add wait block',exact:true}).click();await page.locator('#program-position').selectOption('home');await page.getByRole('button',{name:'Add position block',exact:true}).click();
- await page.evaluate(()=>(window as unknown as {classroomRobot:{j3Offset:number}}).classroomRobot.j3Offset=28);
+ await page.evaluate(()=>(window as unknown as {classroomRobot:{j3Offset:number}}).classroomRobot.j3Offset=32);
  await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2000);
- await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2810');await expect(page.locator('#run-status')).toContainText('Waiting');expect(await writes(page)).toHaveLength(1);
- const first=(await writes(page))[0]!;expect(first[2]).toBe(3);expect(first[7]!+256*first[8]!).toBe(2838);
- await page.clock.runFor(3000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2072');
- await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(2);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
+ await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2806');await expect(page.locator('#run-status')).toContainText('Waiting');expect(await writes(page)).toHaveLength(6);
+ const first=(await writes(page))[2]!;expect(first[2]).toBe(3);expect(first[7]!+256*first[8]!).toBe(2838);
+ await page.clock.runFor(3000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2068');
+ await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(12);await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
 test('live recording boxes show ranges beside the name and block every out-of-range or stale capture',async({page})=>{
  await station(page);await connect(page);await page.getByText('Release, record, and restore',{exact:true}).click();await page.getByRole('button',{name:'Release servos for hand positioning'}).click();await page.clock.runFor(600);
@@ -81,7 +82,7 @@ test('invalid recorded targets are flagged and prevent the entire live program w
  await page.getByRole('button',{name:'Load short practice program',exact:true}).click();await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);
  await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
-test('saved pose buttons move a batch after Connect and wait for measured settling',async({page})=>{
+test('saved pose buttons send six targets after Connect and finish at frame time',async({page})=>{
  await seedPositions(page);await station(page);await connect(page);await page.getByText('Release, record, and restore',{exact:true}).click();
  const move=page.getByRole('button',{name:'Move to position Pickup',exact:true});await expect(move).toBeEnabled();await ready(page);await move.click();await page.clock.runFor(100);
  await expect(move).toBeDisabled();await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();
@@ -107,7 +108,7 @@ test('a deleted position blocks compilation without sending commands',async({pag
  await seedPositions(page);await station(page);await connect(page);await ready(page);await page.getByRole('button',{name:'New empty program',exact:true}).click();
  await page.locator('#program-position').selectOption('pickup');await page.getByRole('button',{name:'Add position block',exact:true}).click();await page.getByText('Release, record, and restore',{exact:true}).click();await page.getByRole('button',{name:'Delete position Pickup',exact:true}).click();
  await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('saved position is missing');expect(await writes(page)).toHaveLength(0);
- await page.getByText('Program steps and keyboard editing',{exact:true}).click();await page.locator('#keyboard-fields select').selectOption('home');await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(0);
+ await page.getByText('Program steps and keyboard editing',{exact:true}).click();await page.locator('#keyboard-fields select').selectOption('home');await page.getByRole('button',{name:'Run program',exact:true}).click();await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(6);
  await page.getByRole('button',{name:'Disconnect robot',exact:true}).click();
 });
 test('students edit and rerun Blockly programs without another enable or teacher approval',async({page})=>{

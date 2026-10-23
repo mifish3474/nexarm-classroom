@@ -38,7 +38,7 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   function refresh(robotMode:boolean,isPreparing:boolean){
     live=robotMode;preparing=isPreparing;node('teach-panel').hidden=!live;
     const state=getControl()?.snapshot();
-    moveButtons.forEach(({button,issue})=>{button.disabled=!!issue||isPreparing||!state?.canMove;button.title=issue||state?.reason||'Move all needed joints together at speed 600, acceleration 10.';});
+    moveButtons.forEach(({button,issue})=>{button.disabled=!!issue||isPreparing||!state?.canMove;button.title=issue||state?.reason||'Send all six targets at speeds up to 600, acceleration 10. Completes on frame time; inspect live readings.';});
     if(state&&state.manualPhase!=='Normal')node<HTMLDetailsElement>('teach-details').open=true;
     node<HTMLButtonElement>('teach-release').disabled=isPreparing||!state?.canRelease;
     node<HTMLButtonElement>('teach-restore').disabled=isPreparing||!state?.canRestore;

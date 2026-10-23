@@ -28,7 +28,7 @@ export function createEditor(container: HTMLElement,getPositions:()=>NamedPositi
     this.appendDummyInput().appendField('move to saved position').appendField(field,'POSITION');
     this.appendDummyInput().appendField('over').appendField(new Blockly.FieldNumber(1,.1,10,.1),'SECONDS').appendField('seconds');
     this.setPreviousStatement(true);this.setNextStatement(true);this.setColour(205);
-    this.setTooltip('Move all needed joints together, then wait for measured settling before continuing. Check the whole sweep is clear.');
+    this.setTooltip('Send all six targets and advance when the planned frame time elapses. Exact arrival is not verified. Check the whole sweep is clear.');
   }};
   const workspace = Blockly.inject(container, {
     media: `${import.meta.env.BASE_URL}blockly-media/`, sounds: false,

@@ -1,5 +1,11 @@
 # Factory Action Group Editor investigation
 
+Current follow-up (dev.35): the user requested factory-style arrival handling.
+Saved poses and Home now send all six targets and advance after effective frame
+time, without settling/accuracy gates. Profile caps remain 600/10; fresh measured
+starts, range/path/freshness checks, and Stop remain. See IMPLEMENTATION_NOTES.md.
+The investigation and earlier proposal below are historical.
+
 Follow-up: the user approved implementation. Dev.33 adds timed pose frames with
 per-joint speeds, cancellable separate writes and consistent J3 pose accuracy.
 It retains the tested 600/10 envelope, extends infeasible durations, and still

@@ -42,6 +42,8 @@ export class TeacherRobotControl {
   private generation = 0;
   private writeStartedAt=-Infinity;
   private lastMovingServos:number[]=[];
+  // Timed completion cannot prove motion stopped; retain these across later routes.
+  private timedHoldServos:number[]=[];
   private readySamples:{at:number;positions:number[]}[]=[];
   private updateDirectSession(){
     if(!this.options.directSession||this.idleReason()!==null||this.readySamples.length!==3||!this.positions)return;
@@ -62,7 +64,7 @@ export class TeacherRobotControl {
   private liveTarget:SliderTarget|null=null;
   private lastLive:SliderTarget|null=null;
   private sliderInterval=500;
-  private program:{steps:PlannedStep[];speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;waitUntil:number|null;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
+  private program:{steps:PlannedStep[];speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;waitUntil:number|null;motionIntervalMs:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
   private cancelProgram(phase:'Stopped'|'Fault',message:string){if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
   runProgram(instructions:unknown){
     const reason=this.movementReason();if(reason)throw Error(reason);
@@ -72,7 +74,7 @@ export class TeacherRobotControl {
     // Validate the entire program before the first write, including later poses.
     for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
     this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
-    this.program={steps,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,phase:'Running',message:'Running your program.'};
+    this.program={steps,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:'Running your program.'};
     this.advanceProgram();this.changed();
   }
   private advanceProgram(){
@@ -80,16 +82,16 @@ export class TeacherRobotControl {
     if(!this.armed||this.connectionState!=='Listening'||!this.visible()){this.fault('Program canceled because the robot session changed.');return;}
     if(this.writeInFlight||this.now()-this.receivedAt>500)return;
     if(program.waitUntil!==null){if(this.now()<program.waitUntil)return;program.waitUntil=null;program.message='Running your program.';}
-    if(program.index===program.steps.length){program.phase='Completed';program.message='Program complete. Edit your blocks and run again.';this.message=program.message;return;}
-    if(this.now()-this.lastCommandAt<500)return;
+    if(program.index===program.steps.length){program.phase='Completed';program.message='Program timing complete. Check live readings and the physical result before running again.';this.message=program.message;return;}
+    if(this.now()-this.lastCommandAt<program.motionIntervalMs)return;
     try{
       const step=program.steps[program.index]!;
       if(step.kind==='wait'){
         this.retain();this.route=null;program.index++;program.waitUntil=this.now()+step.durationMs;program.message=`Waiting ${step.durationMs/1000} seconds.`;this.message=program.message;return;
       }
-      if(step.kind==='pose'&&this.options.directSession){program.index++;this.startTimedPose(step.positions,step.durationMs??1000,'Program');return;}
+      if(step.kind==='pose'&&this.options.directSession){program.index++;program.motionIntervalMs=2;this.startTimedPose(step.positions,step.durationMs??1000,'Program');return;}
       const plan=step.kind==='pose'?absolutePosePlan(this.positions!,step.positions,{speed:program.speed,acceleration:program.acceleration}):absoluteJointPlan(this.positions!,step.servo,step.target,program.speed,program.acceleration);
-      program.index++;this.start({...plan,manual:false},'Program');
+      program.index++;program.motionIntervalMs=500;this.start({...plan,manual:false},'Program');
     }catch(error){this.fault(error instanceof Error?error.message:'Program movement could not start.');}
   }
   private liveServo(){
@@ -141,7 +143,7 @@ export class TeacherRobotControl {
   connect(select: () => Promise<TeacherPort>) {
     if (this.connectionState !== 'Disconnected' || !this.visible()) return;
     this.manual = new ManualPositioning(this.storage);
-    this.readySamples=[];
+    this.readySamples=[];this.timedHoldServos=[];
     this.writeUncertain=false;
     this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = false; this.route = null; this.operation = null;this.program=null;
      this.parser.reset();  this.positions = null; this.receivedAt = -Infinity;
@@ -244,7 +246,7 @@ export class TeacherRobotControl {
   }
   private startTimedPose(target:readonly number[],durationMs:number,operation:Operation){
     const plan=timedPosePlan(this.positions!,target,durationMs);
-    this.retain();this.faulted=false;this.liveTarget=null;this.lastLive=null;this.lastMovingServos=[];
+    this.retain();this.faulted=false;this.liveTarget=null;this.lastLive=null;
     this.route=new TimedPoseMotion(this.positions!,this.now(),plan);this.operation=operation;
     this.route.start(this.positions!,this.now());this.message=`Timed pose: requested ${durationMs/1000}s, planned ${plan.durationMs/1000}s; maximum speed 600, acceleration 10.`;
     this.pump();this.changed();
@@ -269,7 +271,7 @@ export class TeacherRobotControl {
     if(route instanceof TimedPoseMotion){
       if(this.writeInFlight)return;
       const step=route.next(this.now());if(route.status().phase==='Fault'){this.fault(route.message);return;}
-      if(step){this.lastMovingServos.push(step.servo);const generation=this.generation;
+      if(step){if(!this.lastMovingServos.includes(step.servo))this.lastMovingServos.push(step.servo);if(!this.timedHoldServos.includes(step.servo))this.timedHoldServos.push(step.servo);const generation=this.generation;
         this.write(encodeSpeedPosition(step.servo,step.target,step.speed,step.acceleration),()=>{route.written(this.now());this.checkRoute();setTimeout(()=>{if(this.route===route&&this.generation===generation)this.pump();},2);},false,2);
       }return;
     }
@@ -290,6 +292,11 @@ export class TeacherRobotControl {
     if (this.route?.phase === 'Fault') { this.fault(this.route.message); return; }
     if (this.route?.phase === 'Settled short'){this.lastMovingServos=[];this.message=this.route.message;}
     if (this.route?.phase === 'Complete') {
+      if(this.route instanceof TimedPoseMotion){
+        // Elapsed time does not prove a joint stopped. Preserve Stop's hold set.
+        this.message=`${this.operation==='Home'?'Home':this.operation==='Saved position'?'Saved position':'Program pose'} frame time elapsed. Check live readings; exact arrival is not verified.`;
+        this.changed();return;
+      }
       this.lastMovingServos=[];
 
       this.message = this.operation === 'Home' ? 'Home reached within joint settling tolerances. Inspect the pose; no correction loop runs.' : this.operation==='Saved position'?'Saved position reached within joint settling tolerances.':this.operation==='Program'?'Program step settled.':'Jog finished.';
@@ -309,6 +316,7 @@ export class TeacherRobotControl {
       this.manual.begin(enabled ? 'restore' : 'release', this.now(), this.positions!);
     } catch (error) { this.fault(error instanceof Error ? error.message : 'Holding setup could not be recorded.'); return; }
     this.write(encodeFactoryHolding(enabled), () => {
+      this.lastMovingServos=[];this.timedHoldServos=[];
       this.manual.sent(enabled ? 'restore' : 'release', this.positions ?? []);
       if(enabled&&this.options.directSession&&this.manual.phase==='Confirm holding')this.manual.message='Restore command sent. Waiting for fresh stable position feedback; continue supporting the arm. Physical holding is not measured.';
       this.message = this.manual.message; this.changed();
@@ -407,7 +415,7 @@ export class TeacherRobotControl {
     this.recordEvent('stop','Stop requested. No torque-off command is requested.');
     this.cancelProgram('Stopped','Stopped. Edit your program and run again when ready.');
     this.liveTarget=null;this.lastLive=null;
-    const moving=this.lastMovingServos; this.lastMovingServos=[];
+    const moving=[...new Set([...this.timedHoldServos,...this.lastMovingServos])]; this.lastMovingServos=[];this.timedHoldServos=[];
     this.armed = false; this.generation++; this.route?.stop();
     this.manual.interrupt('Stopped by teacher.', this.positions ?? []);
     this.message = 'Stopped. Future commands canceled; connection remains open.';

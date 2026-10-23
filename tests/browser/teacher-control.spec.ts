@@ -58,7 +58,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.34');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.35');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeEnabled(); await ready(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {
@@ -78,7 +78,7 @@ test('all twelve reusable jog controls work from live readings with no queued cl
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
-test('Home dispatches all targets together at 600 and completes with every joint settled',async({page})=>{
+test('Home dispatches all targets within 600 and reports elapsed time without claiming arrival',async({page})=>{
   const home=[2050,2150,2100,2200,2000,1080];await robot(page,home.map(n=>n+50)); await connect(page); await ready(page);
   await page.getByRole('button',{name:'Return together to Home'}).click();await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeDisabled();
   await page.clock.runFor(30000); await expect(page.locator('#teacher-home-status')).toContainText('Complete');
@@ -86,14 +86,15 @@ test('Home dispatches all targets together at 600 and completes with every joint
   for(let i=0;i<commands.length;i++){if(i)expect(commands[i]!.at-commands[i-1]!.at).toBeGreaterThanOrEqual(2);expect(commands[i]!.bytes.slice(11,13)).toEqual([60,0]);}
   expect(await page.evaluate(()=>(window as unknown as {teacherRobot:{writes:unknown[]}}).teacherRobot.writes.length)).toBe(6);
   const actual=await page.locator('[data-servo-value]').allTextContents();expect(actual.map(Number).every((n,i)=>Math.abs(n-home[i]!)<=30)).toBe(true);
-  await expect(page.getByRole('button',{name:'Return together to Home'})).toBeDisabled(); await expect(page.getByRole('button',{name:'Servo 6 minus 20'})).toBeEnabled();
+  await expect(page.locator('#teacher-home-status')).toContainText('frame time elapsed');await expect(page.locator('#teacher-home-status')).not.toContainText('settled');
+  await expect(page.getByRole('button',{name:'Return together to Home'})).toBeEnabled(); await expect(page.getByRole('button',{name:'Servo 6 minus 20'})).toBeEnabled();
   await page.getByText('Session report and earlier commissioning tools',{exact:true}).click();const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export session report'}).click();
   expect((await download).suggestedFilename()).toBe('nexarm-teacher-control-session.json');await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
 test('Stop cancels a long gripper return and permits a new Home run without reconnecting',async({page})=>{
   await robot(page,[2050,2150,2100,2200,2000,2050]);await connect(page);await ready(page);
-  await expect(page.locator('#teacher-home-preview')).toContainText('1 joint movements');await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(100);
+  await expect(page.locator('#teacher-home-preview')).toContainText('1 joints differ');await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(100);
   await page.getByRole('button',{name:'Stop motion'}).click();const count=(await writes(page)).length;await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(count);
   await expect(page.locator('#teacher-status')).toContainText('Listening');
   await ready(page);await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(130000);

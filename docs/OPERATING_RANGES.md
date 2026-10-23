@@ -46,10 +46,11 @@ restore. A deliberate target back inside range remains available. Stop retains
 its existing behavior: attempt holds at fresh measured positions, even if those
 positions are outside the requested-movement ranges. Changing a Stop hold to a
 range endpoint would itself request a new movement, so it is not clamped.
-Settling accuracy is separate from these exact goal bounds: ±30 for all six timed-pose joints in dev.34,
-including saved poses and Home even when already near.
-Direct manual controls retain their own accuracy rules. Range checks for
-recording and requested targets remain exact; settling allowances do not widen them.
+Arrival handling is separate from these exact goal bounds: in dev.35, saved
+poses and Home complete on elapsed effective frame time, without an arrival
+tolerance or stable-reading gate. All six targets are sent. Live readings may
+still differ from targets. Direct individual-joint controls retain their own
+accuracy rules. Recording and requested-target range checks remain exact.
 
 Simulation retains the general 0–4095 encoding range for learning; hardware
 mode checks the operating ranges before executing that program. The legacy

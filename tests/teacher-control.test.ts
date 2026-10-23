@@ -34,6 +34,9 @@ function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: bool
     hide: () => { visible = false; }, finish: () => finish(),endStream:()=>reader.close()};
 }
 const targetOf = (bytes: number[]) => bytes[6]! + 256 * bytes[7]!;
+const dispatchPose=async(f:ReturnType<typeof fixture>,positions:readonly number[]=TEACHER_HOME)=>{
+  for(let i=0;i<5;i++){await f.feed(f.time()+2,positions);f.control.tick();await flush();}
+};
 
 describe('teacher Home planning', () => {
   it('uses exactly the requested Home and a finite ordered route with nominal steps <=10', () => {
@@ -68,9 +71,11 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
- it('timed pose J3 2811 to 2838 sends no correction and waits for stable frame completion',async()=>{
+ it('timed pose J3 2811 to 2838 sends every target and completes on time despite no movement',async()=>{
    const f=fixture({directSession:true}),before=[...TEACHER_HOME];before[2]=2811;const target=[...before];target[2]=2838;await f.ready(before);
-   f.control.moveToPosition(target);await flush();expect(f.writes).toHaveLength(0);for(let at=1200;at<=2200;at+=100){await f.feed(at,before);f.control.tick();}expect(f.control.snapshot().home?.phase).toBe('Complete');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
+   f.control.moveToPosition(target);await flush();await dispatchPose(f,before);expect(f.writes).toHaveLength(6);expect(f.writes.map(w=>w.bytes[2])).toEqual([1,2,3,4,5,6]);
+   expect(f.writes[2]!.bytes[7]!+256*f.writes[2]!.bytes[8]!).toBe(2838);
+   for(let at=1200;at<=2200;at+=100){await f.feed(at,before);f.control.tick();}expect(f.control.snapshot().home?.phase).toBe('Complete');expect(f.control.snapshot().message).toContain('frame time elapsed');expect(f.control.snapshot().positions?.[2]).toBe(2811);expect(f.writes).toHaveLength(6);f.control.disconnect();await flush();
  });
  it('Stop during timed dispatch holds only submitted joints and cancels the rest',async()=>{
    const f=fixture({directSession:true});await f.ready();f.control.moveToPosition(TEACHER_HOME.map(n=>n+100));await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[2]).toBe(1);
@@ -80,9 +85,10 @@ describe('smooth teacher controls',()=>{
  it.each(['pose','move'])('larger J3 %s steps accept the measured stable 28-unit offset before continuing',async kind=>{
    const f=fixture({directSession:true}),target=[...TEACHER_HOME];target[2]=2838;await f.ready();
    const first=kind==='pose'?{kind:'pose',blockId:'j3',positionId:'p',name:'P',positions:target}:{kind:'move',blockId:'j3',servo:3,target:2838};
-   f.control.runProgram([first,{kind:'move',blockId:'next',servo:1,target:2130}]);await flush();
-   const actual=[...target];actual[2]=2810;for(const at of [1300,1400]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(1);
-   for(let at=1500;at<=2700;at+=100){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(1);
+   f.control.runProgram([first,{kind:'move',blockId:'next',servo:1,target:2130}]);await flush();if(kind==='pose')await dispatchPose(f);
+   const count=kind==='pose'?6:1;
+   const actual=[...target];actual[2]=2810;for(const at of [1300,1400]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(count);
+   for(let at=1500;at<=2700;at+=100){await f.feed(at,actual);f.control.tick();await flush();}expect(f.writes).toHaveLength(count+1);expect(f.writes[count]!.bytes[2]).toBe(1);
    actual[0]=2130;for(const at of [2800,2900,3000]){await f.feed(at,actual);f.control.tick();await flush();}expect(f.control.snapshot().program?.phase).toBe('Completed');f.control.disconnect();await flush();
  });
  it('direct sessions become ready after Connect without Enable and never write until an explicit move',async()=>{
@@ -97,14 +103,30 @@ describe('smooth teacher controls',()=>{
    expect(f.control.report().manualPositioning.physicalTorqueState).toBe('not measured');expect(JSON.parse(f.stored.get(MANUAL_STATE_KEY)!).requiresHoldingVerification).toBe(false);
    f.control.disconnect();await flush();
  });
- it('direct Stop and a settled-short timeout allow a new explicit Run without replaying canceled blocks',async()=>{
+ it('a 32-unit residual advances to the next pose, then Stop still holds all joints after elapsed completion',async()=>{
    const f=fixture({directSession:true}),target=[...TEACHER_HOME];target[2]=2838;await f.ready();
-   const instructions=[{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:target},{kind:'move',blockId:'later',servo:1,target:2300}];f.control.runProgram(instructions);await flush();
-   const actual=[...target];actual[2]=2807;
-   for(let at=1200;at<=9000;at+=100){await f.feed(at,actual);f.control.tick();await flush();}
-   expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(1);
-   f.control.stop();await flush();const count=f.writes.length;for(const at of [9200,9300,9400,9600])await f.feed(at,actual);f.control.tick();expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(count);
+   const instructions=[{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:target},{kind:'pose',blockId:'later',positionId:'home',name:'Home',positions:[...TEACHER_HOME]}];f.control.runProgram(instructions);await flush();await dispatchPose(f);
+   const actual=[...target];actual[2]=2806;
+   for(let at=1200;at<=5000;at+=100){await f.feed(at,actual);f.control.tick();await flush();}
+   expect(f.control.snapshot().program?.phase).toBe('Completed');expect(f.control.snapshot().canMove).toBe(true);expect(f.control.snapshot().faulted).toBe(false);expect(f.writes).toHaveLength(12);
+   expect(f.control.report().operations).toEqual(expect.arrayContaining([expect.objectContaining({result:expect.objectContaining({completionPolicy:'elapsed-time',latest:actual,target})})]));
+   f.control.stop();await flush();expect(f.writes).toHaveLength(13);expect(f.writes.at(-1)!.bytes).toHaveLength(84);
+   const count=f.writes.length;for(const at of [5200,5300,5400,5600])await f.feed(at,actual);f.control.tick();expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(count);
    f.control.runProgram([{kind:'move',blockId:'new',servo:1,target:2130}]);await flush();expect(f.writes).toHaveLength(count+1);expect(f.writes.at(-1)!.bytes[2]).toBe(1);f.control.disconnect();await flush();
+ });
+ it('release clears elapsed-frame Stop holds so Stop cannot send a position command while released',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.returnHome();await flush();await dispatchPose(f);
+   for(let at=1200;at<=2300;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.control.snapshot().home?.phase).toBe('Complete');
+   f.control.setHolding(false,true);await flush();const count=f.writes.length;f.control.stop();await flush();expect(f.writes).toHaveLength(count);expect(f.control.snapshot().canMove).toBe(false);f.control.disconnect();await flush();
+ });
+ it('short timed poses and a zero wait advance at frame time without an extra half-second gate',async()=>{
+   const f=fixture({directSession:true});await f.ready();
+   const pose={kind:'pose',blockId:'p',positionId:'home',name:'Home',positions:[...TEACHER_HOME],durationMs:100};
+   f.control.runProgram([pose,{kind:'wait',blockId:'w',durationMs:0},pose]);await flush();await dispatchPose(f);expect(f.writes).toHaveLength(6);
+   const firstEnd=f.time()+100;await f.feed(firstEnd);f.control.tick();await flush();expect(f.writes).toHaveLength(6);
+   f.control.tick();await flush();expect(f.writes).toHaveLength(7);expect(f.writes[6]!.at-f.writes[5]!.at).toBe(100);
+   f.control.stop();await flush();expect(f.writes.at(-1)!.bytes).toHaveLength(84);const count=f.writes.length;
+   for(let at=firstEnd+100;at<=firstEnd+700;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.writes).toHaveLength(count);f.control.disconnect();await flush();
  });
  it('direct readiness cannot clear an interrupted release on reload or stale/unstable restore readings',async()=>{
    const stored=new Map([[MANUAL_STATE_KEY,JSON.stringify({requiresHoldingVerification:true,events:[]})]]),f=fixture({directSession:true,stored});await f.ready();expect(f.control.snapshot().canMove).toBe(false);expect(f.writes).toHaveLength(0);

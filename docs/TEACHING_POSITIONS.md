@@ -1,6 +1,6 @@
-# Teach and use a position: dev.34
+# Teach and use a position: dev.35
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.34**, select **Station robot**,
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.35**, select **Station robot**,
 and Connect. Open **Teach a position → Release, record, and restore**.
 
 Live targets must fit the [current operating ranges](./OPERATING_RANGES.md).
@@ -45,10 +45,11 @@ Delete and Clear saved positions affect only pose records. Import is not yet
 implemented, so keep exported backups for the later import feature.
 
 To test one saved position, restore holding if released and check the full
-movement sweep, then click **Move to position** beside that position. All needed
+movement sweep, then click **Move to position** beside that position. All six
 joints receive targets together with per-joint speeds up to 600 / acceleration 10, using the same
-executor as Home. Wait for completion and inspect the measured values. Joints
-have independent arrival times. An already reached pose sends no command.
+executor as Home. Wait for frame time to elapse and inspect the measured values.
+Joints have independent arrival times and may still be moving or stop short when
+the frame ends. All targets are sent, even for an already-near pose.
 Use Stop to cancel and attempt holds at the latest measured positions.
 
 To connect positions in code:
@@ -64,10 +65,11 @@ To connect positions in code:
 6. Try Simulation first; its illustration shows joint targets, not calibrated
    robot geometry. For hardware, select Station robot and Connect if needed,
    inspect the starting pose and combined sweep, then Run program.
-7. Every move waits for all commanded joints to settle before the next block.
-   Pose settling allows ±30 raw units for every joint regardless of travel distance. Joints already within that accuracy receive no correction command. All require three stable readings
-   over at least 150 ms with at most nine units of spread. Reported positions
-   stay visible; targets are not silently rewritten and no correction loop runs.
+7. Saved-position blocks advance when their effective frame time expires, matching
+   factory online action playback. No pose-arrival tolerance or stable-reading
+   check blocks the next frame. Add Wait for an extra pause. Reported positions,
+   targets and remaining errors stay visible; no correction loop or retry runs.
+   Explicit individual-joint blocks retain their existing completion behavior.
    Test Stop during a short sequence; later blocks must not run. Inspect the arm
    before running again. Fresh stable readings make controls ready without Enable.
 

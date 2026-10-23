@@ -24,15 +24,17 @@ Fresh stable feedback completes restore readiness; physical holding is not measu
 Named positions save locally with export and deletion. Move to position buttons
 and Blockly position blocks replay them as timed frames with per-joint speeds up
 to 600 and acceleration 10. Each block has an editable duration;
-Wait and Repeat connect them into sequences. Each move waits for settling.
+Wait and Repeat connect them into sequences. Pose playback advances when frame
+time elapses, matching factory online actions; exact arrival is not verified.
+Live readings show the result. Add Wait for an extra pause between positions.
 New empty program starts a sequence without the starter's joint movements.
 A separate setup page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from the footer.
 That page links to direct teacher controls at `/mapping.html`: reusable +/-20
 buttons on every servo and a slow return to the teacher-requested Home
 `[2050,2150,2100,2200,2000,1080]`. Follow [the operating and testing steps](docs/TEACHER_CONTROLS.md).
-Home starts the needed joints together with one continuous target per joint
-(speed 600 raw units/second, acceleration 10), with individual completion feedback.
+Home sends all six targets together with one continuous target per joint
+(speed up to 600 raw units/second, acceleration 10) and finishes on frame time.
 Stop attempts holds for all commanded joints at their latest measured positions and permits
 a new explicit action on the same connection once fresh readings stabilize.
 Manual release/restore retains the durable interrupted-setup record across reload;
