@@ -49,3 +49,20 @@ export function decodePositions(frame: Frame): readonly number[] | null {
   const values = Array.from({ length: 6 }, (_, i) => frame.payload[12 + i * 2]! + 256 * frame.payload[13 + i * 2]!);
   return values.every(value => value <= 4095) ? values : null;
 }
+
+export interface ReportedPose {
+  readonly x:number;readonly y:number;readonly z:number;
+  readonly pitch:number;readonly roll:number;readonly claw:number;
+}
+
+// Factory handle_packet decodes the first six bytes as <hhh. Accept only the
+// same fully checked passive frame used for joint feedback; no new query path.
+export function decodeReportedPose(frame:Frame):ReportedPose|null {
+  if(!decodePositions(frame))return null;
+  const signed16=(offset:number)=>{
+    const value=frame.payload[offset]!+256*frame.payload[offset+1]!;
+    return value>=0x8000?value-0x10000:value;
+  };
+  // Match the factory viewer: only pitch has an additional factor of ten.
+  return {x:signed16(0),y:signed16(2),z:signed16(4),pitch:signed16(6)/10,roll:signed16(8),claw:signed16(10)};
+}

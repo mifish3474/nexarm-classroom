@@ -4,8 +4,10 @@ import type { TeacherPort } from './safety/TeacherRobotControl';
 import { HOME_SPEED } from './safety/SmoothTeacherMotion';
 import { TEACHER_HOME } from './safety/TeacherControlPlan';
 import {OPERATING_RANGES,targetIssue} from './safety/OperatingRanges';
+import {createReportedCoordinatesPanel} from './robot/ReportedCoordinatesPanel';
 
 const node = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const coordinates=createReportedCoordinatesPanel(node('teacher-xyz'));
 const serial = (navigator as Navigator & {serial?: {requestPort(): Promise<TeacherPort>}}).serial;
 let control: TeacherRobotControl | null = null, error = '';
 const labels = ['Base', 'Shoulder', 'Elbow', 'Wrist pitch', 'Wrist roll', 'Gripper'];
@@ -45,6 +47,7 @@ function act(action: () => void) {
 function refresh() {
   if (!control) return;
   const state = control.snapshot();
+  coordinates.refresh(state);
   node<HTMLButtonElement>('teacher-connect').disabled = !state.canConnect;
   node<HTMLButtonElement>('teacher-disconnect').disabled = ['Disconnected', 'Closing'].includes(state.connectionState);
   node('teacher-status').textContent = `${state.connectionState} · ${state.armed ? 'Controls enabled' : 'Controls off'} · ${state.message}`;

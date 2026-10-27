@@ -1,11 +1,16 @@
 import type { SimulationStep } from '../simulation/RobotSimulator';
+import {validateCoordinateTarget} from '../protocol/CoordinateTarget';
+import type {CoordinateTarget} from '../protocol/CoordinateTarget';
+
+export type CoordinateStep=CoordinateTarget&{kind:'coordinates'};
 
 export type Instruction =
   | { kind: 'move'; blockId: string; servo: number; target: number }
   | { kind: 'pose'; blockId: string; positionId:string; name:string; positions:number[]; durationMs?:number }
   | { kind: 'wait'; blockId: string; durationMs:number }
+  | (CoordinateStep & {blockId:string})
   | { kind: 'repeat'; blockId: string; count: number; body: Instruction[] };
-export type PlannedStep = SimulationStep & { blockId: string };
+export type PlannedStep = (SimulationStep|CoordinateStep) & { blockId: string };
 
 // This first interpreter expands only a small bounded language. No source code
 // is generated or executed. The simulation backend separately validates motion.
@@ -29,6 +34,8 @@ export function interpret(input: unknown): PlannedStep[] {
         const durationMs=node.durationMs??1000;
         if(typeof durationMs!=='number'||!Number.isInteger(durationMs)||durationMs<100||durationMs>10000)throw Error('Pose duration must be 0.1–10 seconds.');
         steps.push({kind:'pose',positionId:node.positionId,name:node.name,positions:[...node.positions],blockId:node.blockId,durationMs});
+      } else if(node.kind==='coordinates'){
+        steps.push({kind:'coordinates',blockId:node.blockId,...validateCoordinateTarget(node)});
       } else if(node.kind==='wait'){
         if(typeof node.durationMs!=='number'||!Number.isInteger(node.durationMs)||node.durationMs<0||node.durationMs>10000)throw Error('Wait must be between 0 and 10 seconds.');
         steps.push({kind:'wait',durationMs:node.durationMs,blockId:node.blockId});
@@ -40,7 +47,7 @@ export function interpret(input: unknown): PlannedStep[] {
   };
   walk(input, 0);
   if(steps.reduce((sum,step)=>sum+(step.kind==='wait'?step.durationMs:0),0)>60000)throw Error('Waits exceed the 60-second program budget.');
-  if(steps.reduce((sum,step)=>sum+(step.kind==='wait'?step.durationMs:step.kind==='pose'?(step.durationMs??1000):0),0)>60000)throw Error('Pose durations and waits exceed the 60-second program budget.');
+  if(steps.reduce((sum,step)=>sum+(step.kind==='wait'||step.kind==='coordinates'?step.durationMs:step.kind==='pose'?(step.durationMs??1000):0),0)>60000)throw Error('Pose durations, coordinate durations and waits exceed the 60-second program budget.');
   if (!steps.length) throw new Error('Add a movement block under When Run clicked.');
   return steps;
 }

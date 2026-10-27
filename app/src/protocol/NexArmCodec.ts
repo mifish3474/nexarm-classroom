@@ -1,4 +1,23 @@
+import {validateCoordinateTarget} from './CoordinateTarget';
 export type ServoId = 1 | 2 | 3 | 4 | 5 | 6;
+
+// Factory CoordTab.send_coordinate_move: command 8, <hhhhhhH>, P*10 first.
+// Firmware chooses the joint targets, speed and acceleration for this command.
+export function encodeCoordinateTarget(input:unknown):Uint8Array {
+  return encodeCoordinates(input,8);
+}
+
+// Manufacturer Robot_Arm_t::move(..., calc_only=true): identical arguments,
+// command 7 calculates targets only. Never fall back to command 8.
+export function encodeCoordinateCalculation(input:unknown):Uint8Array {
+  return encodeCoordinates(input,7);
+}
+function encodeCoordinates(input:unknown,command:7|8):Uint8Array {
+  const t=validateCoordinateTarget(input);
+  const args=[Math.round(t.pitch*10),t.x,t.y,t.z,t.roll,t.claw,t.durationMs].flatMap(value=>[value&255,(value>>8)&255]);
+  const body=[255,args.length+2,command,...args];
+  return Uint8Array.from([255,255,...body,(~body.reduce((sum,value)=>sum+value,0))&255]);
+}
 
 // Back-to-back existing unicast frames in one USB write. This is not a new
 // broadcast instruction or a guarantee of simultaneous arrival.

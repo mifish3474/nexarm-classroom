@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { encodeFactoryHolding, encodeGoalPosition } from '../app/src/protocol/NexArmCodec';
-import { decodePositions, FrameParser } from '../app/src/protocol/FrameParser';
+import { decodePositions, decodeReportedPose, FrameParser } from '../app/src/protocol/FrameParser';
 
 function telemetry(id = 255, weak = false): Uint8Array {
   const payload = Array<number>(12).fill(0);
@@ -31,6 +31,25 @@ describe('factory goal-position encoder', () => {
 });
 
 describe('passive streaming telemetry', () => {
+  it('decodes signed XYZ and factory pitch/roll/claw scaling from the supplied factory log at every chunk boundary',()=>{
+    const packet=Uint8Array.from('FF FF FF 1A 0B 27 00 FF FF 8F 01 B8 00 08 00 A9 FF 10 08 BF 0A 67 07 54 09 5F 08 24 04 83'.split(' ').map(byte=>parseInt(byte,16)));
+    for(let split=1;split<packet.length;split++){
+      const parser=new FrameParser();expect(parser.push(packet.slice(0,split))).toEqual([]);
+      const frame=parser.push(packet.slice(split))[0]!;
+      expect(decodeReportedPose(frame)).toEqual({x:39,y:-1,z:399,pitch:18.4,roll:8,claw:-87});
+      expect(decodePositions(frame)).toEqual([2064,2751,1895,2388,2143,1060]);
+    }
+  });
+  it('preserves signed 16-bit extrema and genuine zero values without clamping coordinates',()=>{
+    const frame=new FrameParser().push(telemetry())[0]!;
+    const payload=[...frame.payload];payload.splice(0,12,0,128,255,127,0,0,255,255,0,128,255,127);
+    expect(decodeReportedPose({...frame,payload})).toEqual({x:-32768,y:32767,z:0,pitch:-.1,roll:-32768,claw:32767});
+  });
+  it('never promotes weak, wrong-layout, wrong-ID, wrong-command or invalid-joint frames to coordinate reports',()=>{
+    const frame=new FrameParser().push(telemetry())[0]!;
+    for(const invalid of [{...frame,deviceId:90},{...frame,command:75},{...frame,payload:frame.payload.slice(0,6)},{...frame,integrity:'abbreviated-only' as const}])expect(decodeReportedPose(invalid)).toBeNull();
+    const payload=[...frame.payload];payload[12]=0;payload[13]=16;expect(decodeReportedPose({...frame,payload})).toBeNull();
+  });
   it('decodes all two-chunk boundaries, including partial headers', () => {
     const bytes = telemetry();
     for (let split = 1; split < bytes.length; split++) {

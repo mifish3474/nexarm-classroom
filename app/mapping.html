@@ -6,6 +6,7 @@
     <p>Teacher use: secure the base, keep the arm’s sweep and gripper clear, and keep the physical power cutoff within reach. Connect reads positions and sends no movement.</p>
     <div class="actions"><button id="teacher-connect">Connect</button><button id="teacher-disconnect" class="secondary" disabled>Disconnect</button></div>
     <p id="teacher-status" role="status">Disconnected.</p><p id="teacher-readiness"></p><p id="teacher-error" role="alert" hidden></p>
+    <div id="teacher-xyz"></div>
   </section>
   <section class="panel"><h2>Joint sliders</h2><p>Drag a slider to control its joint live, with updates up to ten times per second. Only the newest target is retained. You can also enter a target and click Move. Slider moves use the displayed speed and acceleration, initially factory settings 2000 / 100. Only one joint moves at a time. Small jog controls remain available below each slider.</p>
     <div id="teacher-joints" class="joint-grid"></div><p id="teacher-motion-detail" role="status"></p><details><summary>Earlier Servo 3 test</summary><p>Approved comparison: one Servo 3 +20 move at factory speed 2000 / acceleration 100, starting from the current reading. Small jogs stay at 100 / 10; Home now uses 600 / 10.</p><button id="teacher-servo3-factory" disabled>Servo 3 +20 at factory settings</button></details><button id="teacher-diagnostic-export" class="secondary">Export movement diagnostics</button>

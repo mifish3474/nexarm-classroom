@@ -3,10 +3,11 @@ import { TeacherRobotControl } from '../app/src/safety/TeacherRobotControl';
 import { jogPlan, slowHomePlan, slowHomeStepCount, TEACHER_HOME, HOME_ORDER } from '../app/src/safety/TeacherControlPlan';
 import { MANUAL_STATE_KEY } from '../app/src/safety/ManualPositioning';
 import {OPERATING_RANGES} from '../app/src/safety/OperatingRanges';
+import {encodeCoordinateTarget,encodeSpeedPosition} from '../app/src/protocol/NexArmCodec';
 
 const flush = async () => { for (let i = 0; i < 35; i++) await Promise.resolve(); };
 const locks = {request: async (_name: string, _options: unknown, run: (lease: object) => Promise<void>) => run({})} as unknown as LockManager;
-function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: boolean; stored?: Map<string, string>;directSession?:boolean} = {}) {
+function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: boolean; stored?: Map<string, string>;directSession?:boolean;homeBeforeProgram?:boolean} = {}) {
   let time = 0, visible = true, reader!: ReadableStreamDefaultController<Uint8Array>, finish!: () => void;
   const stored = options.stored ?? new Map<string, string>(), writes: {at: number; bytes: number[]}[] = [];
   const storage = {getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => {
@@ -19,10 +20,12 @@ function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: bool
       if (options.reject) return Promise.reject(new Error('USB write failed'));
       if (options.hang) return new Promise<void>(resolve => { finish = resolve; });
     }})};
-  const control = new TeacherRobotControl(locks, storage, () => time, () => visible, () => {},{directSession:options.directSession??false});
-  const feed = async (at: number, positions: readonly number[] = TEACHER_HOME, weak = false) => {
+  // Existing executor tests isolate block execution; Home-first has dedicated
+  // coverage below and remains enabled by default in the production controller.
+  const control = new TeacherRobotControl(locks, storage, () => time, () => visible, () => {},{directSession:options.directSession??false,homeBeforeProgram:options.homeBeforeProgram??false});
+  const feed = async (at: number, positions: readonly number[] = TEACHER_HOME, weak = false,rawPose:readonly number[]=Array(6).fill(0)) => {
     time = at;
-    const body = [255, 26, 11, ...Array(12).fill(0), ...positions.flatMap(n => [n & 255, n >> 8])];
+    const body = [255, 26, 11, ...rawPose.flatMap(n=>[n&255,(n>>8)&255]), ...positions.flatMap(n => [n & 255, n >> 8])];
     const checksum = (~(weak ? body.slice(0, 3) : body).reduce((a, b) => a + b, 0)) & 255;
     reader.enqueue(Uint8Array.from([255, 255, ...body, checksum])); await flush();
   };
@@ -30,13 +33,56 @@ function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: bool
     for (let at = start; at <= start + 1100; at += 100) await feed(at, positions);
   };
   const ready = async (positions: readonly number[] = TEACHER_HOME) => { control.connect(async () => port); await flush(); await window(0, positions); };
-  return {control, port, writes, stored, feed, window, ready, time: () => time, setTime: (at: number) => { time = at; },
+  const solution=async(positions:readonly number[]=TEACHER_HOME,pose:readonly number[]=[39,-1,-71,184,8,-87],weak=false)=>{
+    const body=[255,26,7,...[...pose,...positions].flatMap(n=>[n&255,(n>>8)&255])];
+    reader.enqueue(Uint8Array.from([255,255,...body,(~(weak?body.slice(0,3):body).reduce((a,b)=>a+b,0))&255]));await flush();
+  };
+  return {control, port, writes, stored, feed, window, ready, solution, time: () => time, setTime: (at: number) => { time = at; },
     hide: () => { visible = false; }, finish: () => finish(),endStream:()=>reader.close()};
 }
 const targetOf = (bytes: number[]) => bytes[6]! + 256 * bytes[7]!;
 const dispatchPose=async(f:ReturnType<typeof fixture>,positions:readonly number[]=TEACHER_HOME)=>{
   for(let i=0;i<5;i++){await f.feed(f.time()+2,positions);f.control.tick();await flush();}
 };
+
+describe('Home-first Run',()=>{
+ const program=[{kind:'move',blockId:'first',servo:1,target:2130}];
+ const setup=()=>fixture({directSession:true,homeBeforeProgram:true});
+ it('returns every joint to Home before block 1, retaining the original program steps',async()=>{
+   const f=setup(),before=TEACHER_HOME.map(n=>n+200);await f.ready(before);expect(f.writes).toHaveLength(0);
+   f.control.runProgram(program);await flush();await dispatchPose(f,before);
+   expect(f.writes).toHaveLength(6);expect(f.writes.map(w=>w.bytes[7]!+256*w.bytes[8]!)).toEqual(TEACHER_HOME);
+   expect(f.control.snapshot().program).toMatchObject({startup:'Returning Home',completed:0,total:1,activeStep:null});
+   for(let at=1300;at<=2300;at+=100){await f.feed(at);f.control.tick();await flush();}
+   expect(f.writes).toHaveLength(7);expect(f.writes[6]!.bytes[2]).toBe(1);expect(f.writes[6]!.bytes[7]!+256*f.writes[6]!.bytes[8]!).toBe(2130);
+   expect(f.control.snapshot().program?.startup).toBe('Running blocks');f.control.disconnect();await flush();
+ });
+ it('skips redundant Home movement when fresh readings are already near Home',async()=>{
+   const f=setup();await f.ready(TEACHER_HOME.map(n=>n+5));f.control.runProgram(program);await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[2]).toBe(1);f.control.disconnect();await flush();
+ });
+ it('validates later destinations before moving Home',async()=>{
+   const f=setup();await f.ready(TEACHER_HOME.map(n=>n+100));
+   expect(()=>f.control.runProgram([...program,{kind:'move',blockId:'bad',servo:3,target:1880}])).toThrow('J3 target 1880');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
+ });
+ it('fails a Home shortfall without starting any blocks or retrying the return',async()=>{
+   const f=setup(),before=TEACHER_HOME.map(n=>n+200);await f.ready(before);f.control.runProgram(program);await flush();await dispatchPose(f,before);
+   for(let at=1300;at<=4500;at+=100){await f.feed(at,before);f.control.tick();await flush();}
+   expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().message).toContain('Home was not reached');expect(f.writes).toHaveLength(6);f.control.disconnect();await flush();
+ });
+ it.each(['stop','hide','disconnect'])('cancels startup on %s and never starts the blocks',async action=>{
+   const f=setup();await f.ready(TEACHER_HOME.map(n=>n+200));f.control.runProgram(program);await flush();
+   if(action==='stop')f.control.stop();else if(action==='hide'){f.hide();f.control.tick();}else f.control.disconnect();await flush();
+   const count=f.writes.length;f.setTime(5000);f.control.tick();await flush();expect(f.writes).toHaveLength(count);expect(f.control.snapshot().program?.phase).not.toBe('Running');f.control.disconnect();await flush();
+ });
+ it('calculates XYZ before Home even from an out-of-range starting pose, then moves Home before the checked destination',async()=>{
+   const f=setup(),before=[...TEACHER_HOME];before[2]=1880;await f.ready(before);
+   f.control.runProgram([{kind:'coordinates',blockId:'xyz',x:39,y:-1,z:-71,pitch:18.4,roll:8,claw:-87,durationMs:1000}]);await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[4]).toBe(7);
+   await f.solution(TEACHER_HOME.map(n=>n+100));await f.feed(1600,before);f.control.tick();await flush();f.control.tick();await flush();await dispatchPose(f,before);
+   expect(f.writes).toHaveLength(7);expect(f.writes.slice(1).map(w=>w.bytes[7]!+256*w.bytes[8]!)).toEqual(TEACHER_HOME);
+   for(let at=1800;at<=2800;at+=100){await f.feed(at);f.control.tick();await flush();}await dispatchPose(f);
+   expect(f.writes).toHaveLength(13);expect(f.writes.slice(7).map(w=>w.bytes[7]!+256*w.bytes[8]!)).toEqual(TEACHER_HOME.map(n=>n+100));f.control.disconnect();await flush();
+ });
+});
 
 describe('teacher Home planning', () => {
   it('uses exactly the requested Home and a finite ordered route with nominal steps <=10', () => {
@@ -71,6 +117,90 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
+ const xyz={kind:'coordinates',blockId:'c',x:39,y:-1,z:-71,pitch:18.4,roll:8,claw:-87,durationMs:2000};
+ it('stops immediately on the observed all-zero controller calculation without Home, program movement, or retries',async()=>{
+   const f=fixture({directSession:true,homeBeforeProgram:true});await f.ready(TEACHER_HOME.map(n=>n+100));
+   f.control.runProgram([{...xyz,x:294,y:59,z:243,pitch:-75.2,roll:-1,claw:-45}]);await flush();
+   await f.solution(Array(6).fill(0),Array(6).fill(0));
+   expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().message).toContain('all-zero calculation result');expect(f.control.report().lastCoordinateCalculation?.receivedCount).toBe(1);
+   for(let at=1200;at<=4000;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[4]).toBe(7);f.control.disconnect();await flush();
+ });
+ it('checks later XYZ blocks before sending any earlier movement',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.runProgram([xyz,{kind:'move',blockId:'j',servo:1,target:2130},{...xyz,blockId:'last',x:40}]);await flush();await f.solution();
+   await f.feed(1600);f.control.tick();await flush();expect(f.writes).toHaveLength(2);expect(f.writes.every(w=>w.bytes[4]===7)).toBe(true);
+   await f.solution(TEACHER_HOME.map((n,i)=>i===5?2732:n),[40,-1,-71,184,8,-87]);
+   expect(f.control.snapshot().message).toContain('J6 target 2732');for(let at=1700;at<=2500;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
+ });
+ it('uses a matched calculation as targets only, then dispatches six checked joint commands',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.runProgram([xyz]);await flush();
+   expect(f.writes[0]!.bytes.slice(2,5)).toEqual([255,16,7]);
+   const targets=TEACHER_HOME.map(n=>n+40);await f.solution(targets);
+   expect(f.control.snapshot().positions).toEqual(TEACHER_HOME);expect(f.control.snapshot().reportedPose?.z).toBe(0);
+   await f.feed(1600);f.control.tick();await flush();f.control.tick();await flush();await dispatchPose(f);
+   expect(f.writes).toHaveLength(7);expect(f.writes.slice(1).map(w=>w.bytes[2])).toEqual([1,2,3,4,5,6]);
+   expect(f.writes.slice(1).map(w=>w.bytes[7]!+256*w.bytes[8]!)).toEqual(targets);
+   expect(f.control.report().coordinateChecks).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it.each(['missing','weak','mismatched'])('fails closed on %s calculation replies without any joint movement',async kind=>{
+   const f=fixture({directSession:true});await f.ready();f.control.runProgram([xyz]);await flush();
+   if(kind!=='missing')await f.solution(TEACHER_HOME,kind==='mismatched'?[40,-1,-71,184,8,-87]:undefined,kind==='weak');
+   for(let at=1200;at<=3100;at+=100){await f.feed(at);f.control.tick();await flush();}
+   expect(f.writes).toHaveLength(1);expect(f.control.snapshot().message).toContain('Coordinate block 1');
+   expect(f.control.snapshot().message).toContain(kind==='missing'?'No calculation-only reply received':kind==='weak'?'abbreviated checksum':'Coordinate values differ');
+   expect(f.control.report().lastCoordinateCalculation).toMatchObject({block:1,receivedCount:kind==='missing'?0:1});
+   expect(f.control.snapshot().program?.phase).toBe('Fault');f.control.disconnect();await flush();
+ });
+ it('identifies the reported program block 4 without moving Home or running earlier destinations',async()=>{
+   const f=fixture({directSession:true,homeBeforeProgram:true});await f.ready(TEACHER_HOME.map(n=>n+100));
+   const goals=[[257,19,378,0,1,-87],[375,76,-69,-83.1,-1,-86],[373,76,-70,-83.9,-1,-45],[294,59,243,-75.2,-1,-45]];
+   f.control.runProgram(goals.map(([x,y,z,pitch,roll,claw],i)=>({...xyz,blockId:`reported-${i}`,x,y,z,pitch,roll,claw})));await flush();
+   for(const [x,y,z,pitch,roll,claw] of goals.slice(0,3)){
+     await f.solution(TEACHER_HOME,[x!,y!,z!,Math.round(pitch!*10),roll!,claw!]);await f.feed(f.time()+500);f.control.tick();await flush();
+   }
+   expect(f.writes).toHaveLength(4);expect(f.writes.every(w=>w.bytes[4]===7)).toBe(true);
+   const sent=f.time();for(let at=sent+100;at<=sent+2000;at+=100){await f.feed(at);f.control.tick();await flush();}
+   expect(f.control.snapshot().message).toContain('Coordinate block 4 (X 294, Y 59, Z 243, P -75.2, R -1, C -45)');
+   expect(f.control.report().lastCoordinateCalculation).toMatchObject({block:4,receivedCount:0});expect(f.writes).toHaveLength(4);expect(f.control.snapshot().program?.phase).toBe('Fault');f.control.disconnect();await flush();
+ });
+ it.each(['stop','disconnect','hide'])('ignores calculation results after %s',async action=>{
+   const f=fixture({directSession:true});await f.ready();f.control.runProgram([xyz]);await flush();
+   if(action==='stop')f.control.stop();else if(action==='disconnect')f.control.disconnect();else{f.hide();f.control.tick();}
+   await flush();if(action==='stop')await f.solution();
+   f.setTime(4000);f.control.tick();await flush();expect(f.writes).toHaveLength(1);expect(f.control.snapshot().program?.phase).not.toBe('Running');f.control.disconnect();await flush();
+ });
+ it('rejects a starting joint outside its range before requesting any calculation',async()=>{
+   const f=fixture({directSession:true});await f.ready(TEACHER_HOME.map((n,i)=>i===2?1900:n));
+   expect(()=>f.control.runProgram([xyz])).toThrow('XYZ starting position');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
+ });
+ it.each(['first','after joint','after pose','after wait','inside repeat'])('checks coordinates %s before any program movement and rejects invalid J3',async placement=>{
+   const f=fixture({directSession:true});await f.ready();
+   const coordinates={kind:'coordinates',blockId:'c',x:39,y:-1,z:-71,pitch:18.4,roll:8,claw:-87,durationMs:2000};
+   const first=placement==='after joint'?{kind:'move',blockId:'j',servo:1,target:2130}:placement==='after pose'?{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:[...TEACHER_HOME]}:{kind:'wait',blockId:'w',durationMs:1000};
+   const program=placement==='first'?[coordinates]:placement==='inside repeat'?[{kind:'repeat',blockId:'r',count:2,body:[coordinates]}]:[first,coordinates];
+   f.control.runProgram(program);await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[4]).toBe(7);
+   await f.solution(TEACHER_HOME.map((n,i)=>i===2?2901:n));expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().message).toContain('J3 target 2901');
+   for(let at=1200;at<=2000;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.writes).toHaveLength(1);
+   f.control.runProgram([{kind:'move',blockId:'j',servo:1,target:2130}]);await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(1);f.control.disconnect();await flush();
+ });
+ it.each([false,true])('rejects native packets at the writer boundary even with a preceding joint packet: %s',async prefixJoint=>{
+   const f=fixture({directSession:true});await f.ready();let callback=false;
+   const gateway=f.control as unknown as {write:(packet:Uint8Array,completed:()=>void)=>void};
+   const native=encodeCoordinateTarget({x:200,y:0,z:200,pitch:0,roll:0,claw:0,durationMs:2000});
+   gateway.write(prefixJoint?Uint8Array.from([...encodeSpeedPosition(1,2130,600,10),...native]):native,()=>{callback=true;});await flush();
+   expect(f.writes).toHaveLength(0);expect(callback).toBe(false);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('movement is disabled');f.control.disconnect();await flush();
+ });
+ it('reports passive coordinates with freshness and diagnostics, rejects weak updates, and clears them on reconnect without writes',async()=>{
+   const f=fixture({directSession:true});await f.ready();
+   const raw=[39,-1,399,184,8,-87],expected={x:39,y:-1,z:399,pitch:18.4,roll:8,claw:-87};
+   await f.feed(1200,TEACHER_HOME,false,raw);expect(f.control.snapshot()).toMatchObject({reportedPose:expected,feedbackFresh:true});
+   expect(f.control.report().reportedCoordinates).toMatchObject({source:'passive-0x0b',referenceVerified:false,latest:expected,feedbackFresh:true});
+   const copy=f.control.snapshot().reportedPose as {x:number};copy.x=999;expect(f.control.snapshot().reportedPose?.x).toBe(39);
+   await f.feed(1800,TEACHER_HOME,true,[100,200,300,0,0,0]);expect(f.control.snapshot()).toMatchObject({reportedPose:expected,feedbackFresh:false});
+   expect(f.control.report().reportedCoordinates.feedbackFresh).toBe(false);expect(f.writes).toHaveLength(0);
+   f.control.disconnect();await flush();expect(f.control.snapshot()).toMatchObject({reportedPose:expected,feedbackFresh:false});
+   f.control.connect(async()=>f.port);await flush();expect(f.control.snapshot().reportedPose).toBeNull();expect(f.writes).toHaveLength(0);
+   f.control.disconnect();await flush();
+ });
  it('timed pose J3 2811 to 2838 sends every target and completes on time despite no movement',async()=>{
    const f=fixture({directSession:true}),before=[...TEACHER_HOME];before[2]=2811;const target=[...before];target[2]=2838;await f.ready(before);
    f.control.moveToPosition(target);await flush();await dispatchPose(f,before);expect(f.writes).toHaveLength(6);expect(f.writes.map(w=>w.bytes[2])).toEqual([1,2,3,4,5,6]);

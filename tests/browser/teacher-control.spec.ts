@@ -44,6 +44,12 @@ test('sliders use the supplied ranges and out-of-range readings do not block a r
  await expect(page.locator('[data-servo-value="3"]')).toHaveText('2905');await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
+test('the slider page shows passive XYZ/P/R/C without sending a query or movement',async({page})=>{
+ await robot(page);const panel=page.locator('#teacher-xyz');await expect(panel).toContainText('Connect to see controller-reported');
+ await connect(page);await expect(panel.locator('[data-reported-axis]')).toHaveText(['0','0','0','0','0','0']);await expect(panel.locator('[data-coordinate-status]')).toContainText('Live report');expect(await writes(page)).toHaveLength(0);
+ await page.getByRole('button',{name:'Disconnect',exact:true}).click();await expect(panel.locator('[data-coordinate-status]')).toContainText('Disconnected · last report');expect(await writes(page)).toHaveLength(0);
+});
+
 test('approved Servo 3 comparison uses factory settings without changing normal controls',async({page})=>{
  await robot(page);await page.getByText('Earlier Servo 3 test',{exact:true}).click();const comparison=page.getByRole('button',{name:'Servo 3 +20 at factory settings'});
  await expect(comparison).toBeDisabled();await connect(page);await ready(page);expect(await writes(page)).toEqual([]);
@@ -58,7 +64,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.36');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.43');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeEnabled(); await ready(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {

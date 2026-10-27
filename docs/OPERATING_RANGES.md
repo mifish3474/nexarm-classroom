@@ -1,4 +1,15 @@
-# Development operating ranges: dev.30
+# Development operating ranges: dev.41
+
+Dev.40 adds checked XYZ/P/R/C execution: calculate all coordinate destinations
+without moving, reject out-of-range joint solutions, then send accepted targets
+through the timed-pose joint executor. Missing/invalid calculations send no
+program movement. Direct native coordinate command 8 remains blocked. A coordinate
+program in dev.41 first returns to the established Home after all destinations
+pass validation, even if initially outside range. An in-range measured pose is
+still required before each program block's movement. These checks do not
+establish link clearance or prevent actual servo
+overshoot. See [coordinate testing](./COORDINATE_PROGRAMMING.md).
+The same ranges apply to joint commands, saved poses, Home and capture.
 
 The operator supplied these ranges on 2026-10-23, based on factory-software
 values with adjustments during testing. The pairs are interpreted as low/high.
@@ -52,8 +63,8 @@ tolerance or stable-reading gate. All six targets are sent. Live readings may
 still differ from targets. Direct individual-joint controls retain their own
 accuracy rules. Recording and requested-target range checks remain exact.
 
-Simulation retains the general 0–4095 encoding range for learning; hardware
-mode checks the operating ranges before executing that program. The legacy
+Simulation is hidden in the dev.40 station view; its separate learning model
+retains the general 0–4095 encoding range. The legacy
 root Connection Lab and archived mapping-test suite retain their original
 behavior; these new ranges apply to the current classroom/setup controller.
 

@@ -1,6 +1,271 @@
-# Classroom programming development preview 0.7.0-dev.36
+# Classroom programming development preview 0.7.0-dev.43
 
-## Current update: endpoint-path comparisons are diagnostic for timed poses
+## Current update: captured all-zero controller result
+
+The current session export confirms four command-7 requests and no movement
+writes. Replies 1–3 have full checksums, matching coordinate fields and valid
+targets within OperatingRanges:
+
+| Block | Calculated J1–J6 |
+| --- | --- |
+| 1 | 2000, 2188, 2089, 2229, 2059, 1058 |
+| 2 | 1918, 1103, 2807, 2808, 2037, 1070 |
+| 3 | 1917, 1102, 2806, 2815, 2037, 1536 |
+
+Block 4 is correctly encoded as P=-752 (tenths), X294/Y59/Z243, R-1/C-45,
+time 2000. Its fully checked ID255/command7 response arrives about 22 ms after
+sending with ALL 24 data bytes zero: no usable tool pose or joint solution.
+This is not missing USB support, an input-bound rejection, an ordinary rounding
+mismatch or an application joint-limit rejection. The reason the controller
+returns zeros remains unresolved; this does not prove physical impossibility.
+
+Dev.43 recognizes that exact all-zero response after validating frame ID,
+command, checksum and length, and immediately cancels preparation with a clear
+no-usable-solution message. It does not wait two seconds, retry, skip or alter
+the destination, change limits, move Home or use native 8. Other mismatched
+frames retain existing rejection logic. No physical movement behavior is added.
+
+The existing alternative is a recorded joint-pose block, which can be mixed
+with XYZ blocks. Investigating the coordinate mismatch needs measured J1–J6
+from the same stationary recorded pose alongside its LCD values. The program
+file contains coordinates only; those measurements cannot be reconstructed.
+Do not invent targets or copy zero values into a position.
+
+Validation: build/type-check and all 290 unit tests pass. Regressions use the
+three captured successful payloads, the exact fourth request and empty reply,
+and immediate cancellation without Home/program movement or retries.
+
+## Previous update: identify missing versus rejected coordinate calculations (dev.42)
+
+The operator's ten-destination program uses valid input fields and reaches
+calculation block 4 before timing out. Its fourth target is X294/Y59/Z243,
+P-75.2/R-1/C-45, duration 2000 ms. Progress through earlier blocks establishes
+that calculation-only replies can work on this setup; the old blanket suggestion
+that firmware may not support calculation is not a diagnosis of this failure.
+
+Dev.42 reports the failing expanded block number and all requested coordinates,
+distinguishes no parsed command-7 reply from rejected replies, and names rejection
+reasons: ID, checksum strength, payload length, exact coordinate mismatches or
+invalid raw target encoding. Mismatched values are shown as requested/replied
+numbers with pitch in degrees. Diagnostics retain lastCoordinateCalculation with
+the target, block, send time, received reply count and last rejection, in addition
+to the bounded raw calculation-reply history and accepted calculations.
+
+No checksum, pose matching, joint limits, timeout, Home-first logic or movement
+behavior is relaxed. Exact pose matching is still an implementation requirement;
+we need actual rejected reply data before deciding whether firmware rounding or
+another interpretation calls for a protocol change. Lack of a reply does not prove
+unreachability. Export the existing session before refresh; no hazardous repeat is
+needed. The old October 23 diagnostic files do not describe this new session.
+
+Validation: build/type-check and all 288 unit tests pass. A regression models the
+first four supplied targets, accepts the first three, and checks that block 4's
+missing result produces an exact diagnostic without Home or program movement.
+An example 0.1-degree pitch mismatch is explained but remains rejected. Physical
+cause of this timeout is unresolved pending the session diagnostic export.
+
+## Current update: Home-first Run
+
+The operator explicitly approved validating destinations, returning to the
+established Home, then executing the blocks. Every Run uses this sequence by
+default, including joint-only and wait programs. All target validation and
+calculation-only XYZ preflight finish before any Home movement. Invalid targets
+cause no movement. An out-of-range starting pose no longer blocks coordinate
+preparation: an accepted plan first returns to Home through TimedPoseMotion.
+Home is `[2050,2150,2100,2200,2000,1080]`; XYZ destination limits remain exact.
+
+Home uses a one-second requested frame, extended for the tested 600 speed cap /
+acceleration 10, all six targets and existing write spacing. Already within 40
+raw units of Home on every joint skips the redundant return. Otherwise, after
+the return frame elapses, the controller waits up to two seconds for fresh
+readings within that tolerance. A Home shortfall faults without starting blocks
+or retrying. Ordinary saved-position frames still use elapsed-time completion.
+This is not hardware homing, calibration or proof of clearance from an arbitrary
+initial pose. Returning Home cannot make an invalid XYZ destination valid.
+
+Home is a startup stage, not a saved/editable block: no loop iteration, program
+file or step-count changes. Run status identifies the return. Stop, disconnect,
+hidden page, stale feedback, write faults and the time budget cancel both startup
+and blocks. No automatic resume. Connect, Load, reload and Restore do not initiate
+Home movement. Setup sliders and the separate Home control are unchanged.
+No new confirmation workflow or student-editable setting is introduced.
+
+Regression checks cover Home-before-block ordering, invalid-target rejection
+before Home, out-of-range entry, already-Home skip, Home shortfall, cancellation
+and the default browser workflow. Physical testing remains operator-run.
+
+Validation: TypeScript/Vite build and all 286 unit checks pass. All 25 classroom
+browser checks pass, including the new startup scenarios. The other 22 browser
+checks passed in the full run; its one outdated classroom small-J3 assertion was
+updated to begin at Home and passed with the classroom rerun. Browser hardware
+is mocked; no physical robot was moved by these checks.
+
+## Previous update: checked coordinate targets, station layout and program files (dev.40)
+
+User authorization: enforce the established joint limits for XYZ moves; keep the
+station robot as the default, hide simulator/virtual frame, put Connect / Release
+/ Restore above Run, and save/reload test programs. No teacher approval workflow
+or editable student limits is added. Root index.html v0.6.1 remains unchanged.
+
+Coordinate execution now requests calculation-only command 7 for every expanded
+coordinate block BEFORE any program movement. Manufacturer Robot_Arm.cpp's
+active move(..., calc_only=true) confirms the 14-byte P×10/X/Y/Z/R/C/time request;
+system_task_handle.cpp confirms a 24-byte XYZ/P/R/C + six servo-target reply.
+Source links and first hardware-check steps are in COORDINATE_PROGRAMMING.md.
+Installed factory USB forwarding remains unverified; no firmware is flashed.
+
+The gateway accepts only full-checksum command-7 replies from ID 255 or 0x5A,
+with exact echoed coordinates and six encodable raw targets. It rejects solutions
+outside OperatingRanges without clamping, preserving the measured feedback cache.
+After all calculations pass, coordinate steps become internal pose snapshots and
+run through TimedPoseMotion (600 speed cap / acceleration 10). Coordinate programs
+check their measured starting pose at initial preflight and before each movement.
+Command 8 is still blocked at the shared transport boundary and has no live route.
+No matching reply in two seconds, invalid targets, stale feedback or failed writes
+cancel preparation; no program movement has been sent at that stage. Stop,
+disconnect and hidden-page cancellation discard pending calculations. Replies
+cannot restart a canceled program. Echo matching is not a transaction nonce—the
+protocol has no request ID. No automatic native fallback or correction loop.
+
+Diagnostics include checked target snapshots and the last 20 parsed command-7
+replies (including mismatched/weak replies), separate from measured positions.
+Mathematical interpolation between bounded joint targets remains in joint bounds;
+actual overshoot, valid-angle collisions, branch continuity and obstruction
+protection are not established. This is commanded-target enforcement, not proof
+that the previously reported pinch route is safe. No hazardous route was repeated.
+
+Station robot is the only visible mode. Simulation code remains available for
+later work, but its panel, virtual-arm frame and main-page simulation tests are
+removed. Readings/diagnostics are in an expandable panel. Release/Restore retain
+the established durable release record and automatic fresh-feedback readiness.
+
+Save program downloads data-only JSON (format nexarm-classroom-program, schema 1,
+max 256 KB). It preserves instruction structure and embeds named-pose snapshots.
+Load validates the entire file and bounded interpreter first, builds blocks in a
+temporary workspace, then replaces the visible workspace; failures preserve old
+blocks. Imported pose snapshots remain in memory for file blocks; they do not
+overwrite the saved-position library. Loading never connects, restores holding
+or runs. It accepts no code, station policy or device settings. There is no
+autosave; explicitly save before reload. No identities or uploads are added.
+
+Validation: TypeScript/Vite build, full unit suite and all 45 Chrome browser
+checks pass with mocked serial ports. New regressions cover both ends of every
+joint range, weak/mismatched/missing IK results, starting-range rejection,
+all-program preflight, cancellation/late replies, six-target dispatch without
+command 8, responsive station layout, local file round trips, malformed files,
+and imported pose independence after reload. Hardware behavior is unverified.
+
+## Previous update: suspend native coordinate execution after arm/shoulder pinch report (dev.39)
+
+Operator clarification: this was the arm and shoulder moving too close together,
+not loss of servo support. The operator asks that coordinate movement obey the
+existing joint limits. Those remain the shared OperatingRanges values, including
+J3 2000–2900. Native command 8 cannot provide our gateway the joint targets before
+moving. The intended replacement must calculate/obtain all joint targets first,
+reject out-of-range solutions without clamping, and validate the intermediate
+route before dispatch through the joint executor. No replacement motion has been
+enabled. Even in-range individual joints do not establish arm/shoulder clearance;
+coupled-posture restrictions still require physical validation. Software cannot
+guarantee zero physical overshoot from target bounds alone.
+
+The operator reports that native coordinate playback folds/collapses J3, creating
+a pinch point and a lurch. This is a physical hazard report, not a small target
+error. The root cause is unverified. Dev.39 blocks any program containing a
+coordinate block in whole-program preflight, including later/nested blocks, and
+rejects command 8 at the shared writer boundary even inside a combined packet.
+The UI disables Run for these programs and explains the reason. No UI or storage
+override is provided. Coordinate blocks remain editable; passive XYZ/P/R/C
+readings, existing joint controls, and saved-joint pose playback remain available.
+Loading a joint-only lesson/new program refreshes the lockout state immediately.
+
+No alternative physical trajectory, speed increase, new stop opcode, firmware
+write, or repeated test was introduced. This source change cannot recall a
+command already executing in an older page. Stop/physical cutoff remain the
+operator's intervention for current movement. Refresh and confirm dev.39 to load
+the lockout. Do not use earlier dev.37/38 native testing steps to reproduce it.
+
+The native packet specifies an endpoint/orientation/time but does not give our
+gateway joint targets or an elbow-posture constraint. Potential causes include
+solver configuration choice, an infeasible goal, reference/scaling mismatch or
+the firmware profile. None is diagnosed merely from the observation. Increasing
+duration cannot establish a pinch-free path. Request the existing report and
+starting/requested coordinates without repeating the movement.
+
+Next investigation: confirm whether this firmware/interface can return an IK
+solution without motion, then examine all joint targets, J3 continuity and a
+bounded route before considering a replacement live executor. Manufacturer
+documentation describes a calculation-only path in its development examples;
+support and exact semantics on this installed factory firmware are unverified.
+This can preserve the XYZ interface without a student preview/simulation stage.
+No calculation-only query was sent. Geometry/clearance and native Stop remain
+unverified; any replacement movement behavior needs the operator's approval.
+
+## Previous update: accept the robot's negative Z readings (dev.38)
+
+The operator reported LCD Z=-71 being rejected by the new coordinate block.
+The inherited factory UI minimum +100 was an unverified input restriction, not
+a measured robot limit. Dev.38 permits Z -570–570 in the shared field definition,
+so Blockly, keyboard fields, live-value copying, interpreter and packet encoding
+all accept -71 without clamping. Signed packet Z bytes are B9 FF. Other fields,
+profiles, durations, joint-target ranges, and Stop behavior remain unchanged.
+This is a development input-bound correction, not verified coordinate calibration
+or mechanical clearance. Refresh and confirm dev.38 before retrying the block.
+
+Validation: all 252 unit tests, TypeScript/Vite build, and two targeted browser
+checks pass. The browser regression copies LCD Z=-71, edits the coordinate block,
+checks the keyboard minimum and verifies native outgoing Z bytes B9 FF. The full
+45-check browser suite passed on the preceding dev.37 build.
+
+## Previous update: reported coordinates and native XYZ/P/R/C blocks (dev.37)
+
+The user deferred coordinate preview/simulation, reported the physical LCD's
+XYZ/P/R/C readout, and explicitly requested a live block to enter those values
+and test endpoint movement. Dev.37 adds the readout to the classroom and slider
+pages and a `move to X/Y/Z/P/R/C over seconds` block. The robot's native command
+8 performs the coordinate/joint calculation, rather than a browser geometry model.
+See [the test guide](./COORDINATE_PROGRAMMING.md) and optional comparison CSV.
+
+The passive decoder accepts the existing trusted 24-byte 0x0B layout only:
+six signed words XYZ/P/R/C, then six valid raw joints. Pitch alone is divided by
+ten, matching factory code. Readouts distinguish live, stale and disconnected
+data; reconnect clears old values. Reports identify the unverified coordinate
+reference and factory units. No new coordinate query is sent. Values are not
+substituted for joint readings or promoted from weak checksums/alternate packets.
+
+Add XYZ/P/R/C block copies fresh live values when available, defaults otherwise;
+all fields and 0.1–10 second duration are keyboard-editable. Compile/worker/main
+revalidation preserves finite numeric bounds, instruction expansion and runtime
+budgets. Native blocks connect with poses, Wait and Repeat; they reject Simulation
+explicitly. No coordinate preview, fake coordinate animation, or new dependency
+is added. The earlier joint simulator remains available for its existing blocks.
+
+The native encoder follows recovered factory `<hhhhhhH>` order P×10, X,Y,Z,R,C,
+duration ms, system ID 255/command 8/full checksum. It sends once through the
+existing writer and completes on elapsed duration after the write resolves.
+Stop cancels future blocks and attempts existing holds for all six joints using
+fresh positions; late callbacks cannot resume a stopped sequence. Native firmware
+trajectory cancellation by these holds is unverified and requires physical
+testing. No unverified stop opcode, automatic torque or persistent write is added.
+
+Native commands use firmware joint targets/profiles, so browser per-joint target
+limits and the normal 600/10 profile cannot pre-check/cap them. This limitation
+is displayed before Run and in native operation diagnostics. Development input
+bounds are not verified workspace/clearance limits. All raw-joint and saved-pose
+paths retain their existing checks. Native reachability, arrival, obstruction
+protection and physical coordinate reference remain unverified. Student release
+must address the native path in protected policy. Root Connection Lab is unchanged.
+
+Validation: all 251 unit tests, all 45 browser checks, and TypeScript/Vite build
+pass. Tests cover signed coordinate decoding/scaling from the supplied raw log,
+weak/incorrect-frame rejection, stale/disconnected/reconnect labels, no writes
+from readouts/block creation, exact native packet bytes, parameter validation,
+coordinate time budgets, keyboard edits/live-value copying, Wait sequencing,
+Stop holds for all joints, pending-write cancellation and subsequent feedback
+loss. Browser robot behavior is mocked; native physical movement, arrival and
+firmware trajectory stopping still require the operator's test. The existing
+Blockly bundle-size warning remains.
+
+## Previous update: endpoint-path comparisons are diagnostic for timed poses (dev.36)
 
 The user reported repeated `Pose J# moved outside its commanded path` errors
 after the factory-style timing change. Dev.35 still faulted if a reading left

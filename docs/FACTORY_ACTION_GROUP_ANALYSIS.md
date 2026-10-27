@@ -1,5 +1,10 @@
 # Factory Action Group Editor investigation
 
+Read-only overload follow-up (2026-10-26): operator screenshots and a captured
+Max Torque exchange confirm that the controller returns J1=1000, J2=0, J3=1000.
+J2's zero is present in a valid reply, with its firmware meaning still unknown.
+See [the overload observations](./OVERLOAD_PROTECTION_OBSERVATIONS.md).
+
 Dev.36 follow-up: the retained endpoint-path comparison also conflicted with
 timed frames when earlier targets remained in motion. Timed Home and pose
 playback now records such observations without aborting. Target-range checks,
