@@ -3,6 +3,14 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.45 updates [read-only servo diagnostics](docs/READ_ONLY_SERVO_DIAGNOSTICS.md)**
+at `/servo-diagnostics.html`, linked in the main footer. It collects raw identity,
+configuration and feedback observations using a fixed READ-only packet whitelist,
+with factory configuration reads and gated direct-register probes. It supports
+the captured ESP32/AT32 six-byte firmware reply.
+It changes no robot settings or movement behavior. Export its JSON for review;
+the readings do not establish verified pinch protection.
+
 **Dev.41: Run validates destinations, returns to the established Home, then
 executes the blocks.** Already near Home skips the redundant return. An unsuccessful
 return stops before block 1; Stop cancels startup as well as the program. Connect

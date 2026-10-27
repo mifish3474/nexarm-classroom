@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="./favicon.svg"><title>NexArm · Read-only servo diagnostics</title></head>
+<body><main class="shell diagnostic-shell">
+  <header class="masthead"><div><h1>Read-only servo diagnostics</h1><p class="app-version" data-app-version>Version %APP_VERSION%</p></div><a href="./">Return to classroom</a></header>
+  <section class="panel"><h2>Read the hardware, without changing it</h2>
+    <p>Close the factory software and disconnect any other NexArm browser tab first. Leave the arm stationary in its supported, clear setup. Do not restrain a powered joint or create an obstruction for this scan.</p>
+    <p>This page sends only firmware and register-read requests. It has no movement, Home, torque, calibration, or setting-write controls. Opening USB may affect controller startup; this diagnostic does not establish protection against pinching.</p>
+    <div class="actions"><button id="diag-connect">Connect for diagnostics</button><button id="diag-read" disabled>Read diagnostics</button><button id="diag-stop" class="secondary" disabled>Stop reads</button><button id="diag-disconnect" class="secondary" disabled>Disconnect</button></div>
+    <p id="diag-state" role="status">Disconnected. Nothing is requested until you connect and choose Read diagnostics.</p><progress id="diag-progress" max="49" value="0" aria-label="Read-only scan progress"></progress>
+    <p id="diag-error" role="alert" hidden></p>
+    <p class="note">One finite scan per connection: factory configuration reads first, then short direct-position probes. Broader register reads and three status samples are attempted only for joints whose short probe replies. Up to 49 requests, one at a time. Missing replies are not zero readings. Stop reads cancels future requests; it is not an emergency stop for the arm. Reconnect to repeat a scan.</p>
+    <button id="diag-export" class="secondary" disabled>Export read-only diagnostics</button>
+    <p class="note">Results remain in memory until you download them. No accounts, uploads, device serial numbers, browser storage, or robot settings are involved.</p>
+  </section>
+  <section class="panel"><h2>Connection and interpretation</h2><p id="diag-controller">Controller version: not read.</p><p id="diag-passive">Passive joint feedback: not received.</p><p id="diag-summary">No read requests sent.</p>
+    <p><strong>These are hardware observations, not a “safe to use” result.</strong> Model codes have no verified name mapping yet. Protection and status fields use a provisional manufacturer register layout; raw bytes are preserved to check it. A returned zero is still unverified data.</p>
+  </section>
+  <section class="panel"><h2>Joint results</h2><div id="diag-joints" class="joint-grid"></div></section>
+  <details class="panel"><summary>Requests and raw responses</summary><pre id="diag-raw">No requests sent.</pre></details>
+  <footer>No robot movement or protection settings are changed by this page. Export the JSON for investigation before closing or reconnecting.</footer>
+</main><script type="module" src="/src/servo-diagnostics.ts"></script></body></html>

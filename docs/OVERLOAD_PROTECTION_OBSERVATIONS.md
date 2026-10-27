@@ -1,5 +1,12 @@
 # Factory overload settings and Max Torque replies
 
+New manufacturer-documentation research on 2026-10-27 is in
+[SAFETY_RESEARCH.md](./SAFETY_RESEARCH.md). It establishes the documented
+post-overload torque-cap distinction and identifies candidate load/current/fault
+reads, with model/firmware and USB-forwarding caveats. The observations below
+remain the historical evidence; no settings or physical protection behavior have
+been changed or experimentally verified.
+
 Observed 2026-10-26. Read-only investigation; no robot command was sent by the
 assistant and no application behavior or persistent device setting was changed.
 

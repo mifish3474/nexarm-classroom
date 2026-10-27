@@ -1,6 +1,87 @@
-# Classroom programming development preview 0.7.0-dev.43
+# Classroom programming development preview 0.7.0-dev.45
 
-## Current update: captured all-zero controller result
+## Current update: adapt read-only diagnostics to the actual USB interface
+
+The operator's completed 2026-10-27 dev.44 export contains 19 issued requests,
+19 timeouts and 12 deliberately skipped repeat samples. Live fully checked
+passive positions continued; no direct-servo identity, configuration or status
+response was captured. No load/current/fault values can be inferred from that.
+The one relevant rejected frame is a valid ID255/function1 reply with six bytes
+`01 00 02 01 00 02`. Our initial one/three-byte version decoder incorrectly
+excluded it. Static factory CommManager.handle_packet explicitly decodes the
+first triplet as ESP32 version and the next triplet as AT32, both 1.0.2 here.
+This proves version-query communication works; it does not identify servo firmware.
+
+Dev.45 accepts and displays that captured controller layout. It adds only the
+factory's fixed read-only overload (71) and maximum-torque (75) queries, each
+with one servo-ID byte. Static read_overload/read_max_torque and corresponding
+reply handlers verify the packet forms. Neither adjacent write opcode 72/76 is
+whitelisted. Replies require full checksum, expected function and payload servo
+ID; overload layouts are exactly three/four bytes and max torque exactly three.
+Omitted overload threshold remains null; a zero torque reading remains raw with
+unverified meaning. No settings or motion behavior are changed.
+
+The scan now prioritizes the factory API, then tests short direct position reads
+at 0x38/count2 before attempting broad raw blocks. No short-position reply skips
+the broader reads for that joint, without reclassifying the timeout as zero or
+claiming unsupported hardware. Maximum plan is 49 requests; with no direct
+position replies it sends only 19 and skips 30 broad reads. Relevant raw frames
+and canceled/late-response protections are retained. One misleading timeout note
+is corrected: unrelated pose traffic crossing a deadline is not a late register
+reply. No automatic retries or alternative communication/torque modes are added.
+
+Read-only scope remains explicitly authorized. The new hardware scan still
+requires the operator's click/port selection; the assistant did not issue robot
+commands. If factory reads work, that establishes configuration access only.
+Live fault/load/current access remains unresolved; do not build pinch protection
+on position feedback or timeout counts alone.
+
+Validation: build/type-check and all 304 unit tests pass, including the captured
+six-byte version, three-/four-byte overload parsing, missing-threshold and zero
+semantics, wrong-servo/function/weak replies and the factory-only transport case.
+
+## Previous update: isolated read-only servo diagnostic page (dev.44)
+
+The operator authorized the read-only diagnostic milestone. A separate
+`/servo-diagnostics.html` entry, linked in the classroom footer, connects under
+the existing exclusive USB lease but sends nothing until Read diagnostics.
+ServoDiagnosticSession has no motion/torque/configuration encoder or access to
+the classroom motion controller. An independent transport whitelist permits
+only the fixed firmware query and servo READ packets defined in
+ServoDiagnosticProtocol. There is no arbitrary-register UI or automatic fallback
+to a settings write, alternate mode, servo enable or firmware change.
+
+The scan has a maximum of 31 one-at-a-time requests: controller version, six
+identity blocks, six raw configuration blocks and three status snapshots per
+joint. It enforces reply/write deadlines and gaps, cancels on Stop/disconnect/
+hidden page/write faults, and cannot resume from late callbacks. After a read
+timeout it skips subsequent samples with the same servo/layout correlation key.
+It permits one scan per connection to avoid mixing delayed replies across scans;
+reconnect starts no new scan and requires no review or confirmation checkbox.
+
+The page distinguishes missing data, device error bytes, weak/mismatched frames,
+all-zero data and received observations. No timeout becomes a numeric zero.
+Identity model codes are unmapped. Current/load/protection fields are provisional
+raw interpretations, not verified units, enabled-state assertions or a safe-use
+rating. The existing documentation conflicts remain open. Passive position
+feedback is separate from requested diagnostic data. All data stays in memory
+until explicit JSON export; no hardware identifiers, settings storage or uploads.
+
+The exported format is nexarm-read-only-servo-diagnostics / schema1. It retains
+request bytes, response payloads, outcome/error byte, timestamps, provisional
+decoded fields and bounded relevant rejected replies. The full guide and
+operator test steps are in READ_ONLY_SERVO_DIAGNOSTICS.md. No actual hardware
+scan was performed by the assistant. Existing motion behavior is unchanged.
+
+Validation: build/type-check and all 302 unit tests pass, including whitelist
+injection, bounded scans, device errors, weak/mismatched replies, timeouts,
+late-response quarantine, export isolation, USB contention and cancellation.
+All 51 Chrome browser checks pass with mocked serial ports, including four new
+diagnostic-page checks. Unexpected bridge envelopes are preserved separately
+for failed-read investigation; known continuous pose chatter is excluded from
+that bounded reply history. An added unit regression verifies this distinction.
+
+## Previous update: captured all-zero controller result (dev.43)
 
 The current session export confirms four command-7 requests and no movement
 writes. Replies 1–3 have full checksums, matching coordinate fields and valid
