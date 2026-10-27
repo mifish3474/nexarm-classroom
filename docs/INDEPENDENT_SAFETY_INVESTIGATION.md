@@ -2,9 +2,12 @@
 
 The operator does not want progress to depend on a Hiwonder response and has
 only the robot and USB cable. The manufacturer-question draft is optional
-background, not a prerequisite. This phase uses public source/binary inspection
-and existing read-only USB requests. No firmware was compiled, flashed or run;
-no robot reset, configuration write, motion command or obstruction test was sent.
+background, not a prerequisite. The initial phase used public source/binary
+inspection and existing read-only USB requests. A subsequent, explicitly approved
+ESP32 reset/backup is recorded below. A later, separately approved temporary
+observer experiment has also completed; the original application was restored.
+See SERVO_OBSERVER_RESULTS.md for the current hardware outcome. No servo
+configuration write, motion command or obstruction test was sent by these tests.
 
 ## Evidence found independently
 
@@ -123,7 +126,163 @@ authorized by this capture. Live load/current/fault access and contact-stop
 protection remain unverified; configured overload values alone do not establish
 pinch protection.
 
+## Public factory binary: request forwarding and reply filtering traced
+
+This extends the earlier string inspection. Espressif's official Xtensa objdump
+from `esp-2021r2-patch5` was run on an offline ELF container of the public image's
+instruction segment. No firmware was executed. Function names below describe
+observed behavior; the binary has no recovered source symbols. The public image
+is still not established as identical to the installed 1.0.2 firmware.
+
+| Public-image address | Static observation |
+| --- | --- |
+| `0x400e39a0` | Request callback entry; references the captured request-debug format through literal `0x400d0f70` at `0x400e39c4`. |
+| `0x400e6532`–`0x400e6559` | Non-system IDs 1–6 and broadcast 0xFE are admitted. The incoming command, arguments and argument length are passed to the frame writer at `0x400dd34c`. |
+| `0x400dd34c` | Builds an FF FF packet, copies ID/command/data, adds checksum and calls the UART object's write method. |
+| `0x400e03c8` | Receive callback entry; has special handling for system stream packets. |
+| `0x400e05c5`–`0x400e05ca` | The remaining path accepts ID0x5A; other IDs go to the function exit path. Thus individual-servo ID1–6 replies cannot reach its subsequent forwarding path. |
+| `0x400e0609`–`0x400e0633` | Accepted system replies have a bounded payload copied and are repackaged under ID0xFF. |
+
+This identifies a concrete return filter in the **public factory binary**, not
+just the ESP-NOW tutorial. It explains why outbound forwarding and successful
+system reads do not imply direct-servo read access. It is consistent with the
+operator capture, but does not prove a servo replied behind the filter, or that
+removing this filter alone would enable load/current reads. The downstream AT32
+path remains a separate uncertainty.
+
+The separate [manufacturer status-reading project](https://drive.google.com/drive/folders/1ZZ--7yRzej8gPN1BdvJNG2i1nlRnn3jo)
+contains a direct status reader and AT32 fallback definitions. Its fallback only
+provides pose/joint values; it does not supply a fallback current/load reading.
+The [published startup analysis](https://wiki.hiwonder.com/projects/NexArm/en/esp32-version/docs/2_ESP32_Development_Basics.html#bus-servo-status-reading)
+also shows torque enabled during initialization. This project is therefore not
+an approved drop-in passive diagnostic and must not simply be uploaded.
+
+## Recovery investigation and prepared backup step
+
+The manufacturer's [recovery PDF](https://drive.google.com/file/d/1T8Px8OQmXwQprBbTGjybT7_NLO_Qv7BV/view)
+describes a Windows ESP32 download-tool workflow, including a whole-chip erase.
+This is a factory-program restoration guide, not a preservation procedure for
+this operator's settings or programs. Its availability does not verify recovery
+on this particular arm, nor restoration of the separate AT32 or servo memories.
+
+Static validation of the downloaded public image found:
+
+- Partition-table MD5 and bootloader/application XOR checksums and appended
+  SHA256 digests all match. This is internal consistency, not compatibility.
+- The image is 1,785,536 bytes; its partition table describes storage through
+  0x400000 (4 MiB), including SPIFFS at 0x310000, absent from the download.
+- The included NVS region 0x9000–0xDFFF is all 0xFF. It cannot preserve this
+  robot's existing ESP32 preferences. A public factory image is not its backup.
+
+Prepared [backup script](../scripts/backup-nexarm-controller.ps1): default is a
+plan with no port opened and no files created. Only explicit `-Execute` performs
+two full ESP32 `read-flash` operations and compares sizes/SHA256. It pins the
+reviewed Espressif v5.6.0 executable hash, saves local ignored copies/logs, stops
+on failure without retry, and requests no flash/fuse write or erase. Esptool's
+normal RAM helper is allowed by this proposed backup, not firmware installation.
+
+**Not executed on hardware.** Each read requests bootloader entry/reset, which
+may interrupt holding. `--after no-reset` deliberately avoids a normal-program
+restart afterward; it does not establish how the AT32 or servos behave. Before
+execution the operator must approve this specific reset/read step, support the
+arm independently, close other robot connections and identify its COM port.
+No physical stop or re-enable behavior should be inferred from bootloader entry.
+
+After two matching reads, inspect the installed image offline, compare the
+actual filter and version strings with the public image, and inventory backup
+coverage before proposing any firmware write. A matching ESP32 backup is not a
+tested restore procedure and does not cover AT32/servo NVM. Keep full dumps/logs
+local because they may contain credentials, saved programs and device identifiers.
+
+A future diagnostic firmware proposal, if still justified, must have an audited
+startup with no torque/motion/configuration writes, bounded timestamped UART
+observation before filtering, one outstanding whitelisted read, no response
+invention, and explicit capability reporting. It must first establish whether
+individual-servo replies reach the ESP32 at all. Do not binary-patch the reply
+filter or flash the tutorial merely because it looks like a small change.
+
+Validation this phase: public-image checksums/digests above; offline disassembly;
+backup script plan exercised with a placeholder COM port, without `-Execute`;
+downloaded utility help inspected without a port. No app/runtime change, version
+bump, robot command, reset or firmware write occurred. Existing application tests
+were not rerun for documentation and an unused offline backup helper.
+
+## Approved installed-controller backup and exact-image findings
+
+The operator explicitly approved reset/backup, identified COM17, then confirmed
+the connection was freed after the first attempt could not open the port.
+The successful run finished at 2026-10-27 13:28:19 UTC. Both full 4 MiB reads
+match byte-for-byte, with SHA256:
+
+`aaf99bb6449223fb9e7909df43b39e3b6ce3ef32c597b39bd6fb3f6f26ff0736`
+
+Files and the manifest remain local in ignored
+`.analysis/controller-backup-20261027T131538Z-cc46b6123c90438db44ed1a47e1153ee/`.
+No erase or flash write was requested. The standard tool's temporary RAM helper
+ran to read flash; `--after no-reset` left the ESP32 in bootloader mode after the
+second copy. Normal application operation has not been resumed by this work.
+This is an ESP32 backup, not an AT32/servo-memory backup or a demonstrated restore.
+
+Offline verification found valid partition-table MD5 and valid image checksums
+and SHA256 digests. Bootloader bytes match the public image. Application bytes
+do **not** match: the installed application occupies 0x10000–0x1B4A2F, with image
+SHA256 `23a4231b5808799ac3c4088a287405a494dbf09f679a9d56cfc6434389862909`.
+Do not apply public-image patch offsets to this robot.
+
+The installed backup contains non-erased NVS, OTA metadata and SPIFFS. This
+confirms why the generic factory download must not be substituted for preserving
+the device's actual flash. Private strings and saved contents were not printed
+or uploaded; only program structure/hashes were inspected.
+
+Installed-image disassembly establishes the same relevant behavior at different
+addresses:
+
+| Installed-image address | Static observation |
+| --- | --- |
+| `0x400e401c` | Request callback references the exact captured request-debug format through literal `0x400d0fdc`. |
+| `0x400e6bca`–`0x400e6bf1` | Admits IDs1–6 and 0xFE, passing the incoming command/data to UART packet writer `0x400dd40c`. |
+| `0x400e0878` | Receive callback entry; handles certain system streams separately. |
+| `0x400e0a75`–`0x400e0a7a` | Compares remaining response ID with 0x5A; other IDs jump to exit path `0x400e094e`. Individual-servo responses under IDs1–6 are discarded here. |
+| `0x400e0ab9`–`0x400e0ae3` | Accepted system payloads are bounded and repackaged under ID0xFF. |
+
+Thus the response filter is now verified in this robot's backed-up ESP32
+application, rather than inferred from a similar public image. Whether the AT32
+forwards a read and whether a servo replies on the ESP32-facing UART are still
+unverified. This does not prove hardware contact detection exists or works.
+
+The next firmware proposal should be an observation-only diagnostic at the UART
+receive boundary, before this filter, preserving the installed behavior and
+device-specific storage. It must first report whether a direct read produces
+any downstream data. It must not enable torque on startup, loosen movement
+limits, issue more goals, or infer zero load from silence. No such image has
+been built or approved for flashing. A validated recovery procedure remains
+necessary before any firmware-write experiment.
+
+Host verification: two matching complete reads; checksums/digests above;
+disassembly prepared from the installed segment table, not public offsets.
+The backup script's native-stderr handling was corrected after the first failed
+open so future failures preserve the complete tool output. No classroom app
+change or version bump was made.
+
+## Prepared observation experiment
+
+[SERVO_OBSERVER_REVIEW.md](SERVO_OBSERVER_REVIEW.md) records the compiled, guarded
+observer source, pinned review artifact and application-only restore plan.
+Nothing was installed. The source sends no downstream packet on startup and
+only one fixed position-read packet per explicit POS command. Standard Arduino
+NVS startup is bypassed; nine flash-write/erase APIs are wrapped with refusing
+stubs and checked in the final ELF. The install and restoration procedures still
+require hardware approval and testing. Capturing live UART traffic does not
+itself establish usable force feedback or pinch protection.
+
 ## Source fingerprints
+
+Update: the approved observation experiment has now completed. Both captures
+contain only AT32 system broadcasts; no direct-servo reply was present before
+filtering. The original application was restored/verified and normal version
+and position reporting resumed. See [results](SERVO_OBSERVER_RESULTS.md) for the
+full evidence and its limits. Earlier no-install/no-reset statements describe
+the preparation phases, not this separately approved hardware experiment.
 
 - Synchronizer source ZIP SHA256:
   `1F8EEA2157BE23775D4E1B840E8A64E95F6328C1D1BB8C44362F637052F6821A`
@@ -135,6 +294,15 @@ pinch protection.
   `390DACC2ACF6299B70E895887D45BF3A4A05EE3F7F77F35B92CE8643D0AE6AD5`
 - Factory firmware image SHA256:
   `b05c98dfa4d170373b74caf20ce9b506271ddf54e5f960c6013e446d3be5edcd`
+- Downloaded status-reader HX_30HM.cpp SHA256:
+  `785B8F527E94C9642BF272377967C42CCEAD02FC632D7DD0F1137170191D31A5`
+- Recovery PDF SHA256:
+  `7245345B450F6D80DB5069BE15AB6F560726507EAEDE1F47729EB843A910D3C6`
+- Official esptool v5.6.0 Windows archive SHA256 (matches GitHub release digest):
+  `D55A96FBEB97FD4CB05BD93F201E5C8F6518B7BFCDE2FC6966FD0190FD891629`
+- Extracted esptool executable SHA256:
+  `7A4FC0B651197D8034DAB52DB1468EBF5C009D8E754306E59C7DE0AA47767914`
 
 Downloaded material and static inspection helpers remain in ignored `.analysis`.
-No downloaded program or firmware was executed.
+Only official host analysis tools and their help were executed. No downloaded
+robot firmware or example program was executed, compiled or flashed.

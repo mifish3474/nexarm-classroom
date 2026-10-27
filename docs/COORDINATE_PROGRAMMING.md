@@ -1,5 +1,10 @@
 # Checked XYZ/P/R/C programming: dev.43
 
+**Historical reference only. XYZ programming was removed in dev.47.** Programs
+now use joint moves and saved six-joint positions. Old XYZ program files are
+rejected with an explanation, preserving the current editor. Do not follow the
+old testing instructions below. Custom ESP32/AT32 firmware is outside scope.
+
 Dev.43 immediately reports a fully checked calculation reply containing 24
 zero bytes as **no usable joint solution supplied**. The block-4 diagnostic
 captured exactly that response, including six zero joint targets, about 22 ms

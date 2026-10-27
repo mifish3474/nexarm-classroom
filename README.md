@@ -3,8 +3,22 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.48: workspace layout.** Code is visible immediately, with persistent
+Connect/Run/Stop controls, File and Help menus, and Robot/Positions tabs.
+The Positions panel groups release, readings, recording and restore; each saved
+position has Add to code. Programs start empty, the palette groups Motion and
+Control, and Undo/Redo are visible. Motion settings and program-file compatibility
+are unchanged. Project naming, autosave and destructive-edit recovery remain
+future work. See [the usability review](docs/USABILITY_REVIEW.md).
+
+**Dev.47: joint and saved-position programming.** Blockly offers joint moves,
+saved six-joint positions, Wait and Repeat. XYZ blocks and coordinate execution
+have been removed. Older XYZ program files are rejected with an explanation
+without replacing the current workspace; joint/pose programs still load normally.
+The project uses factory firmware only; custom ESP32/AT32 firmware is out of scope.
+
 **Dev.46 updates [read-only servo diagnostics](docs/READ_ONLY_SERVO_DIAGNOSTICS.md)**
-at `/servo-diagnostics.html`, linked in the main footer. It collects raw identity,
+at `/servo-diagnostics.html`, linked under Help & tools. It collects raw identity,
 configuration and feedback observations using a fixed READ-only packet whitelist,
 with factory configuration reads and gated direct-register probes. It supports
 the captured ESP32/AT32 six-byte firmware reply. A bounded raw receive capture
@@ -18,11 +32,9 @@ executes the blocks.** Already near Home skips the redundant return. An unsucces
 return stops before block 1; Stop cancels startup as well as the program. Connect
 and Load remain motion-free. Home-first does not make an invalid destination valid.
 
-XYZ/P/R/C programs calculate and check all six joint targets before
-any program movement. Accepted targets use the established timed-pose joint
-executor. Direct native coordinate movement remains blocked. Installed firmware
-calculation support still needs hardware verification. See
-[coordinate testing and limitations](docs/COORDINATE_PROGRAMMING.md).
+Programs validate joint and saved-position targets before Home or program
+movement. Coordinate instructions are rejected, including inside loops. Earlier
+[coordinate research](docs/COORDINATE_PROGRAMMING.md) is historical only.
 
 The root `index.html` is the working **Connection Lab v0.6.1** prototype. It
 supports teacher-tested USB communication and small individual-servo commands;
@@ -30,8 +42,8 @@ it is not a student-ready safety-controlled programming environment.
 
 The separate `app/` entry now contains a classroom programming development preview:
 the Station robot view, Blockly programs, Stop and live joint readouts. The
-simulator and virtual-arm frame are hidden for now. Connect, Release and Restore
-are above Run. The bounded Blockly
+simulator and virtual-arm frame are hidden for now. Connection and execution
+controls stay in the toolbar; Release and Restore are in Positions. The bounded Blockly
 programs use the shared motion controller after Connect and fresh stable
 readings. There are no repeated confirmation checkboxes or Enable controls.
 Operator-provided [development operating ranges](docs/OPERATING_RANGES.md) are
@@ -51,16 +63,13 @@ Live readings show the result. Add Wait for an extra pause between positions.
 Timed-pose start/target path comparisons are diagnostic-only; continued movement
 from previous frames does not trigger a path fault. Target limits, feedback-loss
 checks, USB write checks, and Stop remain active.
-New empty program starts a sequence without the starter's joint movements.
-The [XYZ/P/R/C blocks](docs/COORDINATE_PROGRAMMING.md) use calculation-only
-firmware requests followed by checked joint movement. Unsupported or out-of-range
-calculations stop the program before any movement. This enforces commanded joint
-limits, not link clearance, obstruction protection or straight XYZ paths.
-A passive readout supports LCD comparison. Blocks connect with Wait, Repeat and
-saved positions. Coordinate preview and simulation are deferred. Browser Stop
-attempts the existing measured-position holds.
+The initial program contains only When Run clicked; File provides examples.
+Saved positions contain six measured joint values. Their blocks connect with
+Wait and Repeat. The programming page shows joint readings; passive coordinate
+data remains available only in setup/diagnostics. Browser Stop attempts the
+existing measured-position holds.
 A separate setup page provides read-only USB
-inspection and unreviewed reference capture; open it explicitly from the footer.
+inspection and unreviewed reference capture; open it explicitly from Help & tools.
 That page links to direct teacher controls at `/mapping.html`: reusable +/-20
 buttons on every servo and a slow return to the teacher-requested Home
 `[2050,2150,2100,2200,2000,1080]`. Follow [the operating and testing steps](docs/TEACHER_CONTROLS.md).

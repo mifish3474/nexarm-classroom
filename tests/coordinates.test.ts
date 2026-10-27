@@ -11,9 +11,8 @@ it('matches the published coordinate packet and the factory P*10/signed layout f
  expect([...encodeCoordinateTarget(target)]).toEqual([255,255,255,16,8,184,0,39,0,255,255,143,1,8,0,169,255,208,7,244]);
  expect([...encodeCoordinateTarget({...target,pitch:-12.5})].slice(5,7)).toEqual([131,255]);
 });
-it('preserves the LCD Z=-71 through validation, interpretation and signed packet encoding without clamping',()=>{
+it('preserves the LCD Z=-71 in historical validation and signed packet encoding without clamping',()=>{
  const t={...target,z:-71};expect(validateCoordinateTarget(t).z).toBe(-71);
- expect(interpret([{kind:'coordinates',blockId:'c',...t}])[0]).toMatchObject({z:-71});
  expect([...encodeCoordinateTarget(t)].slice(11,13)).toEqual([185,255]);
  for(const z of [-570,0,570])expect(validateCoordinateTarget({...target,z}).z).toBe(z);
 });
@@ -22,12 +21,10 @@ it('rejects invalid, non-finite, fractional or out-of-bound coordinate values an
  for(const key of Object.keys(target))for(const value of [NaN,Infinity,'20',null,undefined])expect(()=>validateCoordinateTarget({...target,[key]:value})).toThrow();
  expect(encodeCoordinateTarget({...target,pitch:-180,roll:-90,claw:-90,durationMs:100})).toHaveLength(20);
 });
-it('expands coordinate repeats/waits into frozen-value plans and budgets coordinate time',()=>{
+it('rejects retired coordinate instructions at any nesting depth',()=>{
  const node={kind:'coordinates',blockId:'c',...target};
- const result=interpret([{kind:'repeat',blockId:'r',count:2,body:[node,{kind:'wait',blockId:'w',durationMs:1000}]}]);
- node.x=0;expect(result).toHaveLength(4);expect(result[0]).toMatchObject({kind:'coordinates',x:39,pitch:18.4,claw:-87});
- expect(()=>interpret([{kind:'repeat',blockId:'r',count:7,body:[{...node,durationMs:10000}]}])).toThrow('60-second');
- expect(()=>interpret([{...node,claw:100}])).toThrow('claw');
+ expect(()=>interpret([node])).toThrow('XYZ coordinate blocks are no longer supported');
+ expect(()=>interpret([{kind:'repeat',blockId:'r',count:2,body:[node]}])).toThrow('XYZ coordinate blocks are no longer supported');
 });
 it('waits for the native write and duration, keeps actual readings separate, and never resends',()=>{
  const motion=new NativeCoordinateMotion(home,0,target);motion.start(home,0);expect(motion.dispatch(0)).toBe(true);expect(motion.dispatch(10)).toBe(false);

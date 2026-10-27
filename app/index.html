@@ -7,39 +7,48 @@
   <meta name="description" content="Program your station robot with Blockly. Save and load programs locally.">
   <title>NexArm Classroom · Station robot</title>
 </head>
-<body>
-  <main class="shell station-shell">
-    <header class="masthead"><div><p class="eyebrow">MRFISH.APP / CODING &amp; ROBOTICS</p><h1>NexArm Classroom</h1><p class="app-version" data-app-version>Version %APP_VERSION%</p></div><span class="mode" id="mode-label">Station robot</span></header>
-    <section class="intro"><h2>Build. Run. Refine.</h2><p>Connect your station's robot, teach positions, and build a program. Save a program file to return to the same test later. Files stay on your computer.</p></section>
-    <section class="panel program station-program" aria-labelledby="program-heading">
-      <div class="panel-heading"><h2 id="program-heading">Program your robot</h2><span id="state" class="badge">Disconnected</span></div>
-      <div id="robot-controls">
-        <div class="actions station-session-controls" aria-label="Robot connection and holding controls">
-          <button id="robot-connect">Connect robot</button><button id="teach-release" class="secondary" disabled>Release servos for hand positioning</button><button id="teach-restore" disabled>Restore servo holding</button><button id="robot-disconnect" class="secondary" disabled>Disconnect robot</button>
+<body class="workspace-page">
+  <main class="classroom-workspace">
+    <header class="workspace-header">
+      <div class="workspace-brand"><h1>NexArm Classroom</h1><p class="app-version" data-app-version>Version %APP_VERSION%</p></div>
+      <details id="file-menu" class="workspace-menu">
+        <summary>File <span aria-hidden="true">▾</span></summary>
+        <div class="menu-content">
+          <button id="new-program" class="secondary">New empty program</button><button id="program-save" class="secondary">Save program</button><button id="program-load" class="secondary">Load program</button>
+          <div class="menu-label">Examples</div><button id="practice-lesson" class="secondary">Load short practice program</button><button id="lesson" class="secondary">Reload lesson</button>
+          <p class="note">Save a program file before replacing your blocks. Files include the positions used by the program. Loading never moves the robot.</p>
         </div>
-        <p class="note"><strong>Support the arm before Release and while restoring holding.</strong> Keep joints, gripper and sweep clear; keep the physical power cutoff accessible. Connect reads data without sending movement. Check holding before removing support.</p>
-        <p id="robot-status" role="status">Disconnected.</p><p id="teach-status" role="status">Connect the robot to release or restore servos.</p><p id="teach-error" role="alert" hidden></p><p id="robot-readiness" role="status"></p>
-      </div>
-      <div class="actions"><button id="run" disabled>Run program</button><button id="stop" class="stop" disabled>Stop</button></div><p id="run-status" role="status">Connect the robot, then Run your program.</p>
-      <p class="note"><strong>Run checks the destinations, returns to Home, then starts your blocks.</strong> If all joints are already close to Home, no return move is needed. Stop cancels both the return and the program. Connecting and loading files do not move the arm.</p>
-      <div class="actions"><button id="program-save" class="secondary">Save program</button><button id="program-load" class="secondary">Load program</button><input id="program-file" type="file" accept=".json,application/json" aria-label="Program file" hidden></div>
-      <p id="program-file-status" role="status">Save downloads a JSON file with the connected program and its used positions. Load restores blocks for review; it never runs the robot.</p>
-      <div class="actions"><button id="practice-lesson" class="secondary">Load short practice program</button><button id="new-program" class="secondary">New empty program</button><button id="lesson" class="secondary">Reload lesson</button></div>
-      <div class="actions"><label>Saved position for new block <select id="program-position"></select></label><button id="add-position" class="secondary">Add position block</button><button id="add-coordinate" class="secondary">Add XYZ/P/R/C block</button><button id="add-wait" class="secondary">Add wait block</button></div>
-      <p class="note"><strong>XYZ/P/R/C targets are checked against all six joint ranges before any program movement.</strong> Unsupported calculations or out-of-range targets stop the program. Movement follows joint-space paths; joint limits do not guarantee clearance between parts of the arm or obstacles.</p>
-      <div id="blockly-editor" aria-label="Blockly program workspace"></div>
-      <details><summary>Program steps and keyboard editing</summary><p class="note">Edit the same program here. Drag blocks to reorder them or put them inside Repeat.</p><div id="keyboard-fields"></div><ol id="instructions"></ol></details>
-      <p class="note">Saved-position frames advance when their planned time elapses; exact arrival is not verified. Add Wait for an extra pause. Repeat is capped at 20, with 100 expanded steps and 60 seconds per run.</p>
-      <details id="robot-readings-details"><summary>Robot readings and diagnostics</summary><div id="robot-xyz"></div><div id="joints" class="joint-grid"></div><button id="robot-diagnostics" class="secondary" disabled>Export robot diagnostics</button><p class="note">Diagnostics stay local until you download them. They do not measure power or holding.</p><p id="operating-ranges" class="note"></p><a href="./mapping.html">Robot setup controls: sliders and Home</a></details>
-      <p class="note">Development testing. Joint and saved-position targets use the current operating ranges and speeds up to 600, acceleration 10. Protected student motion policy is still pending.</p>
-    </section>
-    <section class="panel teaching-panel" id="teach-panel" aria-labelledby="teach-heading"><h2 id="teach-heading">Teach a position</h2><details id="teach-details"><summary>Release, record, and restore</summary>
-      <p>Release and Restore are above Run program. Support the arm's weight while released, move it gently, and never force a resisting joint. Record a stationary pose, restore holding, and check that it holds before removing support.</p>
-      <div class="pose-recording" id="pose-recording"><div><label>Position name, such as Pickup or Dropoff <input type="text" id="pose-name" maxlength="40" autocomplete="off"></label><button id="pose-record" aria-describedby="pose-capture-status" disabled>Record current position</button><p id="pose-capture-status" role="status">Connect for live joint readings.</p></div><div id="teach-readings" class="teach-reading-grid" role="group" aria-label="Live joint positions and valid ranges"></div></div>
-      <p class="note">Recording saves six measured values without moving the arm. A saved endpoint does not establish a clear route. No movement resumes automatically after Restore.</p>
-      <h3>Saved positions</h3><ul id="saved-positions"></ul><p id="pose-storage-status" role="status"></p><div class="actions"><button id="pose-export" class="secondary" disabled>Export saved positions</button><button id="pose-clear" class="secondary">Clear saved positions</button></div><p class="note">Position names and readings stay in this browser. Program files carry snapshots of positions used by their blocks. Loading a file does not overwrite this saved-position library.</p>
-    </details></section>
-    <footer>Development preview %APP_VERSION% · No accounts or uploads · Save a program file before closing. <a href="./commissioning.html">Read-only reference inspection</a> · <a href="./servo-diagnostics.html">Read-only servo diagnostics</a></footer>
+      </details>
+      <div class="edit-actions" aria-label="Editing controls"><button id="undo" class="secondary" aria-label="Undo edit" title="Undo edit">↶</button><button id="redo" class="secondary" aria-label="Redo edit" title="Redo edit">↷</button></div>
+      <span id="mode-label" class="workspace-mode">Station robot</span>
+      <div class="workspace-run-controls" aria-label="Connection and program controls"><button id="robot-connect" class="secondary">Connect robot</button><button id="robot-disconnect" class="secondary" disabled>Disconnect robot</button><button id="run" disabled>Run program</button><button id="stop" class="stop" disabled>Stop</button></div>
+      <input id="program-file" type="file" accept=".json,application/json" aria-label="Program file" hidden>
+    </header>
+    <div class="workspace-status"><span id="state" class="badge">Disconnected</span><p id="run-status" role="status">Connect the robot to run your program. You can edit without connecting.</p><span class="home-cue">Run starts from Home.</span></div>
+    <div class="workspace-body">
+      <section class="workspace-code" aria-label="Program your robot">
+        <div class="code-heading"><h2 id="program-heading">Code</h2><span>Joints · Positions · Wait · Repeat</span></div>
+        <div id="blockly-editor" aria-label="Blockly program workspace"></div>
+        <div class="workspace-editor-tools">
+          <details id="add-block-menu" class="workspace-menu"><summary>Add block <span aria-hidden="true">▾</span></summary><div class="menu-content"><button id="add-joint" class="secondary">Add joint block</button><button id="add-wait" class="secondary">Add wait block</button><button id="add-repeat" class="secondary">Add repeat block</button><label>Saved position for new block <select id="program-position"></select></label><button id="add-position" class="secondary">Add position block</button><p class="note">Adds a block to the end of your code. It does not move the robot.</p></div></details>
+          <span>Build beneath “When Run clicked.”</span>
+          <details id="workspace-help" class="workspace-menu"><summary>Help &amp; tools</summary><div class="menu-content"><p>Drag blocks into a sequence, or use Add block. Select a block's values to edit them. Use Repeat to run the blocks inside it more than once.</p><p>Run checks destinations, returns to Home, then starts your blocks. Stop cancels the return and program. Keep the whole sweep clear and the physical power cutoff accessible.</p><p>Saved positions advance on frame time; exact arrival is not verified. Add Wait for a pause. Maximum: 20 repeats, 100 expanded steps, 60 seconds.</p><p>Development testing: current operating ranges, speed up to 600, acceleration 10. Protected student policy is pending. Software Stop is not a certified emergency stop.</p><a href="./mapping.html">Robot setup controls: sliders and Home</a><a href="./commissioning.html">Read-only reference inspection</a><a href="./servo-diagnostics.html">Read-only servo diagnostics</a></div></details>
+        </div>
+        <details class="workspace-keyboard"><summary>Program steps and keyboard editing</summary><div class="keyboard-content"><p class="note">Edit numeric values here. Use Add block to append blocks; drag blocks to reorder them or put them inside Repeat.</p><div id="keyboard-fields"></div><ol id="instructions"></ol></div></details>
+      </section>
+      <aside class="workspace-inspector" aria-label="Robot and saved positions">
+        <div class="inspector-tabs" role="tablist" aria-label="Robot tools"><button type="button" id="robot-tab" role="tab" aria-controls="robot-panel" aria-selected="false" tabindex="-1">Robot</button><button type="button" id="positions-tab" role="tab" aria-controls="teach-panel" aria-selected="true">Positions</button></div>
+        <section id="robot-panel" class="inspector-panel" role="tabpanel" aria-labelledby="robot-tab" hidden><h2>Your robot</h2><div id="robot-controls"><p id="robot-readiness">Connect the robot.</p><p class="note">Connect reads positions without moving the arm. Select Positions to release, record, or restore holding.</p><details id="robot-readings-details" open><summary>Robot readings and diagnostics</summary><div id="joints" class="joint-grid"></div><button id="robot-diagnostics" class="secondary" disabled>Export robot diagnostics</button><p id="robot-status"></p><p class="note">Downloads stay on your computer. Readings do not measure power or holding force.</p><p id="operating-ranges" class="note"></p></details></div><a class="setup-link" href="./mapping.html">Open sliders and Home controls</a></section>
+        <section id="teach-panel" class="inspector-panel teaching-panel" role="tabpanel" aria-labelledby="positions-tab"><h2 id="teach-heading">Teach a position</h2><section id="teach-details" aria-label="Release, record, and restore">
+          <p class="support-note" id="support-note">Support the arm through Release and Restore. Never force a joint. Check holding before removing support.</p>
+          <div class="holding-actions"><button id="teach-release" class="secondary" aria-label="Release servos for hand positioning" disabled>Release holding</button><button id="teach-restore" class="secondary" aria-label="Restore servo holding" disabled>Restore holding</button></div><p id="teach-status" role="status">Connect the robot to record positions.</p><p id="teach-error" role="alert" hidden></p>
+          <div class="pose-recording" id="pose-recording"><div id="teach-readings" class="teach-reading-grid" role="group" aria-label="Live joint positions and valid ranges"></div><div><label for="pose-name">Position name, such as Pickup or Dropoff</label><input type="text" id="pose-name" maxlength="40" autocomplete="off"><button id="pose-record" aria-describedby="pose-capture-status" disabled>Record current position</button><p id="pose-capture-status" role="status">Connect for live joint readings.</p></div></div>
+          <p class="note">Record a stationary pose, then Restore holding. Recording saves six readings without moving. Restore does not resume a program.</p>
+          <h3>Saved positions</h3><ul id="saved-positions"></ul><p id="pose-storage-status" role="status"></p><details class="position-tools"><summary>Position files &amp; tools</summary><div class="actions"><button id="pose-export" class="secondary" disabled>Export saved positions</button><button id="pose-clear" class="secondary">Clear saved positions</button></div><p class="note">Positions stay in this browser. Program files include the positions their blocks use; loading does not overwrite this library. A saved endpoint does not establish a clear route.</p></details>
+        </section></section>
+      </aside>
+    </div>
+    <footer class="workspace-footer"><span>No accounts or uploads · Save your program before closing.</span><p id="program-file-status" role="status"></p><span id="holding-summary"></span></footer>
   </main>
   <script type="module" src="/src/main.ts"></script>
 </body>

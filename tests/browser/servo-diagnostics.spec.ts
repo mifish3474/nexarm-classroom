@@ -27,7 +27,7 @@ const state=(page:Page)=>page.evaluate(()=>(window as unknown as {diagRobot:{wri
 
 test('read-only scan requires explicit Start, exports raw observations and sends only finite READ requests without storage or uploads',async({page})=>{
  const errors:string[]=[],requests:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
- await setup(page);await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.46');expect((await state(page)).requests).toBe(0);await expect(page.getByRole('checkbox')).toHaveCount(0);
+ await setup(page);await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.48');expect((await state(page)).requests).toBe(0);await expect(page.getByRole('checkbox')).toHaveCount(0);
  await page.getByRole('button',{name:'Connect for diagnostics'}).click();await page.clock.runFor(200);expect((await state(page)).writes).toHaveLength(0);
  await page.getByRole('button',{name:'Read diagnostics',exact:true}).click();await page.clock.runFor(10000);await expect(page.locator('#diag-state')).toContainText('Complete');
  const robot=await state(page);expect(robot.writes).toHaveLength(49);expect(robot.unexpected).toHaveLength(0);await expect(page.locator('#diag-controller')).toContainText('ESP32 1.0.2; AT32 1.0.2');
@@ -59,7 +59,7 @@ test('Stop reads cancels future requests, keeps partial export, and reconnect do
  await page.getByRole('button',{name:'Disconnect',exact:true}).click();await page.getByRole('button',{name:'Connect for diagnostics'}).click();await page.clock.runFor(500);expect((await state(page)).writes).toHaveLength(count);await expect(page.getByRole('button',{name:'Read diagnostics',exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'Export read-only diagnostics'})).toBeDisabled();await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
-test('the diagnostic layout fits a narrow screen and is reachable from the classroom footer',async({page})=>{
+test('the diagnostic layout fits a narrow screen and is reachable from classroom Help and tools',async({page})=>{
  await setup(page);await page.setViewportSize({width:390,height:800});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await expect(page.getByRole('button',{name:'Read diagnostics',exact:true})).toBeDisabled();
- await page.goto('/');await expect(page.getByRole('link',{name:'Read-only servo diagnostics',exact:true})).toHaveAttribute('href','./servo-diagnostics.html');expect((await state(page)).writes).toHaveLength(0);
+ await page.goto('/');await page.locator('#workspace-help > summary').click();await expect(page.getByRole('link',{name:'Read-only servo diagnostics',exact:true})).toHaveAttribute('href','./servo-diagnostics.html');expect((await state(page)).writes).toHaveLength(0);
 });

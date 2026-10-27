@@ -2,10 +2,7 @@ import { PassiveConnection } from '../serial/PassiveConnection';
 import type { ReadOnlyPort } from '../serial/PassiveConnection';
 import { FrameParser, decodePositions, decodeReportedPose } from '../protocol/FrameParser';
 import type {ReportedPose} from '../protocol/FrameParser';
-import { encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions, encodeCoordinateCalculation } from '../protocol/NexArmCodec';
-import {inspectCoordinateSolution} from '../protocol/CoordinateSolution';
-import type {CoordinateTarget} from '../protocol/CoordinateTarget';
-import {validateCoordinateTarget} from '../protocol/CoordinateTarget';
+import { encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
 import {COORDINATE_EXECUTION_BLOCKED_REASON} from './CoordinateExecutionPolicy';
 import { ConcurrentHomeMotion } from './ConcurrentHomeMotion';
 import {TimedPoseMotion,timedPosePlan} from './TimedPoseMotion';
@@ -63,10 +60,6 @@ export class TeacherRobotControl {
     if(!this.manual.blocked&&!this.armed){this.armed=true;if(!this.faulted)this.message='Ready. Choose Run, a saved position, or a joint control. No movement starts automatically.';}
   }
   private route: SmoothTeacherMotion | ConcurrentHomeMotion | TimedPoseMotion | null = null;
-  private coordinatePreflight:{index:number;pending:{target:CoordinateTarget;sentAt:number}|null}|null=null;
-  private coordinateChecks:{blockId:string;target:CoordinateTarget;positions:number[]}[]=[];
-  private calculationReplies:{atMs:number;deviceId:number;integrity:string;payload:number[]}[]=[];
-  private lastCalculation:{block:number;target:CoordinateTarget;sentAtMs:number;receivedCount:number;lastRejection:string|null}|null=null;
   private operation: Operation | null = null;
   private history: unknown[] = [];
   private writes:WriteDiagnostic[]=[];
@@ -75,28 +68,23 @@ export class TeacherRobotControl {
   private liveTarget:SliderTarget|null=null;
   private lastLive:SliderTarget|null=null;
   private sliderInterval=500;
-  private program:{steps:PlannedStep[];startup:'Home pending'|'Returning Home'|'Running blocks';homeVerifyUntil:number|null;coordinateLimits:boolean;speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;waitUntil:number|null;motionIntervalMs:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
-  private cancelProgram(phase:'Stopped'|'Fault',message:string){this.coordinatePreflight=null;if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
+  private program:{steps:PlannedStep[];startup:'Home pending'|'Returning Home'|'Running blocks';homeVerifyUntil:number|null;speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;waitUntil:number|null;motionIntervalMs:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
+  private cancelProgram(phase:'Stopped'|'Fault',message:string){if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
   runProgram(instructions:unknown){
     const reason=this.movementReason();if(reason)throw Error(reason);
     // Development testing only. The bounded language validates IDs and raw
     // encoding values; protected robot-specific limits are a student-release gate.
     const steps=interpret(instructions);
-    const coordinateLimits=steps.some(step=>step.kind==='coordinates');
-    if(coordinateLimits&&this.options.homeBeforeProgram===false)assertPoseTargets(this.positions!,'XYZ starting position');
     // Validate the entire program before the first write, including later poses.
-    for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind==='coordinates')validateCoordinateTarget(step);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
+    for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
     this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
-    this.coordinateChecks=[];this.calculationReplies=[];this.lastCalculation=null;
-    this.coordinatePreflight=coordinateLimits?{index:0,pending:null}:null;
-    this.program={steps,startup:this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,coordinateLimits,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:coordinateLimits?'Checking all coordinate joint targets before movement.':'Preparing Home-first program.'};
+    this.program={steps,startup:this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:'Preparing Home-first program.'};
     this.advanceProgram();this.changed();
   }
   private advanceProgram(){
     const program=this.program;if(program?.phase!=='Running'||this.route?.activeRun)return;
     if(!this.armed||this.connectionState!=='Listening'||!this.visible()){this.fault('Program canceled because the robot session changed.');return;}
     if(this.writeInFlight||this.now()-this.receivedAt>500)return;
-    if(this.coordinatePreflight){this.calculateCoordinates();return;}
     if(program.startup==='Home pending'){
       if(this.positions!.some((n,i)=>Math.abs(n-TEACHER_HOME[i]!)>PROGRAM_HOME_TOLERANCE)){
         if(this.now()-this.lastCommandAt<500)return;
@@ -127,28 +115,10 @@ export class TeacherRobotControl {
       if(step.kind==='wait'){
         this.retain();this.route=null;program.index++;program.waitUntil=this.now()+step.durationMs;program.message=`Waiting ${step.durationMs/1000} seconds.`;this.message=program.message;return;
       }
-      if(step.kind==='coordinates')throw Error('Coordinate target was not checked. No direct coordinate movement is allowed.');
-      if(program.coordinateLimits)assertPoseTargets(this.positions!,'XYZ program current position');
-      if(step.kind==='pose'&&(this.options.directSession||program.coordinateLimits)){program.index++;program.motionIntervalMs=2;this.startTimedPose(step.positions,step.durationMs??1000,'Program');return;}
+      if(step.kind==='pose'&&this.options.directSession){program.index++;program.motionIntervalMs=2;this.startTimedPose(step.positions,step.durationMs??1000,'Program');return;}
       const plan=step.kind==='pose'?absolutePosePlan(this.positions!,step.positions,{speed:program.speed,acceleration:program.acceleration}):absoluteJointPlan(this.positions!,step.servo,step.target,program.speed,program.acceleration);
       program.index++;program.motionIntervalMs=500;this.start({...plan,manual:false},'Program');
     }catch(error){this.fault(error instanceof Error?error.message:'Program movement could not start.');}
-  }
-  private calculateCoordinates(){
-    const check=this.coordinatePreflight,program=this.program;
-    if(!check||program?.phase!=='Running'||check.pending)return;
-    while(check.index<program.steps.length&&program.steps[check.index]!.kind!=='coordinates')check.index++;
-    if(check.index===program.steps.length){
-      try{if(program.startup==='Running blocks')assertPoseTargets(this.positions!,'XYZ starting position');}
-      catch(error){this.fault((error as Error).message);return;}
-      this.coordinatePreflight=null;program.at=this.now();program.message='Coordinate targets checked against all six joint ranges. Running joint-space moves.';this.message=program.message;return;
-    }
-    if(this.now()-this.lastCommandAt<500)return;
-    const target=validateCoordinateTarget(program.steps[check.index]);
-    check.pending={target,sentAt:this.now()};
-    this.lastCalculation={block:check.index+1,target:{...target},sentAtMs:this.now(),receivedCount:0,lastRejection:null};
-    this.message=program.message=`Checking coordinate block ${check.index+1}; no movement sent.`;
-    this.write(encodeCoordinateCalculation(target),()=>{});
   }
   private liveServo(){
     if(!this.armed||this.manual.blocked||!this.visible()||this.connectionState!=='Listening'||this.now()-this.receivedAt>500)return null;
@@ -391,7 +361,7 @@ export class TeacherRobotControl {
   private write(packet: Uint8Array, completed: () => void, urgent = false, interval=500) {
     // Defense at the transport boundary, including any retained native route.
     for(let offset=0;offset+5<packet.length;){
-      if(packet[offset+2]===255&&packet[offset+4]===8){this.fault(COORDINATE_EXECUTION_BLOCKED_REASON);return;}
+      if(packet[offset+2]===255&&(packet[offset+4]===7||packet[offset+4]===8)){this.fault(COORDINATE_EXECUTION_BLOCKED_REASON);return;}
       const length=packet[offset+3]!+4;if(length<6||offset+length>packet.length)break;offset+=length;
     }
     if (this.writeInFlight || (!urgent && this.now() - this.lastCommandAt < interval) || !this.port?.writable) {
@@ -424,25 +394,6 @@ export class TeacherRobotControl {
   private receive(bytes: Uint8Array) {
     for (const frame of this.parser.push(bytes)) {
       if (this.connectionState !== 'Listening') break;
-      if(frame.command===7)this.calculationReplies=[...this.calculationReplies,{atMs:this.now(),deviceId:frame.deviceId,integrity:frame.integrity,payload:[...frame.payload]}].slice(-20);
-      const check=this.coordinatePreflight,pending=check?.pending;
-      if(pending&&frame.command===7&&this.program?.phase==='Running'&&this.visible()){
-        const result=inspectCoordinateSolution(frame,pending.target),solution=result.positions;
-        if(this.lastCalculation){this.lastCalculation.receivedCount++;this.lastCalculation.lastRejection=result.reason;}
-        if(result.terminal){this.fault(`Coordinate block ${check!.index+1}: ${result.reason} No program movement sent. The destination has not been changed or skipped.`);continue;}
-        if(solution){
-          if(this.now()-pending.sentAt>=2000){this.fault('Coordinate calculation reply arrived too late. No program movement sent.');continue;}
-          try{
-            assertPoseTargets(solution,`Coordinate block ${check!.index+1}`);
-            const step=this.program.steps[check!.index]!;
-            this.coordinateChecks.push({blockId:step.blockId,target:{...pending.target},positions:[...solution]});
-            this.recordEvent('coordinate-check',`Block ${step.blockId}: calculated targets ${solution.join(', ')} accepted. These are not measured positions.`);
-            this.program.steps[check!.index]={kind:'pose',blockId:step.blockId,positionId:`coordinate-${check!.index}`,name:'Checked XYZ',positions:solution,durationMs:pending.target.durationMs};
-            check!.index++;check!.pending=null;
-          }catch(error){this.fault((error as Error).message);}
-          continue;
-        }
-      }
       if (frame.deviceId !== 255 || frame.command !== 11 || frame.payload.length !== 24) continue;
       const positions = decodePositions(frame), at = this.now();
       if (!positions) continue;
@@ -461,12 +412,6 @@ export class TeacherRobotControl {
   tick() {
     if (this.connectionState !== 'Listening') return;
     if (!this.visible()) { this.disconnect(); return; }
-    const calculation=this.coordinatePreflight?.pending;
-    if(calculation&&this.now()-calculation.sentAt>=2000){
-      const last=this.lastCalculation,t=calculation.target;
-      const detail=last?.receivedCount?`${last.receivedCount} calculation replies arrived but were rejected. ${last.lastRejection??'No usable result.'}`:'No calculation-only reply received within two seconds. This does not establish whether the destination is reachable.';
-      this.fault(`Coordinate block ${last?.block??'?'} (X ${t.x}, Y ${t.y}, Z ${t.z}, P ${t.pitch}, R ${t.roll}, C ${t.claw}): ${detail} No program movement sent. Export robot diagnostics for investigation.`);return;
-    }
     if(this.program?.phase==='Running'&&this.now()-this.program.at>=60000){this.fault('Program reached its 60-second time limit. Edit it into a shorter sequence.');return;}
     if(this.now()-this.receivedAt>500)this.liveTarget=null;
     if(this.writeInFlight && this.now()-this.writeStartedAt>=2000 && !this.faulted){this.writeUncertain=true;this.fault('USB write did not finish within two seconds. Delivery is uncertain.');return;}
@@ -514,9 +459,6 @@ export class TeacherRobotControl {
   disconnect() { this.stop(); this.connection.disconnect(); }
   report() {
     return {format: 'nexarm-teacher-control-session', schemaVersion: 1, capturedAt: new Date().toISOString(),
-      coordinateChecks:this.coordinateChecks.map(check=>({...check,target:{...check.target},positions:[...check.positions]})),
-      coordinateCalculationReplies:this.calculationReplies.map(reply=>({...reply,payload:[...reply.payload]})),
-      lastCoordinateCalculation:this.lastCalculation?{...this.lastCalculation,target:{...this.lastCalculation.target}}:null,
       operatingRanges:{source:'Operator-provided factory-software ranges, adjusted during development; 2026-10-23',protectedStudentPolicy:false,joints:OPERATING_RANGES.map((range,i)=>({servo:i+1,...range}))},
       diagnostics:{clock:'page monotonic milliseconds',state:this.connectionState,message:this.message,feedbackAgeMs:Number.isFinite(this.receivedAt)?this.now()-this.receivedAt:null,
         writePending:this.writeInFlight,powerAndTorqueState:'not measured',

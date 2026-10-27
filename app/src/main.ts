@@ -1,4 +1,6 @@
 import './styles.css';
+import './workspace.css';
+import {setupWorkspace} from './workspace';
 import { createEditor } from './blocks/editor';
 import { ProgramRunner } from './runtime/ProgramRunner';
 import type { PlannedStep } from './runtime/instructions';
@@ -6,8 +8,6 @@ import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
 import {createTeachingPanel} from './poses/TeachingPanel';
 import {OPERATING_RANGES} from './safety/OperatingRanges';
-import {createReportedCoordinatesPanel} from './robot/ReportedCoordinatesPanel';
-import {COORDINATE_FIELDS} from './protocol/CoordinateTarget';
 import {saveProgramFile,loadProgramFile,MAX_PROGRAM_FILE_BYTES} from './runtime/ProgramFile';
 
 
@@ -15,6 +15,7 @@ import {saveProgramFile,loadProgramFile,MAX_PROGRAM_FILE_BYTES} from './runtime/
 function element<T extends HTMLElement>(id:string):T{
   const node=document.getElementById(id);if(!node)throw Error(`Missing interface element: ${id}`);return node as T;
 }
+setupWorkspace();
 const runner=new ProgramRunner();
 const run=element<HTMLButtonElement>('run'),stop=element<HTMLButtonElement>('stop'),lesson=element<HTMLButtonElement>('lesson');
 const practice=element<HTMLButtonElement>('practice-lesson');
@@ -23,7 +24,6 @@ let preparing=false,loadingProgram=false,session=0,control:TeacherRobotControl|n
 let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
 const robotMode=()=>true;
 const teaching=createTeachingPanel(()=>control);
-const coordinates=createReportedCoordinatesPanel(element('robot-xyz'));
 element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join('; ')}. J6: 1024 = open. These are operator-provided development ranges; protected student policy comes later.`;
 const editor=createEditor(element('blockly-editor'),()=>teaching.list());
 function positionOptions(){
@@ -42,14 +42,14 @@ const cards=Array.from({length:6},(_,index)=>{
 function refresh(){
   teaching.refresh(true,preparing||loadingProgram);
   const robot=control?.snapshot(),live=true;
-  const hasCoordinates=live&&editor.workspace.getAllBlocks(false).some(block=>block.type==='lesson_coordinates'&&block.isEnabled());
-  element('robot-xyz').hidden=!live;coordinates.refresh(robot);
   const busy=preparing||loadingProgram||robot?.busy;
   run.disabled=!!busy||(live&&!robot?.canMove);stop.disabled=!(busy||(live&&robot?.connectionState==='Listening'));lesson.disabled=practice.disabled=!!busy;
   element<HTMLSelectElement>('program-position').disabled=!!busy||!editor.listPositions().length;
   element<HTMLButtonElement>('add-position').disabled=!!busy||!editor.listPositions().length;
   element<HTMLButtonElement>('add-wait').disabled=!!busy;
-  element<HTMLButtonElement>('add-coordinate').disabled=!!busy;
+  element<HTMLButtonElement>('add-joint').disabled=element<HTMLButtonElement>('add-repeat').disabled=!!busy;
+  element<HTMLButtonElement>('undo').disabled=!!busy||!editor.workspace.getUndoStack().length;
+  element<HTMLButtonElement>('redo').disabled=!!busy||!editor.workspace.getRedoStack().length;
   element<HTMLButtonElement>('new-program').disabled=!!busy;
   element<HTMLButtonElement>('program-save').disabled=!!busy;
   element<HTMLButtonElement>('program-load').disabled=!!busy;
@@ -58,16 +58,24 @@ function refresh(){
   element<HTMLButtonElement>('robot-connect').disabled=!!robot&&!robot.canConnect;
   element<HTMLButtonElement>('robot-disconnect').disabled=!robot||['Disconnected','Closing'].includes(robot.connectionState);
   element<HTMLButtonElement>('robot-diagnostics').disabled=!control;
-  const readiness=robot?.canMove?(hasCoordinates?'Ready. Run will check all XYZ joint targets before moving.':'Ready. Choose Run or a saved position.'):robot?.reason??'Connect the robot.';
+  const readiness=robot?.canMove?'Ready. Choose Run or a saved position.':robot?.reason??'Connect the robot.';
   const readinessNode=element('robot-readiness');if(readinessNode.textContent!==readiness)readinessNode.textContent=readiness;
 
-  element('robot-status').textContent=robot?`${robot.connectionState} · ${robot.armed?'Robot enabled':'Robot disabled'} · ${robot.message}`:'Disconnected.';
-  const state=preparing?'Preparing':loadingProgram?'Loading':robot?.program?.phase??(robot?.armed?'Ready':robot?.connectionState==='Listening'?'Disabled':'Disconnected');
+  const technicalStatus=robot?`${robot.connectionState} · ${robot.armed?'Robot enabled':'Robot disabled'} · ${robot.message}`:'Disconnected.';
+  if(element('robot-status').textContent!==technicalStatus)element('robot-status').textContent=technicalStatus;
+  const state=preparing?'Preparing':loadingProgram?'Loading':!robot?'Disconnected':robot.connectionState!=='Listening'?robot.connectionState:robot.manualPhase!=='Normal'?(robot.manualPhase==='Manual setup'?'Released':robot.manualPhase):robot.program?.phase??(robot.canMove?'Ready':'Reading positions');
   element('state').textContent=state;
-  if(live&&robot?.operation==='Saved position')element('state').textContent=robot.home?.phase??state;
-  status.textContent=preparing?'Checking your program…':loadingProgram?'Loading program for review…':robot?.program?.message??'Connect this station’s robot, then Run your program.';
-  if(interfaceError)status.textContent=interfaceError;
-  else if(live&&robot?.operation==='Saved position')status.textContent=robot.message;
+  if(live&&robot?.operation==='Saved position'&&robot.connectionState==='Listening'&&robot.manualPhase==='Normal')element('state').textContent=robot.home?.phase??state;
+  let activity=preparing?'Checking your program…':loadingProgram?'Loading program for review…':robot?.program?.message??readiness;
+  if(!busy&&robot&&!robot.canMove&&!robot.faulted)activity=readiness;
+  if(robot?.connectionState==='Disconnected'||!robot)activity='Connect the robot to run your program. You can edit without connecting.';
+  if(robot&&robot.connectionState!=='Listening'&&robot.connectionState!=='Disconnected')activity=robot.message;
+  if(live&&robot?.operation==='Saved position')activity=robot.message;
+  if(interfaceError)activity=interfaceError;
+  if(status.textContent!==activity)status.textContent=activity;
+  document.querySelector<HTMLElement>('.workspace-status')!.dataset.fault=String(!!interfaceError||!!robot?.faulted);
+  const holding=robot&&robot.manualPhase!=='Normal'?`${robot.manualPhase} · Support the arm. Use Positions to restore holding.`:'';
+  if(element('holding-summary').textContent!==holding)element('holding-summary').textContent=holding;
   const positions=robot?.positions;
   cards.forEach((card,index)=>{
     const actual=positions?.[index];card.measured.textContent=actual===undefined?'—':String(actual);
@@ -88,13 +96,11 @@ function keyboardFields(){
       if(!options.some(pose=>pose.id===current)){const missing=document.createElement('option');missing.value=current;missing.textContent='Choose a saved position';select.append(missing);}
       select.value=current;select.onchange=()=>{block.setFieldValue(select.value,'POSITION');};label.append(select);container.append(label);
     }
-    const names=block.type==='lesson_coordinates'?[...COORDINATE_FIELDS.map(f=>f.field),'SECONDS']:block.type==='lesson_repeat'?['COUNT']:block.type==='lesson_move'?['SERVO','TARGET']:['lesson_wait','lesson_pose'].includes(block.type)?['SECONDS']:[];
+    const names=block.type==='lesson_repeat'?['COUNT']:block.type==='lesson_move'?['SERVO','TARGET']:['lesson_wait','lesson_pose'].includes(block.type)?['SECONDS']:[];
     for(const name of names){
       const label=document.createElement('label');label.textContent=`Block ${index+1} · ${name==='COUNT'?'repeat count':name==='SERVO'?'joint':'target'}`;
       const input=document.createElement('input');input.type='number';input.step='1';input.min=name==='TARGET'?'0':'1';input.max=name==='COUNT'?'20':name==='SERVO'?'6':'4095';input.value=String(block.getFieldValue(name));
-      const coordinate=block.type==='lesson_coordinates'?COORDINATE_FIELDS.find(f=>f.field===name):null;
-      if(coordinate){label.textContent=`Block ${index+1} · ${coordinate.label}`;input.min=String(coordinate.min);input.max=String(coordinate.max);input.step=String(coordinate.step);}
-      if(name==='SECONDS'){label.textContent=`Block ${index+1} · ${block.type==='lesson_coordinates'?'coordinate duration':block.type==='lesson_pose'?'pose duration':'wait'} seconds`;input.step='.1';input.min=block.type==='lesson_wait'?'0':'.1';input.max='10';}
+      if(name==='SECONDS'){label.textContent=`Block ${index+1} · ${block.type==='lesson_pose'?'pose duration':'wait'} seconds`;input.step='.1';input.min=block.type==='lesson_wait'?'0':'.1';input.max='10';}
       input.onchange=()=>{if(input.validity.valid&&input.value!=='')block.setFieldValue(input.value,name);};label.append(input);container.append(label);
     }
   });
@@ -103,7 +109,16 @@ keyboardFields();editor.workspace.addChangeListener(event=>{if(!event.isUiEvent&
 document.addEventListener('named-positions-changed',()=>{editor.refreshPositions();positionOptions();keyboardFields();});
 element('add-position').onclick=()=>{try{editor.addPosition(element<HTMLSelectElement>('program-position').value);keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}};
 element('add-wait').onclick=()=>{try{editor.addWait();keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}};
-element('add-coordinate').onclick=()=>{try{const state=robotMode()?control?.snapshot():null;editor.addCoordinates(state?.feedbackFresh&&state.reportedPose?state.reportedPose:undefined);keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add coordinate block.';refresh();}};
+for(const [id,add] of [['add-joint',editor.addJoint],['add-repeat',editor.addRepeat]] as const)element(id).onclick=()=>{
+  try{add();interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';}refresh();
+};
+element('undo').onclick=()=>{editor.workspace.undo(false);keyboardFields();refresh();};
+element('redo').onclick=()=>{editor.workspace.undo(true);keyboardFields();refresh();};
+document.addEventListener('add-position-to-code',event=>{
+  if(preparing||loadingProgram||control?.snapshot().busy)return;
+  try{editor.addPosition((event as CustomEvent<string>).detail);interfaceError='';keyboardFields();refresh();}
+  catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}
+});
 function cancel(stopRobot=true){session++;runner.cancel();preparing=loadingProgram=false;if(stopRobot)control?.stop();refresh();}
 run.onclick=async()=>{
   if(preparing||loadingProgram||control?.snapshot().busy)return;
@@ -112,7 +127,7 @@ run.onclick=async()=>{
     interfaceError='';const instructions=editor.compile();preparing=true;plan=[];refresh();const result=await runner.prepare(instructions);
     if(ownSession!==session||live!==robotMode())return;
     plan=result;preparing=false;element('instructions').replaceChildren();
-    rows=plan.map(step=>{const row=document.createElement('li');row.textContent=step.kind==='coordinates'?`Checked coordinates: X ${step.x}, Y ${step.y}, Z ${step.z}, P ${step.pitch}, R ${step.roll}, C ${step.claw}, over ${step.durationMs/1000} seconds`:step.kind==='pose'?`Move to ${step.name}: ${step.positions.join(', ')}`:step.kind==='wait'?`Wait ${step.durationMs/1000} seconds`:`Move robot joint ${step.servo} to ${step.target}`;element('instructions').append(row);return row;});
+    rows=plan.map(step=>{const row=document.createElement('li');row.textContent=step.kind==='pose'?`Move to ${step.name}: ${step.positions.join(', ')}`:step.kind==='wait'?`Wait ${step.durationMs/1000} seconds`:`Move robot joint ${step.servo} to ${step.target}`;element('instructions').append(row);return row;});
     if(live){if(!control)throw Error('Connect the robot first.');control.runProgram(instructions);refresh();}
   }catch(error){if(ownSession!==session)return;preparing=false;interfaceError=error instanceof Error?error.message:'Program could not run.';refresh();}
 };
@@ -146,12 +161,13 @@ programFile.onchange=async()=>{
 };
 element('robot-connect').onclick=()=>{
   try{
+    interfaceError='';
     if(!robotMode())return;
     const serial=(navigator as Navigator&{serial?:{requestPort():Promise<TeacherPort>}}).serial;
     if(!serial||!navigator.locks)throw Error('Robot mode needs Chrome or Edge with Web Serial on HTTPS or localhost.');
     control??=new TeacherRobotControl(navigator.locks,localStorage,()=>performance.now(),()=>!document.hidden,refresh,{directSession:true});
     control.connect(()=>serial.requestPort());
-  }catch(error){element('robot-status').textContent=error instanceof Error?error.message:'Could not connect.';}
+  }catch(error){interfaceError=error instanceof Error?error.message:'Could not connect.';refresh();}
 };
 element('robot-disconnect').onclick=()=>{cancel();control?.disconnect();refresh();};
 element('robot-diagnostics').onclick=()=>{

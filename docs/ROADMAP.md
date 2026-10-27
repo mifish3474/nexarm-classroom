@@ -1,6 +1,21 @@
 # NexArm Classroom development roadmap
 
-Updated 2026-10-26.
+Updated 2026-10-27.
+
+## Current scope: joints and named positions on factory firmware
+
+Dev.47 removes XYZ blocks and coordinate execution. Core learning uses joint
+positions, named six-joint poses, sequencing, Wait and Repeat; subsequent work
+can add variables, conditionals and functions within that model. Old XYZ files
+are rejected without replacing the current workspace or sending commands.
+
+Only unmodified factory firmware is supported. Do not develop, install or rely
+on custom ESP32 or AT32 firmware. The completed observer experiment is historical;
+the original application was restored. Fault protection can use only evidenced
+factory capabilities; reliable pinch protection remains unverified. No coordinate
+or custom-firmware research is a dependency for the classroom programming path.
+
+Earlier XYZ development notes below are historical, not active milestones.
 
 Dev.41 adds the operator-approved Home-first Run sequence: validate all
 destinations, return Home with the existing timed-joint executor, check fresh
@@ -38,10 +53,8 @@ groups will iterate independently; there will be no per-program teacher approval
   source, including Blockly, manual movement, Home, and saved-pose replay.
   Students Connect per session and run independently within policy, without
   per-run teacher approvals or repeated confirmation/Enable controls.
-- Validate the dev.40 calculation-only coordinate path: solver reachability,
-  branch selection, valid joint combinations, actual tracking and Stop/obstruction
-  response. Commanded targets now obey the raw-joint bounds and 600/10 profile;
-  direct native-command bypass remains blocked.
+- Validate joint combinations, saved-position transitions, tracking and Stop
+  response on factory firmware. Coordinate execution remains removed.
 - Make missing, invalid, stale, or incompatible protected policy block live
   movement in the student release. Keep simulation available. Do not reuse the
   development exception as a student-facing toggle or silent fallback.

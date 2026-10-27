@@ -1,4 +1,12 @@
-# Programming development test: dev.41
+# Programming development test: dev.48
+
+The page opens into code, with Run/Stop in the persistent toolbar. File contains
+New empty program, Save/Load and examples. Robot/Positions tabs change the side
+panel without leaving the code. Positions contains release, live values/ranges,
+naming, recording and restore. Add to code inserts a position block without
+moving; expand Joint values & movement for the separate Move to position action.
+Add block provides keyboard-accessible append actions; Undo/Redo are in the
+toolbar. Programs start with only When Run clicked. There is no autosave yet.
 
 The user confirms Blockly motion is working after identifying the selected J3
 block. Diagnostic export remains available for unexpected behavior. To release,
@@ -12,13 +20,13 @@ setup requirement, student-editable limit panel, or per-program teacher approval
 Protected limits are a required [student-release roadmap item](./ROADMAP.md).
 The current build is for development hardware testing.
 
-1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.41**.
+1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.48**.
 2. Build or edit a program. Station robot is the default/only visible view.
    The simulator and virtual-arm frame are hidden for now. Editing needs no USB.
 3. In robot mode, click **Connect robot** and wait for Ready. Fresh stable
    feedback makes controls available without a checkbox or Enable. Connect sends
    no movement. If Run is unavailable, the adjacent message explains why.
-4. For a first check, load the short practice program: S1 to 2130, then 2050.
+4. For a first check, use File → Load short practice program: S1 to 2130, then 2050.
    Inspect the starting pose and movement clearance. Use **Robot setup controls**
    for manual positioning/Home if needed. Loading blocks does not reposition
    the robot. Keep the arm secured, gripper empty and physical cutoff accessible.
@@ -42,14 +50,19 @@ The current build is for development hardware testing.
    starts the Home-first sequence again. Software Stop is not a
    certified emergency stop.
 7. Disconnect during a run: subsequent robot work is canceled. Reload never
-   reconnects or resumes a program. Connect, Release and Restore are above Run.
+   reconnects or resumes a program. Connect and Run/Stop stay in the toolbar;
+   Release and Restore stay together in Positions.
 
 Use **Save program** to download a local `nexarm-program.json` file. It includes
 the blocks and snapshots of named positions they use. **Load program** restores
 the blocks for review without modifying the browser's position library,
 connecting or moving. Only Run executes. Invalid files preserve existing blocks;
 files cannot import servo settings or executable code. There is no autosave yet.
-For checked coordinate blocks, follow [XYZ testing](./COORDINATE_PROGRAMMING.md).
+Programs use joint moves and saved six-joint positions, connected with Wait and
+Repeat. XYZ blocks have been removed. Older files containing XYZ are rejected
+with an explanation and leave the current workspace intact; rebuild those moves
+using joints or recorded positions. Existing joint/pose program files still load.
+Factory firmware only; custom ESP32/AT32 firmware is outside project scope.
 
 Input validation still checks joints 1–6, finite whole-number raw targets within
 0–4095, repeat expansion, and program size. That range is an encoding constraint,

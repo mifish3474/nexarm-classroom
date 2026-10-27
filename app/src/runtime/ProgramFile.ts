@@ -13,11 +13,10 @@ export function programInstructions(input:unknown):Instruction[]{
     const node=value as Instruction;
     if(!node.blockId||ids.has(node.blockId))throw Error('Program block references must be unique and nonempty.');
     ids.add(node.blockId);
-    if((node.kind==='wait'||node.kind==='coordinates'||node.kind==='pose')&&((node.durationMs??1000)%100!==0))throw Error('Program durations must use tenth-second steps.');
+    if((node.kind==='wait'||node.kind==='pose')&&((node.durationMs??1000)%100!==0))throw Error('Program durations must use tenth-second steps.');
     switch(node.kind){
       case 'move':return {kind:node.kind,blockId:node.blockId,servo:node.servo,target:node.target};
       case 'pose':return {kind:node.kind,blockId:node.blockId,positionId:node.positionId,name:node.name,positions:[...node.positions],durationMs:node.durationMs??1000};
-      case 'coordinates':return {kind:node.kind,blockId:node.blockId,x:node.x,y:node.y,z:node.z,pitch:node.pitch,roll:node.roll,claw:node.claw,durationMs:node.durationMs};
       case 'wait':return {kind:node.kind,blockId:node.blockId,durationMs:node.durationMs};
       case 'repeat':return {kind:node.kind,blockId:node.blockId,count:node.count,body:copy(node.body)};
     }

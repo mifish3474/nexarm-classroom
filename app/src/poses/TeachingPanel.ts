@@ -12,14 +12,15 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     const box=document.createElement('div');box.className='teach-reading';box.dataset.joint=String(i+1);
     const label=document.createElement('label');label.textContent=`J${i+1}`;
     const input=document.createElement('input');input.type='text';input.readOnly=true;input.value='—';input.setAttribute('aria-label',`J${i+1} reported position`);
-    const reference=document.createElement('small');reference.textContent=`Valid: ${range.min}–${range.max}${i===5?' · 1024 open':''}`;
+    const reference=document.createElement('small');reference.id=`teach-reading-range-${i+1}`;reference.textContent=`${range.min}–${range.max}`;reference.title=`Valid range${i===5?'; 1024 = gripper open':''}`;
     const status=document.createElement('span');status.className='teach-reading-status';status.id=`teach-reading-status-${i+1}`;
-    input.setAttribute('aria-describedby',status.id);label.append(input);box.append(label,reference,status);node('teach-readings').append(box);return {box,input,status};
+    input.setAttribute('aria-describedby',`${reference.id} ${status.id}`);label.append(input);box.append(label,reference,status);node('teach-readings').append(box);return {box,input,status};
   });
   let error='',live=false,preparing=false;
   const moveButtons:{button:HTMLButtonElement;issue:string}[]=[];
+  const addButtons:HTMLButtonElement[]=[];
   function drawSaved(){
-    const list=node('saved-positions');list.replaceChildren();moveButtons.length=0;
+    const list=node('saved-positions');list.replaceChildren();moveButtons.length=0;addButtons.length=0;
     for(const pose of saved.list()){
       const row=document.createElement('li'),label=document.createElement('strong'),values=document.createElement('p'),remove=document.createElement('button');
       label.textContent=pose.name;values.textContent=pose.positions.map((value,i)=>`S${i+1}: ${value}`).join(' · ');
@@ -27,7 +28,13 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
       remove.textContent='Delete';remove.className='secondary';remove.setAttribute('aria-label',`Delete position ${pose.name}`);
       const move=document.createElement('button');move.textContent='Move to position';move.setAttribute('aria-label',`Move to position ${pose.name}`);
       move.onclick=()=>act(()=>{const control=getControl();if(!control)throw Error('Connect the robot.');control.moveToPosition(pose.positions);});moveButtons.push({button:move,issue});
-      remove.onclick=()=>act(()=>{saved.remove(pose.id);drawSaved();});row.append(label,values,warning,move,remove);list.append(row);
+      const heading=document.createElement('div');heading.className='saved-position-heading';
+      const add=document.createElement('button');add.className='secondary';add.textContent='+ Add to code';add.setAttribute('aria-label',`Add position ${pose.name} to code`);
+      add.onclick=()=>document.dispatchEvent(new CustomEvent('add-position-to-code',{detail:pose.id}));addButtons.push(add);heading.append(label,add);
+      const details=document.createElement('details');details.className='saved-position-details';
+      const summary=document.createElement('summary');summary.textContent='Joint values & movement';
+      details.append(summary,values,move,remove);
+      remove.onclick=()=>act(()=>{saved.remove(pose.id);drawSaved();});row.append(heading,warning,details);list.append(row);
     }
     const count=saved.list().length;
     node('pose-storage-status').textContent=`${count}/32 positions. ${count===32?'Export or delete an old position to record another. ':''}${saved.message}`;
@@ -36,21 +43,21 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   }
   function act(action:()=>void){error='';try{action();}catch(caught){error=caught instanceof Error?caught.message:'Action could not complete.';}refresh(live,preparing);}
   function refresh(robotMode:boolean,isPreparing:boolean){
-    live=robotMode;preparing=isPreparing;node('teach-panel').hidden=!live;
+    live=robotMode;preparing=isPreparing;
     const state=getControl()?.snapshot();
     moveButtons.forEach(({button,issue})=>{button.disabled=!!issue||isPreparing||!state?.canMove;button.title=issue||state?.reason||'Send all six targets at speeds up to 600, acceleration 10. Completes on frame time; inspect live readings.';});
-    if(state&&state.manualPhase!=='Normal')node<HTMLDetailsElement>('teach-details').open=true;
+    addButtons.forEach(button=>button.disabled=isPreparing||!!state?.busy);
     node<HTMLButtonElement>('teach-release').disabled=isPreparing||!state?.canRelease;
     node<HTMLButtonElement>('teach-restore').disabled=isPreparing||!state?.canRestore;
     node<HTMLButtonElement>('pose-record').disabled=isPreparing||!state?.canCapture||!saved.canAdd||!name.value.trim();
-    const text=state?`${state.manualPhase}: ${state.manualMessage}${state.manualReason?` ${state.manualReason}`:''}`:'Connect the robot to release holding or record measured positions.';
+    const text=state?.manualPhase==='Normal'?(state.feedbackFresh?'Record a stationary pose, or Release to position by hand.':'Waiting for fresh joint readings.'):state?`${state.manualPhase}: ${state.manualMessage}${state.manualReason?` ${state.manualReason}`:''}`:'Connect for joint readings and position teaching.';
     if(node('teach-status').textContent!==text)node('teach-status').textContent=text;
     const issues=state?.positions?poseIssues(state.positions):[];
     node('pose-recording').classList.toggle('out-of-range',issues.length>0);
     readings.forEach(({box,input,status},i)=>{
       const value=state?.positions?.[i],issue=value===undefined?null:targetIssue(i+1,value);
       input.value=value===undefined?'—':String(value);input.setAttribute('aria-invalid',String(!!issue));box.classList.toggle('out-of-range',!!issue);
-      const text=value===undefined?'Waiting for reading':issue?'Out of range':state?.feedbackFresh?'In range · live':'In range · last reading';
+      const text=value===undefined?'Waiting':issue?'Out of range':state?.feedbackFresh?'In range · live':'In range · last reading';
       if(status.textContent!==text)status.textContent=text;
     });
     const captureStatus=issues.length?`Cannot record: ${issues.join(' ')}`:isPreparing?'Wait for program preparation.':!state?.feedbackFresh?'Waiting for fresh live readings. Recording is disabled.':!state.canCapture?state.captureReason:!saved.canAdd?'Export or delete an old position before recording another.':!name.value.trim()?'All joints are in range. Enter a position name to record.':'All joints are in range. Ready to record.';

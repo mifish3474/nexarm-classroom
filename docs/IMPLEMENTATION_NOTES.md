@@ -1,4 +1,125 @@
-# Classroom programming development preview 0.7.0-dev.46
+# Classroom programming development preview 0.7.0-dev.48
+
+## Workspace usability pass
+
+The programming page now opens directly into Blockly. A persistent header groups
+File, Undo/Redo, connection and Run/Stop, with one primary activity message and
+a Home-first cue. The Robot/Positions inspector scrolls independently on desktop;
+narrow layouts stack it below code while keeping the header visible. Workspace
+styles are scoped in `workspace.css`; setup/diagnostic styles are unchanged.
+
+Positions groups release/restore, six current values/ranges, naming and recording.
+Holding buttons remain accessible while its panel scrolls, and interrupted/released
+state stays visible in the footer when switching tabs. Saved rows have Add to code;
+joint values and the separate explicit Move to position/Delete actions are in
+details. Add to code only edits Blockly and is disabled during movement. File
+contains local Save/Load, New and examples; Help & tools contains diagnostic links.
+
+New sessions start with one When Run clicked block. The flyout groups Motion and
+Control; append actions group their create/connect events into one Undo step.
+Replacing the whole program clears edit history so Undo cannot cross project-file
+position namespaces. Menu keyboard focus, Escape, inspector arrow keys, and
+disabled-action explanations retain ordinary browser semantics. A focusout bug
+that closed menus before the next control received focus and Blockly flyout
+stacking over the Add block menu were corrected during browser verification.
+
+This pass changes presentation and editing only. The motion controller, speeds,
+acceleration, ranges, target checks, Home-first startup, release/restore protocol,
+and program-file schema are unchanged from dev.47. The root Connection Lab file
+matches its committed hash. Factory firmware only; simulator/XYZ remain hidden
+or retired. No hardware was used in automated verification. Project naming,
+autosave, position rename/update and destructive-edit recovery are still deferred.
+
+Validation: production build/type-check and 298 unit tests pass. Browser coverage
+includes five viewport sizes, persistent Stop, menu/tab keyboard handling, atomic
+Undo/Redo, Add to code without USB writes, file compatibility, timed pose playback,
+Home-first startup, Stop/recovery and teaching. See CLASSROOM_PROGRAMMING.md for
+the current UI locations and testing steps.
+
+## Current direction: joints and saved joint positions; factory firmware only
+
+The operator has retired XYZ programming and ruled out custom ESP32/AT32 firmware.
+Blockly now offers joint moves, saved six-joint positions, Wait and Repeat. The
+XYZ add button, coordinate fields and programming-page coordinate readout are
+removed. Interpreter, program-file loading/saving and the live executor reject
+legacy XYZ instructions with an explanation, including XYZ nested inside loops,
+before any Home, calculation or movement write. Invalid imports leave the
+existing workspace intact. No coordinate block is silently dropped or converted.
+The live writer also rejects both calculation (7) and native movement (8) packets.
+
+Joint/pose execution, Home-first startup, holding controls, operating ranges and
+local saved-position files retain their existing behavior. Passive coordinate
+telemetry remains available only in setup/diagnostic data; historical codecs and
+research notes are retained. Firmware observer artifacts are historical and must
+not be installed again. No hardware command or firmware operation is part of
+this change. The root Connection Lab index.html remains unchanged.
+
+Validation: production build/type-check and all 298 unit tests pass. Fifty browser
+scenarios pass with mocked hardware (49 in the full run, plus the new legacy-XYZ
+import case rerun after correcting its selector to exclude Blockly's trash flyout).
+Coverage retains Home-first Run, six-joint saved-position playback, joint programs,
+Wait/Repeat, local save/load, Stop/recovery and rejection of old XYZ files without
+replacing the current editor. No physical robot was connected for these checks.
+
+## Completed observer experiment; original firmware restored
+
+The operator approved the supported-arm observer installation/captures/restore
+on COM17 and confirmed stationarity before the J1 read. Passive and J1 captures
+contain only valid AT32 ID0x5A/function11 position broadcasts: 240/300 bytes,
+eight/ten frames, no individual-servo replies or observed UART/omission errors.
+This confirms the installed ESP32 response filter is not the only barrier; it
+does not identify the downstream cause or establish load/pinch protection.
+
+The original full application slot was restored and independently digest-checked.
+The first 64 KiB, including bootloader/partition/NVS/OTA, matched its pre-test copy
+before factory restart. Original 1.0.2/1.0.2 and 25 position reports were confirmed
+at the existing factory USB rate of 1,000,000 baud; COM17 is closed. No motion or
+servo-setting command was sent. SERVO_OBSERVER_RESULTS.md records scope, artifacts
+and limitations. The observer is no longer installed and the app remains dev.46.
+
+## Prepared observer experiment: offline build and recovery review
+
+SERVO_OBSERVER_REVIEW.md describes the frozen, not-installed diagnostic and the
+application-only recovery procedure. The source records incoming UART bytes and
+permits only explicitly requested position reads. It has no motion/torque/settings
+encoder and sends no downstream packet at startup. It replaces standard Arduino
+startup, which can erase NVS, and links refusing guards for nine flash-write/erase
+APIs, including the SDK crash-dump path. Offline build/symbol audit and six
+recovery-file validation tests pass. Runtime behavior and restoration are not yet
+hardware-tested; installing/restarting still requires separate operator approval
+and independent arm support. No robot connection/reset/write occurred this phase.
+The classroom app and its version remain unchanged.
+
+## Approved backup: reply filter confirmed in installed firmware
+
+With explicit operator approval and COM17 freed, two complete 4 MiB ESP32 flash
+copies were read and matched byte-for-byte. The first failed port-open attempt
+created no backup; its native-stderr logging issue is corrected in the helper.
+The bootloader matches the public download, but the installed application differs.
+Offline disassembly of the actual backup confirms that individual-servo requests
+are forwarded and replies with servo IDs1–6 are discarded by its receive path.
+This confirms a return-path barrier, not whether the downstream servos replied.
+
+Backups/logs remain in ignored .analysis; private settings/contents were not
+printed or uploaded. No firmware was written, no torque/motion command was sent,
+and the ESP32 remains in bootloader mode as approved. Restoration has not been
+tested. Full provenance, hashes, installed addresses and next diagnostic scope
+are in INDEPENDENT_SAFETY_INVESTIGATION.md. No app change/version bump this phase.
+
+## Offline follow-up: public firmware reply filter and backup preparation
+
+The dev.46 raw capture contains no hidden servo replies. Offline disassembly of
+the public factory image now confirms forwarding of ID1–6 requests and a receive
+path that discards replies under those IDs. Installed-image equivalence and
+downstream AT32 response behavior remain unverified. The public recovery image
+does not contain a full device backup, and the recovery guide includes an erase.
+See INDEPENDENT_SAFETY_INVESTIGATION.md for addresses, hashes and confidence.
+
+Prepared scripts/backup-nexarm-controller.ps1 defaults to a no-port/no-file plan.
+Actual execution requires a separately approved, supported-arm bootloader reset;
+it reads ESP32 flash twice and compares hashes, with no flash writes or erase.
+Only the plan and host-tool help were exercised. No robot connection/reset,
+application change or version bump was made in this follow-up.
 
 ## Current update: independent USB-only investigation and bounded raw capture
 
