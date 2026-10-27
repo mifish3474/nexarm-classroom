@@ -48,6 +48,13 @@ const dispatchPose=async(f:ReturnType<typeof fixture>,positions:readonly number[
 describe('Home-first Run',()=>{
  const program=[{kind:'move',blockId:'first',servo:1,target:2130}];
  const setup=()=>fixture({directSession:true,homeBeforeProgram:true});
+ it('rejects a later computed range violation before Home or any earlier valid step',async()=>{
+   const f=setup();await f.ready(TEACHER_HOME.map(n=>n+100));
+   const instructions=[{kind:'set',blockId:'v',name:'target',value:1880},...program,{kind:'move',blockId:'bad',servo:3,target:{kind:'variable',name:'target'}}];
+   expect(()=>f.control.runProgram(instructions)).toThrow('J3 target 1880');expect(f.writes).toHaveLength(0);
+   expect(()=>f.control.runProgram([{kind:'move',blockId:'divide',servo:1,target:{kind:'arithmetic',op:'DIVIDE',left:2100,right:0}}])).toThrow('divide by zero');expect(f.writes).toHaveLength(0);
+   f.control.disconnect();await flush();
+ });
  it('returns every joint to Home before block 1, retaining the original program steps',async()=>{
    const f=setup(),before=TEACHER_HOME.map(n=>n+200);await f.ready(before);expect(f.writes).toHaveLength(0);
    f.control.runProgram(program);await flush();await dispatchPose(f,before);

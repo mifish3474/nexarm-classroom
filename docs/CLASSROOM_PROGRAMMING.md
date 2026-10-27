@@ -1,4 +1,18 @@
-# Programming development test: dev.48
+# Programming development test: dev.50
+
+[Keyboard events](./KEYBOARD_EVENTS.md) adds separate When key pressed stacks.
+Run starts listening after checking every stack; Stop ends it. Add block's
+Add blocks to selector chooses the startup/key stack for quick-add actions.
+Each accepted key uses the existing Home-first program controller, with fresh
+variables and no concurrent/queued sequences. Files with key hats use format 3.
+
+Numeric variables, math and conditionals are now available. Use
+[Variables and logic](./VARIABLES_AND_LOGIC.md) to try the example with Check
+program before connecting hardware. Programs without key hats save in format 2;
+key projects use format 3. Both preserve expressions and branches, and old
+format-1 joint/pose programs still load.
+Variables reset every Check/Run; their displayed final values are prepared
+results, not live sensors. Existing movement profiles and Home-first startup remain.
 
 The page opens into code, with Run/Stop in the persistent toolbar. File contains
 New empty program, Save/Load and examples. Robot/Positions tabs change the side
@@ -20,7 +34,7 @@ setup requirement, student-editable limit panel, or per-program teacher approval
 Protected limits are a required [student-release roadmap item](./ROADMAP.md).
 The current build is for development hardware testing.
 
-1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.48**.
+1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.50**.
 2. Build or edit a program. Station robot is the default/only visible view.
    The simulator and virtual-arm frame are hidden for now. Editing needs no USB.
 3. In robot mode, click **Connect robot** and wait for Ready. Fresh stable

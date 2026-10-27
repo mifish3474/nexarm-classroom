@@ -1,0 +1,37 @@
+import {copyInstructions,evaluateProgram,ProgramError} from './ProgramLanguage';
+import type {Instruction} from './ProgramLanguage';
+import {isEventKey,keyLabel} from './KeyboardEvents';
+
+export type KeyHandler={blockId:string;key:string;body:Instruction[]};
+export type ProgramProject={instructions:Instruction[];keyEvents:KeyHandler[]};
+
+/** Validate a complete project before replacing the editor or enabling events. */
+export function copyProject(input:unknown):ProgramProject{
+  if(!input||typeof input!=='object'||Array.isArray(input))throw Error('Choose a valid program project.');
+  const project=input as Record<string,unknown>;
+  const instructions=copyInstructions(project.instructions,true);
+  if(!Array.isArray(project.keyEvents)||project.keyEvents.length>16)throw Error('Use at most 16 keyboard event stacks.');
+  const keys=new Set<string>();
+  const keyEvents=project.keyEvents.map((value:unknown):KeyHandler=>{
+    if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid keyboard event.');
+    const event=value as Record<string,unknown>;
+    if(typeof event.blockId!=='string'||!event.blockId||event.blockId.length>200)throw Error('Invalid keyboard event block reference.');
+    if(!isEventKey(event.key))throw new ProgramError('Choose Space, an arrow, a letter, or a number for the key event.',event.blockId);
+    if(keys.has(event.key))throw new ProgramError(`Use one When ${keyLabel(event.key)} pressed stack. Combine its blocks into one sequence.`,event.blockId);
+    keys.add(event.key);return {blockId:event.blockId,key:event.key,body:copyInstructions(event.body,true)};
+  });
+  const result={instructions,keyEvents},ids=new Set<string>(),names=new Set<string>();let nodes=0;
+  function visit(value:unknown){
+    if(!value||typeof value!=='object')return;
+    if(++nodes>1000)throw Error('Program project is too large.');
+    if(Array.isArray(value)){value.forEach(visit);return;}
+    const node=value as Record<string,unknown>;
+    if(typeof node.blockId==='string'){if(ids.has(node.blockId))throw Error('Program block references must be unique across all stacks.');ids.add(node.blockId);}
+    if(['set','change','variable'].includes(String(node.kind))&&typeof node.name==='string')names.add(node.name.toLowerCase());
+    Object.values(node).forEach(visit);
+  }
+  visit(result);if(names.size>32)throw Error('Use at most 32 variables across the project.');
+  if(instructions.length)evaluateProgram(instructions,{allowNoMotion:true});
+  for(const handler of keyEvents)if(handler.body.length)evaluateProgram(handler.body,{allowNoMotion:true});
+  return result;
+}

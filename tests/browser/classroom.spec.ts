@@ -12,7 +12,7 @@ async function openPosition(page:Page,name:string){
  const details=row.locator('.saved-position-details');if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator('summary').click();
 }
 async function clickControl(page:Page,name:string){
- if(['New empty program','Save program','Load program','Load short practice program','Reload lesson'].includes(name))await openDetails(page,'#file-menu');
+ if(['New empty program','Save program','Load program','Load short practice program','Reload lesson','Load variables and logic example'].includes(name))await openDetails(page,'#file-menu');
  if(name.startsWith('Add ')&&name.endsWith(' block'))await openDetails(page,'#add-block-menu');
  if(['Clear saved positions','Export saved positions'].includes(name)){await page.getByRole('tab',{name:'Positions',exact:true}).click();await openDetails(page,'.position-tools');}
  if(name==='Export robot diagnostics')await page.getByRole('tab',{name:'Robot',exact:true}).click();
@@ -50,6 +50,123 @@ async function seedPositions(page:Page){
    {id:'home',name:'Home',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}
  ]})));
 }
+
+async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[]){
+ await page.locator('#program-file').setInputFiles({name:'keys.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:3,instructions,keyEvents}))});
+ await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+}
+
+test('key events require Run, do not queue busy presses or repeat held keys, and Stop disables them',async({page})=>{
+ await station(page);await connect(page);
+ await loadKeys(page,[{blockId:'space-hat',key:'space',body:[{kind:'move',blockId:'out',servo:1,target:2130},{kind:'wait',blockId:'pause',durationMs:1000},{kind:'move',blockId:'back',servo:1,target:2050}]},{blockId:'right-hat',key:'right',body:[{kind:'move',blockId:'right-joint',servo:2,target:2230}]}]);
+ await page.locator('#keyboard-control').click();await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(0);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');expect(await writes(page)).toHaveLength(0);
+ await page.keyboard.down('Space');await page.clock.runFor(100);expect(await writes(page)).toHaveLength(1);
+ await page.keyboard.down('Space');await page.keyboard.press('ArrowRight');await page.clock.runFor(4000);await expect(page.locator('#state')).toHaveText('Keys active');expect(await writes(page)).toHaveLength(2);
+ await page.keyboard.down('Space');await page.clock.runFor(500);expect(await writes(page)).toHaveLength(2);await page.keyboard.up('Space');
+ await page.keyboard.press('Space');await page.clock.runFor(4000);expect(await writes(page)).toHaveLength(4);
+ await clickControl(page,'Stop');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');const count=(await writes(page)).length;
+ await page.locator('#keyboard-control').click();await page.keyboard.press('Space');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);await clickControl(page,'Disconnect robot');
+});
+
+test('typing, modifiers and synthetic keys do not trigger motion; editing ends listening',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'space',body:[{kind:'move',blockId:'s1',servo:1,target:2130}]},{blockId:'a',key:'a',body:[{kind:'move',blockId:'s2',servo:1,target:2120}]}]);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.getByRole('textbox',{name:'Position name'}).focus();await page.keyboard.type('a a');expect(await writes(page)).toHaveLength(0);
+ await page.locator('#keyboard-control').click();await page.keyboard.press('Control+Space');await page.keyboard.press('Shift+A');expect(await writes(page)).toHaveLength(0);
+ await page.evaluate(()=>dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true})));expect(await writes(page)).toHaveLength(0);
+ await clickControl(page,'Add wait block');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ await page.locator('#keyboard-control').click();await page.keyboard.press('Space');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+});
+
+test('every keyboard handler is checked before startup Home and duplicate key files preserve the editor',async({page})=>{
+ await station(page);await connect(page);await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;s.positions.forEach((n,i)=>{s.positions[i]=n+100;s.targets[i]=n+100;});});await page.clock.runFor(300);
+ const bad={blockId:'key',key:'space',body:[{kind:'move',blockId:'bad',servo:3,target:1880}]};await loadKeys(page,[bad],[{kind:'move',blockId:'startup',servo:1,target:2130}]);
+ await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('J3 target 1880');expect(await writes(page)).toHaveLength(0);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ const duplicate={format:'nexarm-classroom-program',schemaVersion:3,instructions:[],keyEvents:[{blockId:'x',key:'a',body:[]},{blockId:'y',key:'a',body:[]}]};
+ await page.locator('#program-file').setInputFiles({name:'duplicate.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(duplicate))});await expect(page.locator('#program-file-status')).toContainText('one When A');
+ await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('J3 target 1880');expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+});
+
+test('keyboard stacks and their position snapshots save/load without connecting or enabling events',async({page})=>{
+ await station(page);const positions=[2130,2230,2180,2280,2080,1160];await loadKeys(page,[{blockId:'space',key:'space',body:[{kind:'pose',blockId:'pickup',positionId:'p',name:'Pickup',positions,durationMs:1000}]}]);
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('1 keyboard event stacks also checked');
+ const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(text)).toMatchObject({schemaVersion:3,keyEvents:[{key:'space',body:[{kind:'pose',name:'Pickup',positions}]}]});
+ await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'reload.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await page.locator('#keyboard-control').click();await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);
+ await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+});
+
+test('faults and lost window focus cancel keyboard listening without automatic restart',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'space',body:[{kind:'move',blockId:'move',servo:1,target:2130},{kind:'wait',blockId:'wait',durationMs:1000}]}]);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.keyboard.press('Space');await expect(page.locator('#state')).toHaveText('Running');await page.evaluate(()=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions[0]=3900);await page.clock.runFor(100);
+ await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');await clickControl(page,'Stop');const count=(await writes(page)).length;
+ await page.locator('#keyboard-control').click();await page.keyboard.press('Space');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);
+ await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;const home=[2050,2150,2100,2200,2000,1080];s.positions.splice(0,6,...home);s.targets.splice(0,6,...home);});await page.clock.runFor(600);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.evaluate(()=>dispatchEvent(new Event('blur')));await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ await page.locator('#keyboard-control').click();await page.keyboard.press('Space');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);await clickControl(page,'Disconnect robot');
+});
+
+test('release and restore end keyboard listening without adding confirmation or automatic reactivation',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'space',body:[{kind:'move',blockId:'move',servo:1,target:2130}]}]);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');
+ await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ await clickControl(page,'Restore servo holding');await page.clock.runFor(600);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ expect(await writes(page)).toHaveLength(2);await page.locator('#keyboard-control').click();await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(2);
+ await ready(page);await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');expect(await writes(page)).toHaveLength(2);await clickControl(page,'Stop');await clickControl(page,'Disconnect robot');
+});
+
+test('the variables example checks offline, resets values, and round-trips branches through v2 files',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));await station(page);
+ await clickControl(page,'Load variables and logic example');await page.getByRole('button',{name:'Check program',exact:true}).click();
+ await expect(page.locator('#run-status')).toContainText('Program checked: 3');await page.getByText('Program steps and keyboard editing',{exact:true}).click();
+ await expect(page.locator('#variable-values')).toContainText('counter = 3');await expect(page.locator('#variable-values')).toContainText('cycles = 3');
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked');await expect(page.locator('#variable-values')).toContainText('counter = 3');
+ const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8'),file=JSON.parse(text);
+ expect(file.schemaVersion).toBe(2);expect(file.instructions[2]).toMatchObject({kind:'repeat',count:{kind:'variable',name:'cycles'},body:[{kind:'if',elseBody:[{kind:'wait',durationMs:400}]},{kind:'change',name:'counter'}]});
+ await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'logic.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#variable-values')).toContainText('counter = 3');
+ expect(await writes(page)).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);expect(errors).toEqual([]);
+});
+
+test('calculations alone can be checked and saved; Run rejects them without moving Home',async({page})=>{
+ await station(page);await connect(page);
+ const file={format:'nexarm-classroom-program',schemaVersion:2,instructions:[{kind:'set',blockId:'answer',name:'answer',value:{kind:'arithmetic',op:'ADD',left:20,right:22}}]};
+ await page.locator('#program-file').setInputFiles({name:'answer.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(file))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked: 0');await expect(page.locator('#variable-values')).toContainText('answer = 42');
+ await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('Check program for calculations only');expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+});
+
+test('legacy programs keep their authored-block allowance after numeric shadows are introduced',async({page})=>{
+ await station(page);
+ const file={format:'nexarm-classroom-program',schemaVersion:1,instructions:Array.from({length:70},(_,i)=>({kind:'wait',blockId:`legacy-${i}`,durationMs:0}))};
+ await page.locator('#program-file').setInputFiles({name:'legacy.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(file))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked: 70');expect(await writes(page)).toHaveLength(0);
+});
+
+test('computed targets and changing loop variables run through the existing joint controller',async({page})=>{
+ await station(page);await connect(page);
+ const v={kind:'variable',name:'target'},file={format:'nexarm-classroom-program',schemaVersion:2,instructions:[
+  {kind:'set',blockId:'s',name:'target',value:2050},
+  {kind:'repeat',blockId:'r',count:2,body:[{kind:'change',blockId:'c',name:'target',value:20},{kind:'if',blockId:'i',branches:[{condition:{kind:'compare',op:'LTE',left:v,right:2070},body:[{kind:'move',blockId:'first',servo:1,target:v}]}],elseBody:[{kind:'move',blockId:'second',servo:1,target:{kind:'arithmetic',op:'ADD',left:v,right:20}}]}]},
+ ]};
+ await page.locator('#program-file').setInputFiles({name:'targets.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(file))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked: 2');expect(await writes(page)).toHaveLength(0);
+ await clickControl(page,'Run program');await page.clock.runFor(2600);await expect(page.locator('#state')).toHaveText('Completed');
+ const commands=await writes(page);expect(commands).toHaveLength(2);expect(commands.map(bytes=>bytes[7]!+256*bytes[8]!)).toEqual([2070,2110]);
+ await expect(page.locator('#variable-values')).toContainText('target = 2090');await clickControl(page,'Disconnect robot');
+});
+
+test('later calculated joint-limit failures block Home, and a new arithmetic error preserves the connection',async({page})=>{
+ await station(page);await connect(page);
+ await page.evaluate(()=>{const robot=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;robot.positions.forEach((n,i)=>{robot.positions[i]=n+100;robot.targets[i]=n+100;});});await page.clock.runFor(200);
+ const file={format:'nexarm-classroom-program',schemaVersion:2,instructions:[{kind:'set',blockId:'set-target',name:'target',value:1880},{kind:'move',blockId:'first',servo:1,target:2050},{kind:'move',blockId:'bad',servo:3,target:{kind:'variable',name:'target'}}]};
+ await page.locator('#program-file').setInputFiles({name:'bounds.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(file))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('J3 target 1880');expect(await writes(page)).toHaveLength(0);await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeEnabled();
+ const valid={format:'nexarm-classroom-program',schemaVersion:2,instructions:[{kind:'set',blockId:'divisor',name:'divisor',value:1},{kind:'wait',blockId:'divide',durationMs:{kind:'arithmetic',op:'DIVIDE',left:1000,right:{kind:'variable',name:'divisor'}}}]};
+ await page.locator('#program-file').setInputFiles({name:'division.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(valid))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await page.getByText('Program steps and keyboard editing',{exact:true}).click();const divisor=page.getByRole('spinbutton',{name:/set value for divisor/});await divisor.fill('0');await divisor.dispatchEvent('change');
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('divide by zero');expect(await writes(page)).toHaveLength(0);await expect(page.getByRole('button',{name:'Disconnect robot',exact:true})).toBeEnabled();await clickControl(page,'Disconnect robot');
+});
 
 test('position-library Add to code builds a program without movement and is disabled during a run',async({page})=>{
  await seedPositions(page);await station(page);await connect(page);

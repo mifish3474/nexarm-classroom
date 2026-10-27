@@ -1,4 +1,5 @@
 import {expect,test} from '@playwright/test';
+import {readFile} from 'node:fs/promises';
 test('station opens directly into code without USB access, with project actions in File',async({page})=>{
  const errors:string[]=[],requests:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
  await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed without Connect');}}));
@@ -34,4 +35,27 @@ test('adding and undoing blocks works without hardware, with a single empty star
  await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add joint block',exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(2);
  await page.getByRole('button',{name:'Undo edit',exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(0);
  await page.getByRole('button',{name:'Redo edit',exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(2);
+});
+
+test('students create a variable and append set, change and if/else blocks through the interface',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed during offline editing');}}));
+ await page.goto('/');await page.getByRole('treeitem',{name:'Variables',exact:true}).click();
+ await page.getByText('Create variable...',{exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByRole('textbox').fill('counter');await dialog.getByRole('button',{name:'OK',exact:true}).click();
+ for(const name of ['Add set variable block','Add change variable block','Add if/else block','Add wait block']){
+  await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name,exact:true}).click();
+ }
+ await page.getByText('Program steps and keyboard editing',{exact:true}).click();
+ const initial=page.getByRole('spinbutton',{name:/set value for counter/});await initial.fill('2');await initial.dispatchEvent('change');
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked: 1');await expect(page.locator('#variable-values')).toContainText('counter = 3');expect(errors).toEqual([]);
+});
+
+test('adding a keyboard hat selects its stack for quick-add blocks and saves it without USB',async({page})=>{
+ await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed while building key events');}}));await page.goto('/');
+ await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add key event block',exact:true}).click();
+ await page.locator('#add-block-menu > summary').click();await expect(page.locator('#program-stack option:checked')).toHaveText('When Space pressed');await page.getByRole('button',{name:'Add wait block',exact:true}).click();
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked: 0');await expect(page.locator('#run-status')).toContainText('1 keyboard event stacks');
+ const download=page.waitForEvent('download');await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Save program',exact:true}).click();const data=JSON.parse(await readFile((await (await download).path())!,'utf8'));
+ expect(data.instructions).toEqual([]);expect(data.keyEvents).toMatchObject([{key:'space',body:[{kind:'wait',durationMs:1000}]}]);
+ await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add key event block',exact:true}).click();await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('one When Space');
 });

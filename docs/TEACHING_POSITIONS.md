@@ -1,6 +1,6 @@
-# Teach and use a position: dev.48
+# Teach and use a position: dev.50
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.48**, and Connect.
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.50**, and Connect.
 The **Positions** side panel contains Teach a position, Release holding,
 live readings and ranges, naming/Record, and Restore holding. Run and Stop
 remain in the top toolbar while you teach or scroll the saved-position list.
@@ -57,7 +57,7 @@ Use Stop to cancel and attempt holds at the latest measured positions.
 To connect positions in code:
 
 1. The page starts with an empty program. **File → New empty program** clears existing blocks.
-2. Click **Add to code** beside a saved position. Alternatively, use **Add block → Saved position for new block**, then **Add position block**.
+2. Click **Add to code** beside a saved position. Add block's **Add blocks to** selector chooses When Run clicked or a key-event stack. Alternatively, use **Add block → Saved position for new block**, then **Add position block**.
 3. Each position block has an **over … seconds** field, default 1 second (0.1–10). The planner extends it if needed to keep speed at or below 600. The robot status and diagnostics show the effective duration. Click **Add wait block** for a one-second pause. Edit its seconds in Blockly
    or under **Program steps and keyboard editing** (0–10 seconds).
 4. Choose a second position and add another position block. For example:

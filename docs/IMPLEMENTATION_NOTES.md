@@ -1,4 +1,87 @@
-# Classroom programming development preview 0.7.0-dev.48
+# Classroom programming development preview 0.7.0-dev.50
+
+## Keyboard event stacks
+
+Events supplies a separate When key pressed hat for Space, arrows, letters and
+digits. compileProject allows one startup and up to 16 distinct key stacks;
+quick-add targets a selected hat. All handler expressions and targets are checked
+before any startup movement or event activation. Startup can be empty. Each
+accepted key reuses the original handler instructions with the unchanged
+Home-first controller; cached preparation results provide UI feedback, and the
+controller independently evaluates/validates on every invocation.
+
+KeyboardEvents accepts one trusted physical keydown per release, only after Run.
+It rejects modifiers, composition, typing/editing contexts and untrusted synthetic
+keys; busy/unready presses are dropped. There is no queue or concurrent runner.
+Stop, edits, pose-library changes, loading/replacing code, manual positioning,
+faults, disconnect and focus loss end listening. Editing is caught synchronously
+before mutation as well as through Blockly change events, avoiding its deferred
+event window. Focus loss cancels pending keyboard preparation or stops a running
+session. Session/generation checks prevent late worker results rearming events.
+
+Handlers have independent fresh variable environments. Startup values and prior
+keypress results are not shared. This preserves bounded full preflight and makes
+the trigger reusable for future function-call instructions. No functions, live
+sensors, persistent event state, motion settings or new firmware commands are
+included. Event activation is ordinary Run, with no teacher-approval/Enable step.
+
+ProgramProject validates/copies all stacks, limits keys/variables/source size,
+and rejects duplicate keys or source IDs. Files with hats use format 3; hat-free
+programs retain format 2; formats 1/2/3 load atomically. Key choices and poses
+persist, but active/held-key state never does. The legacy instruction-only loader
+rejects format 3 rather than silently dropping events. No global keyboard hook,
+keyboard logging, network service, or physical robot was used in verification.
+
+Validation: build/type-check and 328 unit tests pass. All 65 scenarios in the full
+browser regression pass with mocked USB, plus the added targeted release/restore
+keyboard-cancellation scenario. Coverage includes visible hat creation/quick-add,
+startup preflight, trusted presses, held/busy/typing/modifier filtering, Stop,
+fault/focus recovery and format-3 pose snapshot round-trips. Root index.html is
+unchanged; no physical robot or firmware operation was used.
+
+## Phase 1: variables, math and conditionals
+
+The toolbox uses Blockly's standard numeric/logic/variable/if blocks, with a
+whitelisted compiler into data-only expressions and instructions. Motion fields
+are numeric value connections with default number shadows, so legacy numeric
+programs retain their values and keyboard editing. Five categories replace the
+short flyout; palettes close for new/loaded programs to keep code unobscured.
+Quick-add includes if/else and Set/Change, and serialization append explicitly
+records Undo as one grouped create/connect action.
+
+ProgramLanguage validates every branch's structure and copies only allowed
+fields. A fresh case-insensitive numeric variable environment evaluates bounded
+loops and selected branches into the existing movement plan. It allows 32 used
+variables, 12 nesting levels, 1,000 structural visits, 10,000 evaluation visits,
+and the existing 100 expanded movement/wait steps and 60-second duration budget.
+Unsupported operations/XYZ are rejected even in unused branches. Undefined values,
+division by zero, invalid computed counts/targets and nonfinite results fail
+before movement. Decimal-duration normalization is limited to 1e-6 ms floating
+noise around tenth-second values; real offsets are rejected, not clamped.
+
+Check program is worker-backed and never touches USB. It may evaluate a
+calculation-only program; Run still requires an action on its selected path and
+does not move Home for calculation-only input. Prepared final variable values
+are labeled as non-live and cleared on editing. The UI validates all prepared
+joint/pose targets against the current operating ranges before asking the
+existing controller to run; the controller independently prepares and validates
+again. Preparation errors carry source block IDs through the worker for highlight.
+
+Files now write schemaVersion 2, preserving the expression/conditional tree and
+used variable names; versions 1 and 2 load through the same atomic validation.
+The byte/size limits, data-only policy, local snapshots, no-auto-connect/run
+behavior and invalid-file preservation remain. Unused variable names are omitted;
+partially invalid programs still need fixing before Save. No functions, sensor
+conditions, custom firmware, speeds, joint limits, Home/holding or protocol changes
+are introduced. See VARIABLES_AND_LOGIC.md for the first no-hardware exercise.
+
+Validation: production build/type-check and all 315 unit tests pass. The complete
+57-scenario browser regression passed with mocked USB, followed by the added
+visible-interface variable creation/Set/Change/if test and focused reruns after
+the final toolbox/menu/result-clearing adjustments. No physical robot was
+connected for validation. The root Connection Lab file still matches its committed
+hash. Keyboard-only construction/reordering, in-progress autosave and broader
+student usability studies remain future work.
 
 ## Workspace usability pass
 

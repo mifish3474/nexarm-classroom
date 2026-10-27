@@ -5,8 +5,9 @@ Updated 2026-10-27.
 ## Current scope: joints and named positions on factory firmware
 
 Dev.47 removes XYZ blocks and coordinate execution. Core learning uses joint
-positions, named six-joint poses, sequencing, Wait and Repeat; subsequent work
-can add variables, conditionals and functions within that model. Old XYZ files
+positions, named six-joint poses, sequencing, Wait and Repeat. Dev.49 adds numeric
+variables, math, comparisons, if/else and offline Check program. Functions/My
+Blocks remain the next language phase. Old XYZ files
 are rejected without replacing the current workspace or sending commands.
 
 Only unmodified factory firmware is supported. Do not develop, install or rely
@@ -77,8 +78,15 @@ groups will iterate independently; there will be no per-program teacher approval
 
 - Dev.40 implements local program JSON save/load with self-contained pose
   snapshots and no accounts. Add autosave/recovery and broader project management.
-- Conditionals, variables, functions, and bounded virtual events. Wait blocks
-  are implemented in dev.26.
+- Dev.49 implements numeric variables, arithmetic/rounding, numeric comparisons,
+  boolean logic, if/else/else-if and bounded preparation before movement. Check
+  program evaluates without USB and reports final, non-live variable values.
+  Format-2 program files preserve expressions/branches and load legacy format 1.
+- Next language phase: functions/My Blocks, then parameters. Live sensor-driven
+  conditions, while/forever loops and virtual events remain separate decisions.
+- Dev.50 adds explicit Run/Stop-scoped keyboard event hats, using independent
+  fresh evaluations and one sequence at a time. Format 3 retains event stacks.
+  Shared persistent event variables and concurrent scripts remain out of scope.
 - Named position capture, direct replay and Blockly pose sequences are available
   for development testing in dev.26. Validate routes/policy and hand-positioning
   procedures before student release. Add pose import/project portability.
@@ -103,5 +111,6 @@ existing path/settling checks.
 Station limits are not
 enforced as protected policy in the current development build. Fixed development
 operating ranges are enforced for targets through the current motion controller.
-Coordinate blocks now use the same target ranges and timed-pose profile after
-calculation-only preflight. See COORDINATE_PROGRAMMING.md for guarantees and limits.
+Coordinate execution is retired. Calculated joint/pose targets from variables and
+conditions use these same ranges and profiles after bounded preparation, before
+Home or block 1. See VARIABLES_AND_LOGIC.md for current programming semantics.

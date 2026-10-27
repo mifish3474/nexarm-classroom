@@ -3,6 +3,23 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.50: keyboard events.** Events adds When Space/arrow/letter/number pressed
+stacks. Run validates all stacks and starts listening; Stop ends listening.
+One idle key press runs its stack through the existing Home-first controller;
+held/busy presses are never queued or repeated. Typing is excluded, editing and
+faults end listening, and loading a file never enables it. Keyboard projects
+use format 3 while legacy formats still load. See
+[Keyboard events](docs/KEYBOARD_EVENTS.md). Functions remain a later phase.
+
+**Dev.49: variables, math and conditionals.** Blockly now includes numeric
+Set/Change variables, arithmetic/rounding, comparisons, AND/OR/NOT and if/else.
+Calculated values plug into joint targets, Repeat, Wait and pose durations.
+Check program works without USB and shows the prepared final variable values.
+Run prepares and validates the selected sequence before its existing Home-first
+startup. New format-2 files preserve the logic; legacy format-1 programs still
+load. See [Variables and logic](docs/VARIABLES_AND_LOGIC.md) for a no-robot example.
+Functions and live sensor conditions are deferred.
+
 **Dev.48: workspace layout.** Code is visible immediately, with persistent
 Connect/Run/Stop controls, File and Help menus, and Robot/Positions tabs.
 The Positions panel groups release, readings, recording and restore; each saved
