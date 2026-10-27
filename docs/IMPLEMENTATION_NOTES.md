@@ -1,6 +1,37 @@
-# Classroom programming development preview 0.7.0-dev.45
+# Classroom programming development preview 0.7.0-dev.46
 
-## Current update: adapt read-only diagnostics to the actual USB interface
+## Current update: independent USB-only investigation and bounded raw capture
+
+The operator wants independent progress and has only the robot/USB cable. Static
+review of newly located manufacturer source examples found a response callback
+that accepts only AT32 system ID0x5A, plus register definitions materially different
+from the generic servo SDK. These are architectural clues, not proof of the
+installed factory image's exact implementation. Public factory firmware was
+downloaded for static inspection only; no program was run, compiled or flashed.
+Provenance, source hashes, confidence and next decisions are recorded in
+INDEPENDENT_SAFETY_INVESTIGATION.md. A vendor response is not a work dependency.
+
+Dev.46 keeps exactly the dev.45 read whitelist and timings, adding raw serial
+RX capture before the parser while the explicit scan is active. This can reveal
+unrecognized framing/text/checksum data absent from parsed-only exports. Buffers
+are bounded to 64 KiB and 1,024 chunks with omission counters. Capture is in-memory,
+exported explicitly, begins only at Start and ends at cancellation/completion.
+The parser is reset at Start so old partial frames cannot complete a diagnostic
+reply. No raw byte stream can authorize movement or decoded results. Snapshot
+counters do not copy the entire raw buffer during each UI refresh.
+
+The export includes timestamp/context/hex chunks and notes that pending-read
+context is not response identity. Raw serial content might include controller
+debug text; the page explicitly discloses this and asks for review before sharing.
+It does not request USB identifiers, store data persistently or upload anything.
+There are no additional robot packets, settings, modes, reset or movement changes.
+
+Validation: build/type-check and all 308 unit tests pass. New regressions cover
+unparsed data without inferred readings, pre-start partial-frame isolation,
+capture cancellation, both memory bounds and detached exports. Targeted browser
+checks exercise export, privacy boundaries and the unchanged read-only workflow.
+
+## Previous update: adapt read-only diagnostics to the actual USB interface (dev.45)
 
 The operator's completed 2026-10-27 dev.44 export contains 19 issued requests,
 19 timeouts and 12 deliberately skipped repeat samples. Live fully checked

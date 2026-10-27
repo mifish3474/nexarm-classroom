@@ -27,13 +27,14 @@ const state=(page:Page)=>page.evaluate(()=>(window as unknown as {diagRobot:{wri
 
 test('read-only scan requires explicit Start, exports raw observations and sends only finite READ requests without storage or uploads',async({page})=>{
  const errors:string[]=[],requests:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
- await setup(page);await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.45');expect((await state(page)).requests).toBe(0);await expect(page.getByRole('checkbox')).toHaveCount(0);
+ await setup(page);await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.46');expect((await state(page)).requests).toBe(0);await expect(page.getByRole('checkbox')).toHaveCount(0);
  await page.getByRole('button',{name:'Connect for diagnostics'}).click();await page.clock.runFor(200);expect((await state(page)).writes).toHaveLength(0);
  await page.getByRole('button',{name:'Read diagnostics',exact:true}).click();await page.clock.runFor(10000);await expect(page.locator('#diag-state')).toContainText('Complete');
  const robot=await state(page);expect(robot.writes).toHaveLength(49);expect(robot.unexpected).toHaveLength(0);await expect(page.locator('#diag-controller')).toContainText('ESP32 1.0.2; AT32 1.0.2');
  await expect(page.locator('[data-servo="1"]')).toContainText('unmapped model code 0x001e');await expect(page.locator('[data-servo="6"]')).toContainText('motor current 250');await expect(page.locator('[data-servo="6"]')).toContainText('status byte 0x10');
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export read-only diagnostics'}).click();const file=await download;expect(file.suggestedFilename()).toBe('nexarm-read-only-servo-diagnostics.json');
  const report=JSON.parse(await readFile((await file.path())!,'utf8'));expect(report.constraints).toMatchObject({readOnly:true,maxRequests:49,unitsVerified:false,personnelProtectionVerified:false});expect(report.results).toHaveLength(49);expect(report.results.at(-1).decoded).toMatchObject({currentRaw:250,statusByteRaw:16,interpretationVerified:false});
+ expect(report.rawReceive.capturedBytes).toBeGreaterThan(0);expect(report.rawReceiveCapture.records.length).toBeGreaterThan(0);expect(report.rawReceiveCapture.records[0].hex).toContain('ffffff0801010002010002');await expect(page.locator('#diag-capture')).toContainText('Included in the local export');
  expect(await page.evaluate(()=>Object.keys(localStorage))).toEqual([]);expect(requests.every(url=>url.startsWith('http://127.0.0.1:4173/'))).toBe(true);expect(errors).toEqual([]);
  await expect(page.getByRole('button',{name:'Read diagnostics',exact:true})).toBeDisabled();await page.clock.runFor(10000);expect((await state(page)).writes).toHaveLength(49);await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });

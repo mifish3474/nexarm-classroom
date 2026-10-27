@@ -27,6 +27,7 @@ function refresh(){
   set('diag-controller',version?`Controller version: ${version.decoded?.esp32Version?`ESP32 ${version.decoded.esp32Version}${version.decoded.at32Version?`; AT32 ${version.decoded.at32Version}`:''}`:version.payload?`raw ${hex(version.payload)}`:version.outcome}.`:'Controller version: not read.');
   set('diag-passive',state?.passive?`Passive joint feedback (${state.passive.fresh?'recent':'last report'}): ${state.passive.positions.join(', ')}.`:'Passive joint feedback: not received. A read scan does not require this stream.');
   set('diag-summary',state?.canExport?`${state.completed}/${state.total} requests resolved: ${results.filter(r=>r.outcome==='data').length} data replies, ${results.filter(r=>r.outcome==='device-error').length} device-error replies, ${results.filter(r=>r.outcome==='timeout').length} timeouts, ${results.filter(r=>r.outcome==='skipped').length} skipped. No protection rating is inferred.`:'No read requests sent.');
+  set('diag-capture',state?.canExport?`Raw receive capture: ${state.rawReceive.capturedBytes} bytes in ${state.rawReceive.chunks} chunks${state.rawReceive.truncated?`; capture limited, ${state.rawReceive.omittedBytes} bytes omitted`:''}. Included in the local export; no additional robot requests.`:'Raw receive capture starts only with Read diagnostics and stops with the scan.');
   cards.forEach((fields,i)=>kinds.forEach((kind,j)=>{
     const r=results.filter(r=>r.servo===i+1&&r.kind===kind).at(-1),d=r?.decoded;
     let text=`${kind}: not read.`;

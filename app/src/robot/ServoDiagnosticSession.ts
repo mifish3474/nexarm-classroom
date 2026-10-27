@@ -8,6 +8,7 @@ export interface DiagnosticPort extends ReadOnlyPort {readonly writable:Writable
 type Outcome='pending'|'data'|'device-error'|'timeout'|'canceled'|'write-failed'|'skipped';
 type Result={key:string;kind:DiagnosticRead['kind'];servo:number|null;sample:number;sentAtMs:number|null;finishedAtMs:number|null;elapsedMs:number|null;outcome:Outcome;requestBytes:number[];payload:number[]|null;errorByte:number|null;decoded:Record<string,unknown>|null;note:string;};
 const REPLY_TIMEOUT_MS=1000,WRITE_TIMEOUT_MS=2000,READ_GAP_MS=100;
+const RAW_RX_MAX_BYTES=65536,RAW_RX_MAX_CHUNKS=1024;
 
 // Separate from motion controllers. Holds the same exclusive USB lease but has
 // no access to a move/torque encoder, persistent storage, or arbitrary packets.
@@ -23,6 +24,7 @@ export class ServoDiagnosticSession {
   private unavailableDirectServos=new Set<number>();
   private observations:{atMs:number;reason:string;deviceId:number;fieldByte:number;integrity:string;payload:number[]}[]=[];
   private passive:{atMs:number;positions:number[]}|null=null;private ignoredFrames=0;
+  private rawRx:{atMs:number;pendingReadAtArrival:string|null;hex:string}[]=[];private rawRxBytes=0;private rawRxOmitted=0;
   constructor(locks:LockManager,private readonly now:()=>number,private readonly visible:()=>boolean,private readonly changed:()=>void){
     this.connection=new PassiveConnection((state,message)=>{
       this.connectionState=state;
@@ -33,7 +35,7 @@ export class ServoDiagnosticSession {
   }
   connect(select:()=>Promise<DiagnosticPort>){
     if(this.connectionState!=='Disconnected'||!this.visible())return;
-    this.generation++;this.used=false;this.phase='Idle';this.results=[];this.cursor=0;this.active=null;this.observations=[];this.ignoredFrames=0;this.passive=null;this.quarantine.clear();this.unavailableDirectServos.clear();this.parser.reset();
+    this.generation++;this.used=false;this.phase='Idle';this.results=[];this.cursor=0;this.active=null;this.observations=[];this.ignoredFrames=0;this.passive=null;this.rawRx=[];this.rawRxBytes=0;this.rawRxOmitted=0;this.quarantine.clear();this.unavailableDirectServos.clear();this.parser.reset();
     this.connection.connect(async()=>{
       const port=await select();this.port=port;
       return {get readable(){return port.readable;},open:options=>port.open(options),close:async()=>{await this.pendingWrite?.catch(()=>{});try{await port.close();}finally{this.port=null;}}};
@@ -42,11 +44,11 @@ export class ServoDiagnosticSession {
   start(){
     if(this.connectionState!=='Listening'||!this.visible()||this.used||this.writing)throw Error('Connect for a new independent read-only scan.');
     if(!this.port?.writable)throw Error('The port has no writable stream for read requests.');
-    this.used=true;this.phase='Reading';this.nextAt=this.now();this.message='Reading diagnostic snapshots. No motion or configuration writes.';this.tick();
+    this.parser.reset();this.used=true;this.phase='Reading';this.nextAt=this.now();this.message='Reading diagnostic snapshots. No motion or configuration writes.';this.tick();
   }
   snapshot(){return {connectionState:this.connectionState,phase:this.phase,message:this.message,completed:this.results.filter(r=>r.outcome!=='pending').length,total:DIAGNOSTIC_READS.length,
     canConnect:this.connectionState==='Disconnected',canStart:this.connectionState==='Listening'&&!this.used&&!this.writing,canStop:this.phase==='Reading',canExport:this.used,
-    current:this.active?.key??null,results:structuredClone(this.results),passive:this.passive?{atMs:this.passive.atMs,positions:[...this.passive.positions],fresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.passive.atMs<=1000}:null};}
+    current:this.active?.key??null,rawReceive:{capturedBytes:this.rawRxBytes,omittedBytes:this.rawRxOmitted,chunks:this.rawRx.length,truncated:this.rawRxOmitted>0},results:structuredClone(this.results),passive:this.passive?{atMs:this.passive.atMs,positions:[...this.passive.positions],fresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.passive.atMs<=1000}:null};}
   private finish(outcome:Exclude<Outcome,'pending'|'skipped'>,note:string){
     const r=this.active;if(!r)return;r.outcome=outcome;r.note=note;r.finishedAtMs=this.now();r.elapsedMs=r.sentAtMs===null?null:this.now()-r.sentAtMs;
     if(outcome==='timeout'){this.quarantine.add(replyKey(diagnosticRead(r.key)));if(r.kind==='position'&&r.servo!==null)this.unavailableDirectServos.add(r.servo);}
@@ -90,6 +92,13 @@ export class ServoDiagnosticSession {
   }
   private receive(bytes:Uint8Array){
     if(this.connectionState!=='Listening')return;
+    // Preserve bytes before parsing so unknown framing/checksum/debug text is
+    // observable. Capture only during the explicitly started scan, in memory.
+    if(this.phase==='Reading'&&this.visible()){
+      const count=this.rawRx.length<RAW_RX_MAX_CHUNKS?Math.min(bytes.length,RAW_RX_MAX_BYTES-this.rawRxBytes):0;
+      if(count>0){this.rawRx.push({atMs:this.now(),pendingReadAtArrival:this.active?.key??null,hex:Array.from(bytes.subarray(0,count),n=>n.toString(16).padStart(2,'0')).join('')});this.rawRxBytes+=count;}
+      this.rawRxOmitted+=bytes.length-count;
+    }
     for(const frame of this.parser.push(bytes)){
       const positions=decodePositions(frame);if(positions)this.passive={atMs:this.now(),positions:[...positions]};
       const active=this.active;if(!active||this.phase!=='Reading')continue;
@@ -114,5 +123,7 @@ export class ServoDiagnosticSession {
   report(){return {format:'nexarm-read-only-servo-diagnostics',schemaVersion:1,capturedAt:new Date().toISOString(),
     constraints:{readOnly:true,profile:'factory-api-and-gated-registers-v2',oneScanPerConnection:true,maxRequests:DIAGNOSTIC_READS.length,replyDeadlineMs:REPLY_TIMEOUT_MS,writeDeadlineMs:WRITE_TIMEOUT_MS,minGapMs:READ_GAP_MS,modelMappingVerified:false,unitsVerified:false,personnelProtectionVerified:false,
       correlation:'One outstanding read, matched ID/layout. No wire transaction ID. Repeated reads after a timeout are skipped; late/canceled replies cannot resume a scan.'},
-    ...this.snapshot(),ignoredFrames:this.ignoredFrames,rejectedReplies:structuredClone(this.observations)};}
+    ...this.snapshot(),rawReceiveCapture:{maxBytes:RAW_RX_MAX_BYTES,maxChunks:RAW_RX_MAX_CHUNKS,records:structuredClone(this.rawRx),
+      note:'Raw serial bytes may include controller debug text. Pending-read labels describe arrival context, not verified response identity. Capture never authorizes movement or decoded readings; review before sharing.'},
+    ignoredFrames:this.ignoredFrames,rejectedReplies:structuredClone(this.observations)};}
 }

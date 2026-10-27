@@ -15,6 +15,7 @@ function fixture(options:{hang?:boolean;reject?:boolean;locks?:LockManager}={}){
     readable:new ReadableStream<Uint8Array>({start(controller){reader=controller;}}),writable:new WritableStream<Uint8Array>({write(bytes){writes.push({at,bytes:[...bytes]});if(options.reject)return Promise.reject(Error('USB failed'));if(options.hang)return new Promise<void>(resolve=>{finishWrite=resolve;});}})};
   const session=new ServoDiagnosticSession(options.locks??locks,()=>at,()=>visible,()=>{});
   const feed=async(id:number,field:number,payload:number[],weak=false)=>{reader.enqueue(packet(id,field,payload,weak));await flush();};
+  const raw=async(bytes:Uint8Array)=>{reader.enqueue(bytes);await flush();};
   const ready=async()=>{session.connect(async()=>port);await flush();};
   const advance=async(ms:number)=>{at+=ms;session.tick();await flush();};
   const reply=async()=>{
@@ -27,7 +28,7 @@ function fixture(options:{hang?:boolean;reject?:boolean;locks?:LockManager}={}){
     if(query.kind==='protection'){const bytes=Array(27).fill(0);bytes[7]=16;bytes[21]=20;bytes[22]=200;bytes[23]=80;return feed(query.servo!,0,bytes);}
     return feed(query.servo!,0,[0,8,0,0,100,0,120,30,0,16,0,0,0,250,0]);
   };
-  return {session,writes,port,ready,feed,reply,advance,finish:async()=>{finishWrite();await flush();},hide:()=>{visible=false;},end:async()=>{reader.close();await flush();}};
+  return {session,writes,port,ready,feed,raw,reply,advance,finish:async()=>{finishWrite();await flush();},hide:()=>{visible=false;},end:async()=>{reader.close();await flush();}};
 }
 
 describe('read-only diagnostic protocol boundary',()=>{
@@ -53,6 +54,22 @@ describe('read-only diagnostic protocol boundary',()=>{
 });
 
 describe('bounded read-only diagnostic session',()=>{
+ it('does not complete a diagnostic reply from a header received before the capture started',async()=>{
+   const f=fixture();await f.ready();const bytes=packet(255,1,[1,0,2,1,0,2]);await f.raw(bytes.subarray(0,6));f.session.start();await flush();await f.raw(bytes.subarray(6));
+   expect(f.session.snapshot().completed).toBe(0);expect(f.session.report().rawReceive.capturedBytes).toBe(bytes.length-6);await f.feed(255,1,[1,0,2,1,0,2]);expect(f.session.snapshot().completed).toBe(1);f.session.disconnect();await flush();
+ });
+ it('captures unparsed bytes only during an explicit scan, without treating them as readings or allowing late capture',async()=>{
+   const f=fixture();await f.ready();const bytes=new TextEncoder().encode('unframed reply');await f.raw(bytes);expect(f.session.report().rawReceive.capturedBytes).toBe(0);
+   f.session.start();await flush();await f.raw(bytes);expect(f.session.snapshot().completed).toBe(0);expect(f.session.snapshot().results[0]!.decoded).toBeNull();
+   const report=f.session.report();expect(report.rawReceive.capturedBytes).toBe(bytes.length);expect(report.rawReceiveCapture.records[0]).toMatchObject({pendingReadAtArrival:'controller-version',hex:Array.from(bytes,n=>n.toString(16).padStart(2,'0')).join('')});
+   report.rawReceiveCapture.records[0]!.hex='changed';expect(f.session.report().rawReceiveCapture.records[0]!.hex).not.toBe('changed');
+   f.session.stop();await f.raw(bytes);expect(f.session.report().rawReceive.capturedBytes).toBe(bytes.length);expect(f.writes).toHaveLength(1);f.session.disconnect();await flush();
+ });
+ it.each(['bytes','chunks'])('bounds raw capture by %s and reports omissions without further requests',async bound=>{
+   const f=fixture();await f.ready();f.session.start();await flush();const count=bound==='bytes'?300:1100,bytes=new Uint8Array(bound==='bytes'?256:1).fill(65);
+   for(let i=0;i<count;i++)await f.raw(bytes);
+   const report=f.session.report();expect(report.rawReceive.capturedBytes).toBe(bound==='bytes'?65536:1024);expect(report.rawReceiveCapture.records.length).toBeLessThanOrEqual(1024);expect(report.rawReceive.truncated).toBe(true);expect(report.rawReceive.omittedBytes).toBe(count*bytes.length-report.rawReceive.capturedBytes);expect(f.writes).toHaveLength(1);f.session.disconnect();await flush();
+ });
  it('Connect is passive; explicit Start sends a finite ordered scan, preserves raw settings/fault data and repeats no scan automatically',async()=>{
    const f=fixture();await f.ready();expect(f.writes).toHaveLength(0);expect(f.port.open).toHaveBeenCalledWith({baudRate:1_000_000});f.session.start();await flush();
    for(let i=0;i<49;i++){

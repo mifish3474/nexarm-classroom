@@ -1,4 +1,10 @@
-# Read-only servo diagnostics — dev.45
+# Read-only servo diagnostics — dev.46
+
+Dev.46 keeps the same read-only requests and adds raw receive capture before
+parsing. This is the USB-only next step described in
+[INDEPENDENT_SAFETY_INVESTIGATION.md](./INDEPENDENT_SAFETY_INVESTIGATION.md).
+It can reveal bytes in an unsupported format that dev.45's parsed export missed.
+Raw serial bytes may contain controller debug text; review the file before sharing.
 
 The first dev.44 hardware scan received live pose feedback but no usable direct
 register replies. Its valid six-byte controller-version response is supported
@@ -21,7 +27,7 @@ selection and scan click; automated tests use mocked ports.
    supported setup, with hands clear and physical cutoff access. Do not introduce
    an obstruction, restrain a powered joint or move it for this scan.
 2. Open `http://127.0.0.1:5173/servo-diagnostics.html`, or use **Read-only servo
-   diagnostics** in the main page footer. Refresh and confirm **0.7.0-dev.45**.
+   diagnostics** in the main page footer. Refresh and confirm **0.7.0-dev.46**.
 3. Choose **Connect for diagnostics**, then select the robot port. Connection
    sends no application requests. Opening USB can affect controller startup;
    the page does not assert that hardware reset behavior is absent.
@@ -121,8 +127,17 @@ connection over it. Results/partial results remain exportable until a new connec
 
 At most 31 result records and 40 relevant rejected-reply records are kept, plus
 the latest passive pose. Data stays in memory until an explicit local download.
-No USB serial number or port identity is collected, no browser storage is used,
-and no data is uploaded. Exported snapshots are detached from internal state.
+The browser does not request USB identifiers or port identity. No browser storage
+is used and nothing is uploaded. Raw serial content is preserved as received and
+could contain device debug text, so review before sharing. Exported snapshots are
+detached from internal state.
+
+Raw capture runs only between explicit Start and completion/cancellation. It
+stores up to 65,536 bytes in at most 1,024 timestamped chunks, with omitted-byte
+counters if either bound is reached. It includes unparsed bytes and known pose
+traffic, unlike the selected rejected-frame history. A pending-read label is
+arrival context, not evidence that the bytes belong to that request. Raw capture
+never affects reply acceptance, read deadlines, motion permission or settings.
 
 ## Next decision
 

@@ -1,5 +1,10 @@
 # NexArm protection research — 2026-10-27
 
+The operator wants an independent investigation without waiting for manufacturer
+support and has only USB access. New source findings, their limits, and the
+dev.46 raw-capture diagnostic are in
+[INDEPENDENT_SAFETY_INVESTIGATION.md](./INDEPENDENT_SAFETY_INVESTIGATION.md).
+
 Implementation follow-up: dev.45 provides the isolated read-only scan described
 in [READ_ONLY_SERVO_DIAGNOSTICS.md](./READ_ONLY_SERVO_DIAGNOSTICS.md). It does not
 change protection settings or establish their effectiveness. The research scope
@@ -37,9 +42,10 @@ overload-detection delay, physical stopping time or personnel-protection guarant
 Factory read values are not live overload events. Delay-field interpretations
 remain those documented earlier (10 ms units), not measured protection behavior.
 
-There is no benefit in repeating this same scan unchanged. The next useful
-evidence is manufacturer clarification of model/firmware-matched telemetry,
-USB forwarding, enable bits, zero-value semantics and whole-arm fault response.
+There is no benefit in repeating the same observation unchanged. Model-matched
+telemetry, USB forwarding, enable bits, zero-value semantics and whole-arm fault
+response still need evidence. Independent source/routing analysis and raw
+USB capture are the current route; a manufacturer response is not a prerequisite.
 The existing browser can log/cancel future commands, but these results do not
 provide the missing live fault signal or establish that holding/releasing after
 a pinch is safe. Keep movement limits and a hands-off work area during development.

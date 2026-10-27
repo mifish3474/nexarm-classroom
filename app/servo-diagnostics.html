@@ -10,9 +10,9 @@
     <p id="diag-error" role="alert" hidden></p>
     <p class="note">One finite scan per connection: factory configuration reads first, then short direct-position probes. Broader register reads and three status samples are attempted only for joints whose short probe replies. Up to 49 requests, one at a time. Missing replies are not zero readings. Stop reads cancels future requests; it is not an emergency stop for the arm. Reconnect to repeat a scan.</p>
     <button id="diag-export" class="secondary" disabled>Export read-only diagnostics</button>
-    <p class="note">Results remain in memory until you download them. No accounts, uploads, device serial numbers, browser storage, or robot settings are involved.</p>
+    <p class="note">Results stay in memory until downloaded. The export includes a bounded raw serial capture, which may contain controller debug text; review it before sharing. No accounts, uploads, browser storage, or robot settings are involved. The browser does not request USB device identifiers.</p>
   </section>
-  <section class="panel"><h2>Connection and interpretation</h2><p id="diag-controller">Controller version: not read.</p><p id="diag-passive">Passive joint feedback: not received.</p><p id="diag-summary">No read requests sent.</p>
+  <section class="panel"><h2>Connection and interpretation</h2><p id="diag-controller">Controller version: not read.</p><p id="diag-passive">Passive joint feedback: not received.</p><p id="diag-summary">No read requests sent.</p><p id="diag-capture">Raw receive capture starts only with Read diagnostics and stops with the scan.</p>
     <p><strong>These are hardware observations, not a “safe to use” result.</strong> Model codes have no verified name mapping yet. Protection and status fields use a provisional manufacturer register layout; raw bytes are preserved to check it. A returned zero is still unverified data.</p>
   </section>
   <section class="panel"><h2>Joint results</h2><div id="diag-joints" class="joint-grid"></div></section>
