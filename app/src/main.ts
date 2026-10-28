@@ -81,7 +81,7 @@ function refresh(){
   element<HTMLButtonElement>('add-position').disabled=!!busy||!editor.listPositions().length;
   element<HTMLButtonElement>('add-wait').disabled=!!busy;
   element<HTMLButtonElement>('add-joint').disabled=element<HTMLButtonElement>('add-repeat').disabled=!!busy;
-  for(const id of ['add-if','add-set','add-change','add-key-event','logic-lesson','program-check'])element<HTMLButtonElement>(id).disabled=!!busy;
+  for(const id of ['add-comment','add-if','add-set','add-change','add-key-event','logic-lesson','program-check'])element<HTMLButtonElement>(id).disabled=!!busy;
   element<HTMLButtonElement>('add-function').disabled=!!busy;
   element<HTMLButtonElement>('add-function-call').disabled=!!busy||!editor.listFunctions().length;
   element<HTMLInputElement>('function-name').disabled=element<HTMLSelectElement>('function-call').disabled=!!busy;
@@ -158,6 +158,11 @@ function keyboardFields(){
   };
   editor.workspace.getAllBlocks(true).forEach((block,index)=>{
     const prefix=`Block ${index+1} · `;
+    if(block.type==='lesson_comment'){
+      const label=document.createElement('label');label.textContent=prefix+'comment';
+      const input=document.createElement('input');input.type='text';input.maxLength=1000;input.value=String(block.getFieldValue('TEXT'));
+      input.onchange=()=>block.setFieldValue(input.value,'TEXT');label.append(input);container.append(label);
+    }
     if(block.type==='lesson_pose'){
       const label=document.createElement('label');label.textContent=prefix+'saved position';
       const select=document.createElement('select');select.setAttribute('aria-label',prefix+'saved position');
@@ -197,7 +202,7 @@ element('add-function').onclick=()=>{
 element('add-function-call').onclick=()=>{
   try{editor.addFunctionCall(element<HTMLSelectElement>('function-call').value);interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add My Block call.';}refresh();
 };
-for(const [id,add] of [['add-joint',editor.addJoint],['add-repeat',editor.addRepeat],['add-if',editor.addIf],['add-set',editor.addSet],['add-change',editor.addChange],['add-key-event',editor.addKeyEvent]] as const)element(id).onclick=()=>{
+for(const [id,add] of [['add-comment',editor.addComment],['add-joint',editor.addJoint],['add-repeat',editor.addRepeat],['add-if',editor.addIf],['add-set',editor.addSet],['add-change',editor.addChange],['add-key-event',editor.addKeyEvent]] as const)element(id).onclick=()=>{
   try{add();interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';}refresh();
 };
 element('undo').onclick=()=>{editor.workspace.undo(false);keyboardFields();refresh();};

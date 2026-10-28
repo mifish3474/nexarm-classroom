@@ -1,4 +1,11 @@
-# Programming development test: dev.59
+# Programming development test: dev.60
+
+**Inline comments:** open **Control** and drag a **comment** block into your code,
+or use **Add block → Add comment block**. Select its text to edit it. Use comments
+to explain a step, a loop or a My Block. Notes stay visible in the stack and are
+saved/loaded with the program. The robot skips them; they add no motion or delay.
+Comments support up to 1000 characters each and can also be edited under Program
+steps and keyboard editing. Use this version or newer to open files with comments.
 
 Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
 program variables and work from Run or key events. Earlier phase notes below are historical.

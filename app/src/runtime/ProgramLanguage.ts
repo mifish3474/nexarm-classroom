@@ -10,6 +10,7 @@ export type Condition = boolean
   | {kind:'logic';op:'AND'|'OR';left:Condition;right:Condition}
   | {kind:'not';value:Condition};
 export type Instruction =
+  | {kind:'comment';blockId:string;text:string}
   | {kind:'call';blockId:string;name:string}
   | {kind:'move';blockId:string;servo:number;target:Numeric}
   | {kind:'pose';blockId:string;positionId:string;name:string;positions:number[];durationMs?:Numeric}
@@ -95,6 +96,10 @@ export function copyInstructions(input:unknown,uniqueIds=false):Instruction[]{
         if(typeof node.blockId!=='string'||!node.blockId||node.blockId.length>200)throw Error('Program block references must be nonempty and valid.');
         blockId=node.blockId;if(uniqueIds&&ids.has(blockId))throw Error('Program block references must be unique and nonempty.');ids.add(blockId);
         switch(node.kind){
+          case 'comment':{
+            if(typeof node.text!=='string'||node.text.length>1000)throw Error('Comment text must be at most 1000 characters.');
+            return {kind:'comment',blockId,text:node.text};
+          }
           case 'call':return {kind:'call',blockId,name:variableName(node.name)};
           case 'coordinates':throw Error(XYZ_REMOVED_MESSAGE);
           case 'move':{
@@ -165,6 +170,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
       try{
         budget();
         switch(node.kind){
+          case 'comment':break; // Documentation only: never enters the robot plan.
           case 'call':walk(definitions.get(node.name.toLowerCase())!.body);break;
           case 'set':variables.set(variableKey(node.name),numeric(node.value));break;
           case 'change':{

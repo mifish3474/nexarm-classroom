@@ -23,6 +23,7 @@ for(const type of ['variables_get','variables_set']){
   Blockly.Blocks[type]={...original,init:function(this:Blockly.Block){standard.call(this);if(type==='variables_get')this.setOutput(true,'Number');else this.getInput('VALUE')!.setCheck('Number');}};
 }
 Blockly.defineBlocksWithJsonArray([
+  {type:'lesson_comment',message0:'comment %1',args0:[{type:'field_input',name:'TEXT',text:'Describe this step',spellcheck:true}],previousStatement:null,nextStatement:null,colour:'#607568',tooltip:'A note for people reading your code. Saved with the program; skipped when running.'},
   {type:'lesson_start',message0:'When Run clicked',nextStatement:null,colour:'#086b73',tooltip:'The program begins here.'},
   {type:'lesson_key',message0:'When %1 pressed',args0:[{type:'field_dropdown',name:'KEY',options:[['Choose key (Space is Stop)','unassigned'],...KEY_OPTIONS]}],nextStatement:null,colour:'#946f12',tooltip:'Run starts listening. One press runs this stack when the robot is idle. Space and Stop end listening.'},
   {type:'lesson_move',message0:'move joint %1 to %2',args0:[{type:'field_dropdown',name:'SERVO',options:['1','2','3','4','5','6'].map(id=>[id,id])},{type:'input_value',name:'TARGET',check:'Number'}],previousStatement:null,nextStatement:null,colour:'#2b6fa8',tooltip:'A whole-number raw target within this joint’s operating range.'},
@@ -58,7 +59,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     toolbox:{kind:'categoryToolbox',contents:[
       {kind:'category',name:'Events',colour:'#946f12',contents:[{kind:'block',type:'lesson_key',fields:{KEY:'a'}}]},
       {kind:'category',name:'Motion',colour:'#2b6fa8',contents:[{kind:'block',type:'lesson_move',inputs:{TARGET:numberInput(2128)}},{kind:'block',type:'lesson_pose',inputs:{SECONDS:numberInput(1)}}]},
-      {kind:'category',name:'Control',colour:'#9b620d',contents:[{kind:'block',type:'lesson_wait',inputs:{SECONDS:numberInput(1)}},{kind:'block',type:'lesson_repeat',inputs:{COUNT:numberInput(2)}},{kind:'block',type:'controls_if',extraState:{hasElse:true},inputs:{IF0:{shadow:{type:'logic_boolean',fields:{BOOL:'TRUE'}}}}}]},
+      {kind:'category',name:'Control',colour:'#9b620d',contents:[{kind:'block',type:'lesson_wait',inputs:{SECONDS:numberInput(1)}},{kind:'block',type:'lesson_repeat',inputs:{COUNT:numberInput(2)}},{kind:'block',type:'controls_if',extraState:{hasElse:true},inputs:{IF0:{shadow:{type:'logic_boolean',fields:{BOOL:'TRUE'}}}}},{kind:'block',type:'lesson_comment'}]},
       {kind:'category',name:'Math',colour:'#5965a5',contents:[{kind:'block',type:'math_number'},{kind:'block',type:'math_arithmetic',inputs:{A:numberInput(0),B:numberInput(0)}},{kind:'block',type:'math_round',inputs:{NUM:numberInput(0)}}]},
       {kind:'category',name:'Logic',colour:'#3d7694',contents:[{kind:'block',type:'logic_compare',inputs:{A:numberInput(0),B:numberInput(0)}},{kind:'block',type:'logic_operation'},{kind:'block',type:'logic_negate'},{kind:'block',type:'logic_boolean'}]},
       {kind:'category',name:'Variables',colour:'#985082',custom:'VARIABLE'},
@@ -104,6 +105,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
         if(!block.isEnabled())throw new ProgramError('Remove or enable disabled blocks before running.',block.id);
         const blockId=block.id,n=(name:string)=>numericBlock(inputBlock(block!,name));
         switch(block.type){
+          case 'lesson_comment':nodes.push({kind:'comment',blockId,text:String(block.getFieldValue('TEXT'))});break;
           case 'procedures_callnoreturn':{
             if(block.getInput('ARG0'))throw new ProgramError('My Blocks use shared variables; parameters are not supported yet.',blockId);
             nodes.push({kind:'call',blockId,name:String(block.getFieldValue('NAME'))});break;
@@ -153,6 +155,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       for(const node of [...nodes].reverse()){
         let state:State;
         switch(node.kind){
+          case 'comment':state={type:'lesson_comment',fields:{TEXT:node.text}};break;
           case 'call':state={type:'procedures_callnoreturn',extraState:{name:node.name}};break;
           case 'move':state={type:'lesson_move',fields:{SERVO:String(node.servo)},inputs:{TARGET:value(node.target)}};break;
           case 'pose':state={type:'lesson_pose',fields:{POSITION:node.positionId},inputs:{SECONDS:value(seconds(node.durationMs??1000))}};break;
@@ -230,6 +233,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     },
     addJoint:()=>append('lesson_move',{}, {TARGET:numberInput(2128)}),
     addWait:()=>append('lesson_wait',{}, {SECONDS:numberInput(1)}),
+    addComment:()=>append('lesson_comment'),
     addRepeat:()=>append('lesson_repeat',{}, {COUNT:numberInput(2)}),
     addIf:()=>append('controls_if',{}, {IF0:{shadow:{type:'logic_boolean',fields:{BOOL:'TRUE'}}}}, {hasElse:true}),
     addSet:()=>addVariable('variables_set'),addChange:()=>addVariable('math_change'),

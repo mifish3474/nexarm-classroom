@@ -1,4 +1,12 @@
-# Classroom programming development preview 0.7.0-dev.59
+# Classroom programming development preview 0.7.0-dev.60
+
+## Inline comment blocks
+
+Dev.60 adds a neutral green-gray Comment statement in Control and Add block. Students edit its text directly on the block, or through Program steps and keyboard editing. Comments connect anywhere a statement can go, including repeats, conditionals, event stacks and My Blocks. Undo/redo and program Save/Load retain their order and text.
+
+The bounded data-only language stores `{kind:'comment', blockId, text}` with at most 1000 characters. Preparation skips comments: their text is never executed, interpreted as expressions, or included in the concrete robot plan. They consume no movement steps or wait time. Existing authored-block/file-size/calculation bounds still apply; a comment-only project can be checked but does not count as a runnable motion program. Program format remains 5; older builds reject the unsupported comment kind instead of executing it. Robot motion, Home, holding and Stop behavior are unchanged.
+
+Validation: build/type-check, all 402 unit tests and all 102 Chrome browser tests pass. Coverage includes plain-text/HTML-looking input, Unicode, empty and oversized comments, nested stacks and definitions, save/load, inline editing, undo and mocked-USB command counts. No physical robot was commanded during these checks.
 
 ## Program-owned saved positions
 

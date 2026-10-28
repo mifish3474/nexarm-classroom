@@ -59,6 +59,36 @@ async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[])
 }
 const projectPose=(id:string,name:string)=>({id,name,positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-28T12:00:00.000Z'});
 
+test('inline comment blocks are editable, undoable and saved with code without adding robot commands',async({page})=>{
+ await station(page);const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+ await clickControl(page,'Add comment block');await page.clock.runFor(100);
+ await expect(page.locator('#blockly-editor .blocklyText').filter({hasText:'Describe this step'})).toBeVisible();
+ await page.locator('#blockly-editor .blocklyText').filter({hasText:'Describe this step'}).dblclick();
+ await page.locator('.blocklyHtmlInput').fill('First, pick up the cube');await page.locator('.blocklyHtmlInput').press('Enter');await page.clock.runFor(100);
+ await expect(page.locator('#blockly-editor .blocklyText').filter({hasText:'First, pick up the cube'})).toBeVisible();
+ await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('0 planned moves/waits');expect(await writes(page)).toHaveLength(0);
+ await clickControl(page,'Add joint block');
+ const downloading=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await downloading).path())!,'utf8');
+ expect(JSON.parse(text).instructions).toMatchObject([{kind:'comment',text:'First, pick up the cube'},{kind:'move',servo:1,target:2128}]);
+ await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'comments.json',mimeType:'application/json',buffer:Buffer.from(text)});
+ await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#blockly-editor .blocklyText').filter({hasText:'First, pick up the cube'})).toBeVisible();
+ await connect(page);await clickControl(page,'Run program');await page.clock.runFor(3000);expect((await writes(page)).map(b=>b[7]!+256*b[8]!)).toEqual([2128]);
+ await clickControl(page,'Add comment block');await page.clock.runFor(100);await page.locator('#undo').click();await page.clock.runFor(100);
+ await expect(page.locator('#blockly-editor .blocklyText').filter({hasText:'Describe this step'})).toHaveCount(0);
+ expect(errors).toEqual([]);await clickControl(page,'Disconnect robot');
+});
+
+test('comments survive nested stacks and render imported text as text',async({page})=>{
+ await station(page);const text='<img src=x onerror=alert(1)>';
+ const comment=(blockId:string)=>({kind:'comment',blockId,text});
+ const project={format:'nexarm-classroom-program',schemaVersion:5,positions:[],instructions:[{kind:'repeat',blockId:'repeat',count:2,body:[comment('nested'),{kind:'call',blockId:'call',name:'Pause'}]}],keyEvents:[{blockId:'key',key:'a',body:[comment('key-note')]}],functions:[{blockId:'fn',name:'Pause',body:[comment('function-note'),{kind:'wait',blockId:'wait',durationMs:100}]}]};
+ await page.locator('#program-file').setInputFiles({name:'notes.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await expect(page.locator('#blockly-editor .blocklyText').filter({hasText:text})).toHaveCount(3);await expect(page.locator('#blockly-editor img')).toHaveCount(0);
+ await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('2 planned moves/waits');
+ const downloading=page.waitForEvent('download');await clickControl(page,'Save program');const file=JSON.parse(await readFile((await (await downloading).path())!,'utf8'));
+ expect(file.instructions[0].body[0]).toMatchObject(comment('nested'));expect(file.keyEvents[0].body[0]).toMatchObject(comment('key-note'));expect(file.functions[0].body[0]).toMatchObject(comment('function-note'));expect(await writes(page)).toHaveLength(0);
+});
+
 test('Save includes unused positions; New clears them and Load restores only that program list',async({page})=>{
  await station(page);
  const poses=[projectPose('one','Pickup'),projectPose('unused','Unused position')];

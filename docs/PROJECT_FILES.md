@@ -7,6 +7,10 @@ downloaded program file is the portable copy to keep and move between computers.
 There are no accounts or uploads. Shared-browser working copies remain visible
 to other users of that browser profile.
 
+Dev.60 also saves inline comment blocks wherever they appear in the code, including
+event stacks and My Blocks. They are plain text for readers and are skipped during
+execution. Use dev.60 or newer to load a program containing comment blocks.
+
 ## Save and switch programs
 
 1. Name the project above the code, then choose **File → Save program**.
