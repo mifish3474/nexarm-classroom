@@ -26,6 +26,7 @@ const PROGRAM_HOME_TOLERANCE=40,PROGRAM_HOME_GRACE_MS=2000;
 type WriteDiagnostic={atMs:number;operation:Operation|null;bytes:number[];positions:number[]|null;finishedAtMs:number|null;outcome:'not-submitted'|'pending'|'stream-write-resolved'|'stream-write-rejected'};
 type StopDiagnostic={requestedAtMs:number;submittedAtMs:number|null;finishedAtMs:number|null;servos:number[];targets:number[]|null;feedbackAgeAtSendMs:number|null;outcome:'waiting-for-writer'|'submitted'|'stream-write-resolved'|'unavailable'|'canceled';message:string;feedback:{atMs:number;positions:number[]}[]};
 type StopRelease={generation:number;requestedAtMs:number;hold:StopDiagnostic;phase:'Stopping'|'Waiting for steady readings'|'Release pending'|'Release sent'|'Canceled'|'Fault';deadlineMs:number|null;samples:{atMs:number;positions:number[]}[];releaseSubmittedAtMs:number|null;releaseFinishedAtMs:number|null;message:string};
+type HomeRecovery={generation:number;requestedAtMs:number;phase:'Restoring holding'|'Returning Home'|'Checking Home'|'Ready at Home'|'Canceled'|'Fault';readyAfterMs:number|null;deadlineMs:number|null;message:string};
 
 // Teacher-only direct controls. All jog, Home, and holding writes pass through
 // the same executor and exclusive USB lease. Live dragging retains only the
@@ -50,6 +51,8 @@ export class TeacherRobotControl {
   private stops:StopDiagnostic[]=[];
   private stopObservation:StopDiagnostic|null=null;
   private stopRelease:StopRelease|null=null;
+  private recovery:HomeRecovery|null=null;
+  private get recoveryActive(){return !!this.recovery&&['Restoring holding','Returning Home','Checking Home'].includes(this.recovery.phase);}
   private get stopReleaseActive(){return !!this.stopRelease&&['Stopping','Waiting for steady readings','Release pending'].includes(this.stopRelease.phase);}
   private lastCommandAt = -Infinity;
   private generation = 0;
@@ -59,7 +62,7 @@ export class TeacherRobotControl {
   private timedHoldServos:number[]=[];
   private readySamples:{at:number;positions:number[]}[]=[];
   private updateDirectSession(){
-    if(!this.options.directSession||this.idleReason()!==null||this.readySamples.length!==3||!this.positions)return;
+    if(!this.options.directSession||this.idleReason(true)!==null||this.readySamples.length!==3||!this.positions)return;
     const samples=this.readySamples;
     if(samples[2]!.at-samples[0]!.at<150||samples[0]!.at<this.now()-1000||this.positions.some((_,i)=>Math.max(...samples.map(sample=>sample.positions[i]!))-Math.min(...samples.map(sample=>sample.positions[i]!))>9))return;
     if(this.manual.phase==='Confirm holding'){
@@ -86,7 +89,7 @@ export class TeacherRobotControl {
     const steps=interpret(instructions);
     // Validate the entire program before the first write, including later poses.
     for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
-    this.stopObservation=null;this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
+    this.recovery=null;this.stopObservation=null;this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
     this.program={steps,startup:this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:'Preparing Home-first program.'};
     this.advanceProgram();this.changed();
   }
@@ -134,6 +137,7 @@ export class TeacherRobotControl {
     return this.liveTarget?.servo??(this.operation==='Slider'&&(this.route?.phase==='Running'||this.lastLive!==null)?(this.route?.status().command?.servo??this.route?.status().next?.servo):null);
   }
   liveJoint(servo:number,target:number,speed=2000,acceleration=100,final=false){
+    if(this.recoveryActive)throw Error('Home recovery is in progress. Stop it before using manual controls.');
     if(this.program?.phase==='Running')throw Error('Stop the program before using manual controls.');
     absoluteJointPlan(this.positions??[],servo,target,speed,acceleration);
     assertJointTarget(servo,target);
@@ -164,6 +168,7 @@ export class TeacherRobotControl {
       if (state === 'Listening') {
         this.connectedAt = this.now(); this.message = this.options.directSession?'Connected. Waiting for fresh stable position feedback.':'Connected. Positions are read-only until you enable controls.';
       } else {
+        this.cancelRecovery('Connection ended.');
         this.cancelStopRelease('Connection ended.');
         this.cancelStopHold('Connection ended before the stop hold could be submitted.');this.stopObservation=null;
         this.cancelProgram('Fault','Robot connection ended.');
@@ -193,10 +198,11 @@ export class TeacherRobotControl {
     });
   }
 
-  private idleReason(): string | null {
+  private idleReason(ignoreRecovery=false): string | null {
     if (this.connectionState !== 'Listening') return 'Connect to the robot.';
     if (!this.visible()) return 'Keep this page visible.';
     if(this.writeUncertain)return 'USB command delivery is uncertain. Disconnect and reconnect before another command.';
+    if(!ignoreRecovery&&this.recoveryActive)return 'Restore & Return Home is in progress. Stop cancels recovery.';
     if(this.stopReleaseActive)return 'Stop and release is in progress. Restore holding before another Run.';
     if(this.pendingStop)return 'Stop requested. Waiting for the active USB write before sending the hold.';
     if (this.writeInFlight || this.manual.pending) return 'Waiting for the current write to finish.';
@@ -221,12 +227,14 @@ export class TeacherRobotControl {
       reportedPose:this.reportedPose?{...this.reportedPose}:null,
       armed: this.armed, faulted: this.faulted, message: this.message, reason,
       stopRelease:this.stopRelease?{phase:this.stopRelease.phase,active:this.stopReleaseActive,message:this.stopRelease.message}:null,
+      recovery:this.recovery?{phase:this.recovery.phase,active:this.recoveryActive,message:this.recovery.message}:null,
+      canRestoreAndHome:idle===null&&['Normal','Manual setup','Recovery required'].includes(this.manual.phase),
       canConnect: this.connectionState === 'Disconnected', canEnable: !this.armed && this.enableReason() === null,
       enableReason: this.enableReason(), canMove: reason === null&&!this.liveTarget,liveServo:this.liveServo(),
       sliderServo:this.operation==='Slider'&&this.route?.phase==='Running'&&this.armed&&!this.manual.blocked&&this.visible()&&!this.writeInFlight&&this.now()-this.receivedAt<=500&&this.now()-this.lastCommandAt>=500?this.route.status().next?.servo:null,
       home: this.route?.status() ?? null, operation: this.operation,
       program:this.program?{phase:this.program.phase,startup:this.program.startup,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'&&this.program.startup==='Running blocks'?this.program.index-1:null}:null,
-      busy: this.stopReleaseActive || !!this.pendingStop || this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
+      busy: this.recoveryActive || this.stopReleaseActive || !!this.pendingStop || this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
       manualPhase: this.options.directSession&&this.manual.phase==='Confirm holding'?'Restore settling':this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
       feedbackFresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.receivedAt<=500,
       canCapture:captureReason===null,captureReason,
@@ -356,6 +364,7 @@ export class TeacherRobotControl {
     const reason = this.idleReason();
     if (!supported || reason) throw new Error(reason ?? 'Support the arm and confirm clear pinch areas and cutoff access.');
     if (typeof enabled !== 'boolean') throw new Error('Choose release or restore.');
+    this.recovery=null;
     this.armed = false;
     try {
       if (!enabled && this.manual.phase === 'Normal') this.manual.enable();
@@ -429,7 +438,7 @@ export class TeacherRobotControl {
       }
       if(!this.writeInFlight)this.readySamples=[...this.readySamples,{at,positions:[...positions]}].slice(-3);
     }
-    this.progressStopRelease();this.updateDirectSession();
+    this.progressStopRelease();this.progressRecovery();this.updateDirectSession();
     this.changed();
   }
   tick() {
@@ -444,7 +453,7 @@ export class TeacherRobotControl {
       this.fault('Holding write deadline exceeded. Physical holding needs confirmation.'); return;
     }
     if (this.receivedAt === -Infinity ? this.now() - this.connectedAt > 2000 : this.now() - this.receivedAt > 1500) {
-      if ((this.route?.activeRun||this.program?.phase==='Running') && !this.faulted) this.fault('Movement canceled after 1.5 seconds without valid feedback.'); this.changed(); return;
+      if (this.recoveryActive||((this.route?.activeRun||this.program?.phase==='Running') && !this.faulted)) this.fault('Movement canceled after 1.5 seconds without valid feedback.'); this.changed(); return;
     }
     // Ask the feedback supervisor to check its deadline even while a write hangs.
     if (this.route?.phase === 'Running') {
@@ -452,7 +461,7 @@ export class TeacherRobotControl {
       if (this.route.status().phase === 'Fault') { this.fault(this.route.message); return; }
       if(this.route.status().phase==='Complete')this.checkRoute();
     }
-    this.updateDirectSession();this.flushLive();this.advanceProgram();this.pump(); this.changed();
+    this.progressRecovery();this.updateDirectSession();this.flushLive();this.advanceProgram();this.pump(); this.changed();
   }
 
   private retain() {
@@ -460,6 +469,7 @@ export class TeacherRobotControl {
   }
   private fault(message: string) {
     this.readySamples=[];
+    this.cancelRecovery(message,'Fault');
     this.cancelStopRelease(message,'Fault');
     this.cancelStopHold(message,'unavailable');
     if(this.stopObservation?.outcome==='submitted'){this.stopObservation.outcome='unavailable';this.stopObservation.message=message;}
@@ -519,7 +529,7 @@ export class TeacherRobotControl {
   }
   // Lifecycle cancellation retains holding. Only an explicit operator Stop
   // selects stopThenRelease; disconnect/hidden-page/error paths never do.
-  stop(){this.cancelStopRelease('Control session canceled.');this.requestStop(false);}
+  stop(){this.cancelRecovery('Recovery canceled.');this.cancelStopRelease('Control session canceled.');this.requestStop(false);}
   private requestStop(holdAllJoints:boolean) {
     this.readySamples=[];
     this.recordEvent('stop','Stop requested. No torque-off command is requested.');
@@ -548,6 +558,7 @@ export class TeacherRobotControl {
   }
   /** Operator Stop/Space uses the hardware-tested post-hold feedback gate. */
   stopThenRelease(){
+    this.cancelRecovery('Stop canceled recovery.');
     if(this.stopReleaseActive)return;
     if(this.connectionState==='Listening'&&this.manual.phase==='Manual setup'&&!this.writeInFlight){
       this.message='A release command was sent; physical holding is not measured. If the arm still holds, support it and use Release holding to send it again.';this.changed();return;
@@ -605,12 +616,64 @@ export class TeacherRobotControl {
     }catch(error){this.fault(error instanceof Error?error.message:'Release could not be recorded.');}
   }
   disconnect() { this.stop(); this.connection.disconnect(); }
+  restoreAndHome(){
+    if(!this.snapshot().canRestoreAndHome)throw Error('Wait for a connected, idle robot with fresh readings before Restore & Return Home.');
+    assertPoseTargets(TEACHER_HOME,'Home');
+    const requestedAtMs=this.now(),generation=this.generation,needsRestore=this.manual.phase!=='Normal';
+    if(needsRestore){this.setHolding(true,true);if(this.generation!==generation||this.manual.phase!=='Restore pending')return;}
+    this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Home';this.readySamples=[];this.faulted=false;
+    this.recovery={generation:this.generation,requestedAtMs,phase:'Restoring holding',readyAfterMs:needsRestore?null:this.now(),deadlineMs:needsRestore?null:this.now()+2000,message:'Restore & Return Home: waiting for fresh, steady readings before movement. Support the arm until holding is established.'};
+    this.message=this.recovery.message;this.recordEvent('home-recovery-requested',this.message);this.changed();
+  }
+  private cancelRecovery(message:string,phase:'Canceled'|'Fault'='Canceled'){
+    if(!this.recoveryActive)return;
+    this.recovery!.phase=phase;this.recovery!.message=message+' No program will resume automatically.';
+    this.recordEvent('home-recovery-canceled',this.recovery!.message);
+  }
+  private recoveryReadingsStable(afterMs:number){
+    const samples=this.readySamples;
+    return !!this.positions&&this.now()-this.receivedAt<=500&&samples.length===3&&samples[0]!.at>afterMs&&samples[2]!.at-samples[0]!.at>=150&&samples[0]!.at>=this.now()-1000&&this.positions.every((_,i)=>Math.max(...samples.map(sample=>sample.positions[i]!))-Math.min(...samples.map(sample=>sample.positions[i]!))<=9);
+  }
+  private progressRecovery(){
+    const recovery=this.recovery;if(!recovery||!this.recoveryActive)return;
+    if(recovery.generation!==this.generation||this.connectionState!=='Listening'||!this.visible()||this.writeUncertain){this.cancelRecovery('Recovery interrupted.');return;}
+    if(this.writeInFlight)return;
+    if(recovery.phase==='Restoring holding'){
+      if(this.manual.phase==='Restore pending')return;
+      if(!['Normal','Confirm holding'].includes(this.manual.phase)){this.cancelRecovery('Holding state changed.');return;}
+      if(recovery.readyAfterMs===null){recovery.readyAfterMs=this.lastCommandAt;recovery.deadlineMs=this.lastCommandAt+2000;}
+      if(this.now()>=recovery.deadlineMs!){this.fault('Home recovery could not establish fresh, steady holding readings. No Home move was started.');return;}
+      if(!this.recoveryReadingsStable(recovery.readyAfterMs)||this.idleReason(true)!==null)return;
+      try{if(this.manual.phase==='Confirm holding')this.manual.finishRestoreFromFeedback(this.positions!);}
+      catch(error){this.fault(error instanceof Error?error.message:'Holding recovery could not be recorded.');return;}
+      this.armed=true;
+      if(this.positions!.every((n,i)=>Math.abs(n-TEACHER_HOME[i]!)<=PROGRAM_HOME_TOLERANCE)){
+        recovery.phase='Ready at Home';this.faulted=false;this.message=recovery.message='Ready at Home: fresh, steady readings are within 40 units on every joint. No return move was needed. Choose Run when ready.';this.recordEvent('home-recovery-ready',this.message);return;
+      }
+      recovery.phase='Returning Home';
+      try{this.startTimedPose(TEACHER_HOME,1000,'Home');this.message=recovery.message='Returning Home. Keep the full sweep clear; Stop cancels recovery.';}
+      catch(error){this.fault(error instanceof Error?error.message:'Home recovery could not start.');}return;
+    }
+    if(this.manual.blocked){this.fault('Holding state changed during Home recovery.');return;}
+    if(recovery.phase==='Returning Home'){
+      if(this.route?.phase==='Fault'){this.fault(this.route.message);return;}
+      if(this.route?.phase!=='Complete')return;
+      recovery.phase='Checking Home';recovery.readyAfterMs=this.now();recovery.deadlineMs=this.now()+PROGRAM_HOME_GRACE_MS;this.readySamples=[];
+      this.message=recovery.message='Home frame elapsed. Checking fresh, steady readings near Home.';return;
+    }
+    const outside=this.positions?.map((n,i)=>({servo:i+1,actual:n,target:TEACHER_HOME[i]!})).filter(joint=>Math.abs(joint.actual-joint.target)>PROGRAM_HOME_TOLERANCE)??[];
+    if(!outside.length&&this.recoveryReadingsStable(recovery.readyAfterMs!)){
+      recovery.phase='Ready at Home';this.message=recovery.message='Ready at Home: fresh, steady readings are within 40 units on every joint. Choose Run when ready.';this.recordEvent('home-recovery-ready',this.message);return;
+    }
+    if(this.now()>=recovery.deadlineMs!)this.fault('Home recovery was not verified: '+(outside.length?outside.map(j=>`J${j.servo} reported ${j.actual}, Home ${j.target}`).join('; '):'fresh, steady readings were unavailable')+'. No automatic retry.');
+  }
   report() {
     return {format: 'nexarm-teacher-control-session', schemaVersion: 1, capturedAt: new Date().toISOString(),
       operatingRanges:{source:'Operator-provided factory-software ranges, adjusted during development; 2026-10-23',protectedStudentPolicy:false,joints:OPERATING_RANGES.map((range,i)=>({servo:i+1,...range}))},
       diagnostics:{clock:'page monotonic milliseconds',state:this.connectionState,message:this.message,feedbackAgeMs:Number.isFinite(this.receivedAt)?this.now()-this.receivedAt:null,
         stopping:{speed:STOP_SPEED,acceleration:STOP_ACCELERATION,physicalStoppingVerified:false,pending:!!this.pendingStop,attempts:this.stops.map(stop=>({...stop,servos:[...stop.servos],targets:stop.targets?[...stop.targets]:null,feedback:stop.feedback.map(sample=>({...sample,positions:[...sample.positions]}))}))},
         stopThenRelease:this.stopRelease?{requestedAtMs:this.stopRelease.requestedAtMs,phase:this.stopRelease.phase,message:this.stopRelease.message,holdRequestedAtMs:this.stopRelease.hold.requestedAtMs,holdWriteFinishedAtMs:this.stopRelease.hold.finishedAtMs,releaseSubmittedAtMs:this.stopRelease.releaseSubmittedAtMs,releaseFinishedAtMs:this.stopRelease.releaseFinishedAtMs,releasePolicy:'post-hold-steady-feedback',physicalStoppingVerified:false,physicalReleaseVerified:false,samples:this.stopRelease.samples.map(sample=>({...sample,positions:[...sample.positions]}))}:null,
+        homeRecovery:this.recovery?{requestedAtMs:this.recovery.requestedAtMs,phase:this.recovery.phase,message:this.recovery.message,homeTolerance:PROGRAM_HOME_TOLERANCE,routeClearanceVerified:false,physicalHoldingVerified:false}:null,
         writePending:this.writeInFlight,powerAndTorqueState:'not measured',
         writes:this.writes.map(entry=>({...entry,bytes:[...entry.bytes],positions:entry.positions?[...entry.positions]:null})),
         events:this.events.map(entry=>({...entry,positions:entry.positions?[...entry.positions]:null}))},

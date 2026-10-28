@@ -10,6 +10,8 @@ writes. Status now says Release sent, not confirmed release; the manual Release
 control permits an explicit All Off retry without restoring torque first.
 See [the recovery check](docs/SIGNAL_AND_STOP.md).
 
+**Dev.56: deliberate Home recovery.** Positions now offers **Restore & Return Home** and the secondary **Hold current position**. Recovery checks fresh steady readings before moving, uses the established Home profile, and checks readings near Home afterward. Stop/Space cancels recovery; no program resumes automatically. The tested Stop/release timing is unchanged. See [Home recovery and testing](docs/HOME_RECOVERY.md).
+
 **Dev.54 (superseded): Stop includes prompt release.** Stop/Space and setup Stop motion send
 the fast hold, then factory All Off immediately after the hold write completes
 with fresh feedback. The three-reading wait and separate test button are removed.

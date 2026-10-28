@@ -1,8 +1,11 @@
-# Programming development test: dev.55
+# Programming development test: dev.56
+
+[Restore & Return Home](./HOME_RECOVERY.md) restores holding and deliberately moves Home.
+Use **Hold current position** when teaching a pose without returning Home. Neither resumes a program.
 
 Stop and Space now cancel the program, send the proven fast hold, and release
 all six servos after fresh, steady post-hold readings.
-The separate test button is removed. Support the arm and Restore holding before
+The separate test button is removed. Support the arm and Hold current position before
 another Run; nothing resumes automatically. Disconnect/focus/error cancellation
 does not add release. See [Signal tower and Stop](./SIGNAL_AND_STOP.md) for the
 restored-sequence hardware check and timing diagnostics. Neither physical stopping nor release is verified by USB completion. Normal movement profiles are unchanged.
@@ -41,7 +44,7 @@ setup requirement, student-editable limit panel, or per-program teacher approval
 Protected limits are a required [student-release roadmap item](./ROADMAP.md).
 The current build is for development hardware testing.
 
-1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.50**.
+1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.56**.
 2. Build or edit a program. Station robot is the default/only visible view.
    The simulator and virtual-arm frame are hidden for now. Editing needs no USB.
 3. In robot mode, click **Connect robot** and wait for Ready. Fresh stable
@@ -91,7 +94,7 @@ not a measured mechanical limit; live goals must also fit each joint's operating
 range. A live run is capped at 100 steps (including waits) and 60
 seconds; existing feedback, path/deviation, settling and write checks remain.
 
-After release, click Restore servo holding. Once its write completes and fresh
+After release, click Hold current position. Once its write completes and fresh
 readings stabilize, movement controls become ready without confirmation or Enable.
 This is a feedback check, not a physical torque measurement; support the arm
 through restoration and check it holds before removing support. Interrupted

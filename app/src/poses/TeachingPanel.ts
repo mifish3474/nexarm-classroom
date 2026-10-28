@@ -50,8 +50,9 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     node<HTMLButtonElement>('teach-release').disabled=isPreparing||!state?.canRelease;
     node('teach-release').title=state?.manualPhase==='Manual setup'?'Release was requested but physical holding is not measured. Support the arm and click to send Release again.':'Support the arm before releasing holding.';
     node<HTMLButtonElement>('teach-restore').disabled=isPreparing||!state?.canRestore;
+    node<HTMLButtonElement>('teach-home').disabled=isPreparing||!state?.canRestoreAndHome;
     node<HTMLButtonElement>('pose-record').disabled=isPreparing||!state?.canCapture||!saved.canAdd||!name.value.trim();
-    const text=state?.manualPhase==='Normal'?(state.feedbackFresh?'Record a stationary pose, or Release to position by hand.':'Waiting for fresh joint readings.'):state?`${state.manualPhase}: ${state.manualMessage}${state.manualReason?` ${state.manualReason}`:''}`:'Connect for joint readings and position teaching.';
+    const text=state?.recovery?.active?state.recovery.message:state?.manualPhase==='Normal'?(state.feedbackFresh?'Record a stationary pose, or Release to position by hand.':'Waiting for fresh joint readings.'):state?`${state.manualPhase}: ${state.manualMessage}${state.manualReason?` ${state.manualReason}`:''}`:'Connect for joint readings and position teaching.';
     if(node('teach-status').textContent!==text)node('teach-status').textContent=text;
     const issues=state?.positions?poseIssues(state.positions):[];
     node('pose-recording').classList.toggle('out-of-range',issues.length>0);

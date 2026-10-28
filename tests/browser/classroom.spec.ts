@@ -45,7 +45,7 @@ async function connect(page:Page){
  await clickControl(page,'Connect robot');await page.clock.runFor(1200);
 }
 async function waitForRelease(page:Page){await page.clock.runFor(450);await expect(page.locator('#state')).toHaveText('Release sent');}
-async function restoreHolding(page:Page){await page.clock.runFor(600);await clickControl(page,'Restore servo holding');await page.clock.runFor(900);await ready(page);}
+async function restoreHolding(page:Page){await page.clock.runFor(600);await clickControl(page,'Hold current position');await page.clock.runFor(900);await ready(page);}
 async function seedPositions(page:Page){
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[
    {id:'pickup',name:'Pickup',positions:[2130,2230,2180,2280,2080,1160],capturedAt:'2026-10-23T00:00:00Z'},
@@ -57,6 +57,46 @@ async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[])
  await page.locator('#program-file').setInputFiles({name:'keys.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:3,instructions,keyEvents}))});
  await expect(page.locator('#program-file-status')).toContainText('loaded for review');
 }
+
+async function moveReportedPose(page:Page,offset=100){
+ await page.evaluate(offset=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;const home=[2050,2150,2100,2200,2000,1080];home.forEach((value,i)=>{s.positions[i]=value+offset;s.targets[i]=value+offset;});},offset);await page.clock.runFor(300);
+}
+
+test('Restore & Return Home restores first, checks Home feedback, and never starts the loaded program or keys',async({page})=>{
+ await station(page);await connect(page);await moveReportedPose(page);await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'key',servo:1,target:2700}]}],[{kind:'move',blockId:'startup',servo:1,target:2600}]);
+ await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);await clickControl(page,'Restore & Return Home');await expect(page.locator('#state')).toHaveText('Restoring holding');await expect(page.locator('#run')).toBeDisabled();expect((await writes(page)).map(b=>b[4])).toEqual([61,61]);expect((await writes(page))[1]![5]).toBe(1);
+ await page.clock.runFor(2500);await expect(page.locator('#state')).toHaveText('Ready at Home');await ready(page);const commands=await writes(page);expect(commands).toHaveLength(8);expect(commands.slice(2).map(b=>b[7]!+256*b[8]!)).toEqual([2050,2150,2100,2200,2000,1080]);expect(commands.slice(2).every(b=>b[6]===10&&b[11]!+256*b[12]!<=600)).toBe(true);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(8);const download=page.waitForEvent('download');await clickControl(page,'Export robot diagnostics');const report=JSON.parse(await readFile((await (await download).path())!,'utf8'));expect(report.diagnostics.homeRecovery).toMatchObject({phase:'Ready at Home',homeTolerance:40,routeClearanceVerified:false});await clickControl(page,'Disconnect robot');
+});
+
+test('Hold current position retains a taught pose without issuing Home targets',async({page})=>{
+ await station(page);await connect(page);await moveReportedPose(page);await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);await clickControl(page,'Hold current position');await page.clock.runFor(900);await ready(page);
+ expect((await writes(page)).map(b=>[b[4],b[5]])).toEqual([[61,0],[61,1]]);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions)).toEqual([2150,2250,2200,2300,2100,1180]);await expect(page.locator('#state')).not.toHaveText('Ready at Home');await clickControl(page,'Disconnect robot');
+});
+
+test('recovery already near Home verifies new readings and skips all redundant motion',async({page})=>{
+ await station(page);await connect(page);await clickControl(page,'Restore & Return Home');await expect(page.locator('#run')).toBeDisabled();await page.clock.runFor(400);await expect(page.locator('#state')).toHaveText('Ready at Home');expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+});
+
+test('Space during pending Restore cancels recovery and a late write cannot start Home',async({page})=>{
+ await station(page);await connect(page);await moveReportedPose(page);await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);await page.evaluate(()=>(window as unknown as {classroomRobot:{deferNextWrite:boolean}}).classroomRobot.deferNextWrite=true);await clickControl(page,'Restore & Return Home');await expect(page.locator('#state')).toHaveText('Restoring holding');
+ await page.keyboard.press('Space');await page.evaluate(()=>(window as unknown as {classroomRobot:{finishWrite:()=>void}}).classroomRobot.finishWrite());await page.clock.runFor(2500);expect((await writes(page)).map(b=>b[4])).toEqual([61,61]);await expect(page.locator('#state')).toHaveText('Recovery required');await expect(page.locator('#run')).toBeDisabled();await clickControl(page,'Disconnect robot');
+});
+
+test('Space interrupts a running recovery with fast hold and release, without any resumed return',async({page})=>{
+ await station(page);await connect(page);await moveReportedPose(page,200);await clickControl(page,'Restore & Return Home');await page.clock.runFor(350);await expect(page.locator('#state')).toHaveText('Returning Home');await page.keyboard.press('Space');await page.clock.runFor(600);await expect(page.locator('#state')).toHaveText('Release sent');
+ const count=(await writes(page)).length;expect((await writes(page)).at(-1)![4]).toBe(61);expect((await writes(page)).at(-1)![5]).toBe(0);await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(count);await expect(page.locator('#run')).toBeDisabled();await clickControl(page,'Disconnect robot');
+});
+
+test('focus loss cancels a running recovery with holding retained',async({page})=>{
+ await station(page);await connect(page);await moveReportedPose(page,200);await clickControl(page,'Restore & Return Home');await page.clock.runFor(350);await expect(page.locator('#state')).toHaveText('Returning Home');await page.evaluate(()=>dispatchEvent(new Event('blur')));await page.clock.runFor(2500);
+ await expect(page.locator('#state')).toHaveText('Canceled');expect((await writes(page)).every(b=>b[4]!==61)).toBe(true);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{holding:boolean}}).classroomRobot.holding)).toBe(true);await clickControl(page,'Disconnect robot');
+});
+
+test('a Home frame that ends short does not report Ready at Home or retry automatically',async({page})=>{
+ await station(page);await connect(page);await moveReportedPose(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{holding:boolean}}).classroomRobot.holding=false);await clickControl(page,'Restore & Return Home');await page.clock.runFor(5000);
+ await expect(page.locator('#state')).toHaveText('Fault');await expect(page.locator('#run-status')).toContainText('Home recovery was not verified');expect(await writes(page)).toHaveLength(6);await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(6);await clickControl(page,'Disconnect robot');
+});
 
 test('Stop ends key events and releases after fresh post-hold readings, with deliberate Restore',async({page})=>{
  await station(page);await connect(page);await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2700}]}]);
@@ -193,7 +233,7 @@ test('release and restore end keyboard listening without adding confirmation or 
  await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2130}]}]);
  await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');
  await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
- await clickControl(page,'Restore servo holding');await page.clock.runFor(600);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ await clickControl(page,'Hold current position');await page.clock.runFor(600);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
  expect(await writes(page)).toHaveLength(2);await page.locator('#keyboard-control').click();await page.keyboard.press('a');expect(await writes(page)).toHaveLength(2);
  await ready(page);await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');expect(await writes(page)).toHaveLength(2);await clickControl(page,'Stop');await clickControl(page,'Disconnect robot');
 });
@@ -465,7 +505,7 @@ test('stale feedback explains disabled Run and fresh feedback restores it withou
 test('unfinished release requires Restore but no confirmation or Enable',async({page})=>{
  await station(page);await page.evaluate(()=>localStorage.setItem('nexarm.commissioning.manual-positioning.v1',JSON.stringify({requiresHoldingVerification:true,events:[]})));await connect(page);
  await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();
- await expect(page.locator('#robot-readiness')).toContainText('Restore servo holding');
+ await expect(page.locator('#robot-readiness')).toContainText('Hold current position');
  expect(await writes(page)).toEqual([]);await clickControl(page,'Disconnect robot');
 });
 
@@ -496,7 +536,7 @@ test('release, hand-position, name and record, then restore holding without a re
  await page.getByRole('textbox',{name:'Position name'}).fill('Pickup');await clickControl(page,'Record current position');
  await expect(page.locator('#saved-positions')).toContainText('Pickup');await expect(page.locator('#saved-positions')).toContainText('S2: 2160');expect(await writes(page)).toHaveLength(1);
  const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!));expect(stored.poses[0].positions).toEqual(pose);
- await clickControl(page,'Restore servo holding');await page.clock.runFor(600);expect((await writes(page))[1]).toEqual([255,255,255,3,61,1,191]);
+ await clickControl(page,'Hold current position');await page.clock.runFor(600);expect((await writes(page))[1]).toEqual([255,255,255,3,61,1,191]);
  expect(await writes(page)).toHaveLength(2);
  await ready(page);await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeEnabled();
  const download=page.waitForEvent('download');await clickControl(page,'Export saved positions');expect((await download).suggestedFilename()).toBe('nexarm-named-positions.json');expect(await writes(page)).toHaveLength(2);

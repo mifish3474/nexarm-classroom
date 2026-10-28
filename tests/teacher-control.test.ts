@@ -45,6 +45,58 @@ const dispatchPose=async(f:ReturnType<typeof fixture>,positions:readonly number[
   for(let i=0;i<5;i++){await f.feed(f.time()+2,positions);f.control.tick();await flush();}
 };
 
+describe('Restore & Return Home recovery',()=>{
+ const before=TEACHER_HOME.map(n=>n+100);
+ const recoveryStorage=()=>new Map([[MANUAL_STATE_KEY,JSON.stringify({requiresHoldingVerification:true,events:[]})]]);
+ const startHeld=async(f:ReturnType<typeof fixture>)=>{await f.ready(before);f.control.restoreAndHome();for(const at of [1200,1300,1400])await f.feed(at,before);await flush();await dispatchPose(f,before);};
+ it('restores holding before Home and verifies fresh near-Home feedback after the frame',async()=>{
+  const f=fixture({directSession:true});await f.ready(before);f.control.setHolding(false,true);await flush();await f.feed(1700,before);f.control.restoreAndHome();await flush();
+  expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[4]).toBe(61);expect(f.writes[1]!.bytes[5]).toBe(1);expect(f.control.snapshot().canMove).toBe(false);
+  expect(()=>f.control.liveJoint(1,2300)).toThrow('Home recovery');
+  for(const at of [1800,1900,2000,2100])await f.feed(at,before);expect(f.writes).toHaveLength(2);
+  await f.feed(2200,before);await flush();await dispatchPose(f,before);expect(f.writes).toHaveLength(8);expect(f.writes.slice(2).map(w=>w.bytes[7]!+256*w.bytes[8]!)).toEqual(TEACHER_HOME);expect(f.writes.slice(2).every(w=>w.bytes[6]===10)).toBe(true);
+  await f.feed(3250);f.control.tick();expect(f.control.snapshot().recovery?.phase).toBe('Checking Home');expect(f.control.snapshot().canMove).toBe(false);
+  for(const at of [3350,3450,3550])await f.feed(at);expect(f.control.snapshot().recovery?.phase).toBe('Ready at Home');expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(8);expect(f.control.report().diagnostics.homeRecovery).toMatchObject({homeTolerance:40,routeClearanceVerified:false,physicalHoldingVerified:false});f.control.disconnect();await flush();
+ });
+ it('skips a redundant return when already holding near Home, and never starts a program',async()=>{
+  const f=fixture({directSession:true});await f.ready();f.control.restoreAndHome();expect(f.control.snapshot().recovery?.active).toBe(true);for(const at of [1200,1300,1400])await f.feed(at);
+  expect(f.writes).toHaveLength(0);expect(f.control.snapshot().recovery?.phase).toBe('Ready at Home');expect(f.control.snapshot().program).toBeNull();f.control.disconnect();await flush();
+ });
+ it('rejects busy and stale starts instead of queueing recovery',async()=>{
+  const f=fixture({directSession:true});await f.ready(before);f.control.runProgram([{kind:'wait',blockId:'wait',durationMs:2000}]);expect(()=>f.control.restoreAndHome()).toThrow('idle robot');f.control.stop();await flush();f.setTime(2000);expect(()=>f.control.restoreAndHome()).toThrow('fresh readings');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
+ });
+ it('waits for the restore write and for newer feedback before sending Home',async()=>{
+  const f=fixture({directSession:true,stored:recoveryStorage(),hangWrites:[1]});await f.ready(before);f.control.restoreAndHome();await flush();for(const at of [1200,1300,1400])await f.feed(at,before);expect(f.writes).toHaveLength(1);
+  f.finish();await flush();for(const at of [1500,1600,1700])await f.feed(at,before);expect(f.writes).toHaveLength(1);await f.feed(1900,before);expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[2]).toBe(1);f.control.disconnect();await flush();
+ });
+ it.each(['stop','operator Stop','disconnect','hide'])('a %s during pending Restore cannot start Home on late completion',async action=>{
+  const f=fixture({directSession:true,stored:recoveryStorage(),hangWrites:[1]});await f.ready(before);f.control.restoreAndHome();await flush();
+  if(action==='stop')f.control.stop();else if(action==='operator Stop')f.control.stopThenRelease();else if(action==='disconnect')f.control.disconnect();else{f.hide();f.control.tick();}
+  f.finish();await flush();if(action==='stop'||action==='operator Stop'){await f.window(1200,before);f.control.tick();}
+  expect(f.writes).toHaveLength(1);expect(f.control.snapshot().recovery?.phase).toBe('Canceled');expect(f.control.snapshot().manualPhase).toBe('Recovery required');f.control.disconnect();await flush();
+ });
+ it('operator Stop interrupts a running return and uses the proven stop-release sequence',async()=>{
+  const f=fixture({directSession:true});await f.ready(before);f.control.restoreAndHome();for(const at of [1200,1300,1400])await f.feed(at,before);expect(f.writes).toHaveLength(1);
+  f.control.stopThenRelease();await flush();for(const at of [1500,1600,1700])await f.feed(at,before);expect(f.writes).toHaveLength(3);expect(f.writes[2]!.bytes[4]).toBe(61);expect(f.control.snapshot().recovery?.phase).toBe('Canceled');await f.window(1800,before);f.control.tick();expect(f.writes).toHaveLength(3);f.control.disconnect();await flush();
+ });
+ it('does not mistake an elapsed Home frame or a persistent shortfall for a verified Home',async()=>{
+  const f=fixture({directSession:true});await startHeld(f);
+  for(let at=1500;at<=4700;at+=100){await f.feed(at,before);f.control.tick();await flush();}
+  expect(f.control.snapshot().recovery?.phase).toBe('Fault');expect(f.control.snapshot().message).toContain('Home recovery was not verified');expect(f.writes).toHaveLength(6);f.control.disconnect();await flush();
+ });
+ it('lost feedback while checking Home faults rather than leaving recovery stuck or reporting success',async()=>{
+  const f=fixture({directSession:true});await startHeld(f);await f.feed(2500);f.control.tick();expect(f.control.snapshot().recovery?.phase).toBe('Checking Home');f.setTime(4101);f.control.tick();expect(f.control.snapshot().recovery?.phase).toBe('Fault');expect(f.control.snapshot().recovery?.active).toBe(false);f.control.disconnect();await flush();
+ });
+ it('failed Restore or failed durable storage cannot send a Home target',async()=>{
+  for(const storageFails of [false,true]){
+   const f=fixture({directSession:true,stored:recoveryStorage(),reject:!storageFails,storageFails});await f.ready(before);f.control.restoreAndHome();await flush();await f.window(1200,before);f.control.tick();expect(f.writes.every(w=>w.bytes[4]===61)).toBe(true);expect(f.control.snapshot().manualPhase).toBe('Recovery required');expect(f.control.snapshot().canMove).toBe(false);f.control.disconnect();await flush();
+  }
+ });
+ it('Hold current position restores torque at a taught pose without selecting recovery or Home',async()=>{
+  const f=fixture({directSession:true});await f.ready(before);f.control.setHolding(false,true);await flush();await f.feed(1700,before);f.control.setHolding(true,true);await flush();await f.window(1800,before);f.control.tick();expect(f.writes).toHaveLength(2);expect(f.writes.every(w=>w.bytes[4]===61)).toBe(true);expect(f.control.snapshot().recovery).toBeNull();expect(f.control.snapshot().positions).toEqual(before);f.control.disconnect();await flush();
+ });
+});
+
 describe('operator Stop and paced release',()=>{
  const steady=async(f:ReturnType<typeof fixture>,positions:readonly number[]=TEACHER_HOME)=>{const start=f.time()+100;for(const at of [start,start+100,start+200])await f.feed(at,positions);};
  const program=[{kind:'move',blockId:'first',servo:1,target:2700},{kind:'move',blockId:'later',servo:2,target:2400}];

@@ -20,6 +20,7 @@
 .workspace-page .blocklyToolboxCategory{height:44px;line-height:44px;margin-bottom:4px}.workspace-page .blocklyToolboxCategoryLabel{font-size:14px}
 .keyboard-control{padding:8px 16px;background:#f8f3e3;border-bottom:1px solid #d8cbaa;cursor:pointer}.keyboard-control[hidden]{display:none}.keyboard-control p{margin:0;font-size:.8rem;color:#655020}.keyboard-control[data-active=true]{background:#e6f4ef;border-color:#9bbfaf}.keyboard-control[data-active=true] p{color:#215f4a}.keyboard-control:focus-visible{outline:3px solid #b35005;outline-offset:-3px}
 .signal-tower{display:flex;align-items:center;gap:6px;flex-shrink:0;min-width:150px;border-right:1px solid #c9d7e0;padding-right:12px}
+.workspace-page .recovery-home{width:100%;margin-bottom:8px}
 .signal-tower svg{width:32px;height:58px;flex-shrink:0;overflow:visible}.signal-tower strong,.signal-tower span,.signal-tower small{display:block;line-height:1.4}.signal-tower strong{font-size:.75rem;max-width:145px}.signal-tower span{font-size:.72rem}.signal-tower small{font-size:.65rem;color:#526c7e}.signal-tower kbd{font:inherit;font-weight:700}
 .tower-lens rect{fill:#45515e;stroke:#18232d;stroke-width:1}.tower-lens path{stroke:#ffffff30;stroke-width:1}
 .signal-tower[data-state=running] .tower-green rect{fill:#18b56a;filter:drop-shadow(0 0 4px #18b56a)}

@@ -1,4 +1,7 @@
-# Keyboard events: dev.55
+# Keyboard events: dev.56
+
+[Restore & Return Home](./HOME_RECOVERY.md) restores holding and deliberately moves Home.
+Use **Hold current position** when teaching a pose without returning Home. Neither resumes a program.
 
 Use **When [A] pressed** to run a block sequence from a key. The same event
 hat can contain a function call when My Blocks is implemented later. Functions
@@ -6,7 +9,7 @@ are not part of this update.
 
 ## Build and check without hardware
 
-1. Confirm **0.7.0-dev.55** and save any work you want to keep.
+1. Confirm **0.7.0-dev.56** and save any work you want to keep.
 2. Open **Events** and drag a When A pressed hat into the workspace, or use
    **Add block → Add key event block**. It is a separate stack beside When Run
    clicked, not a block inside that stack.
@@ -45,7 +48,7 @@ are saved but do not listen until code is attached.
    queued to execute later. Release and press again when ready.
 6. **Space or Stop** cancels future keyboard triggers as well as the current sequence and
    sends the fast hold, then requests release after fresh steady readings. Support the arm and use
-   Restore holding before Run. Run is then needed to listen again.
+   Hold current position before Run. Run is then needed to listen again.
 
 Typing in names, numbers, dropdowns, Blockly, dialogs, or editable content does
 not trigger the arm. While connected, Space on buttons is reserved for Stop.

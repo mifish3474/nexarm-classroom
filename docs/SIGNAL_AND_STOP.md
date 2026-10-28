@@ -1,4 +1,7 @@
-# Signal tower and Stop: dev.55
+# Signal tower and Stop: dev.56
+
+[Restore & Return Home](./HOME_RECOVERY.md) restores holding and deliberately moves Home.
+Use **Hold current position** when teaching a pose without returning Home. Neither resumes a program.
 
 The operator confirmed the dev.53 fast-hold-then-release test works. Dev.55 retains
 that sequence as the normal **Stop button** and **Spacebar** action on the coding
@@ -28,7 +31,7 @@ requested, another Stop does not assume physical release or restore holding.
 If the arm still holds after Release sent, use **Release holding** to send All Off
 again; the button becomes available after the normal command interval. This
 explicit retry sends no position goal and never enables torque. Use
-**Restore holding** deliberately, with support maintained, before another Run.
+**Hold current position** deliberately, with support maintained, before another Run.
 There is no new Enable or confirmation step, and Restore never resumes a program.
 
 A failed/expired write, stale feedback, lost connection or lifecycle cancellation
@@ -68,12 +71,12 @@ not holding force, clearance, pinch detection or verified physical standstill.
 
 ## Hardware check
 
-1. Refresh and confirm **0.7.0-dev.55**. Connect with the arm stationary, supported,
+1. Refresh and confirm **0.7.0-dev.56**. Connect with the arm stationary, supported,
    and the gripper empty.
 2. Click **Stop**. Expect a fast hold, a short Waiting for steady readings phase, then
    Release sent. That label describes a USB write, not measured holding. Observe
    actual release while maintaining support.
-3. Click **Restore holding**, wait for fresh readiness, and check that it holds
+3. Click **Hold current position**, wait for fresh readiness, and check that it holds
    before removing support. Nothing should resume on its own.
 4. Repeat with **Space** during an already-tested movement, with support and the
    sweep clear. Observe the restored stop/release response. End the check if

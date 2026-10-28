@@ -1,4 +1,14 @@
-# Classroom programming development preview 0.7.0-dev.55
+# Classroom programming development preview 0.7.0-dev.56
+
+## Deliberate Restore & Return Home
+
+Dev.56 adds a controller-owned recovery sequence: explicit holding restore when needed, three new steady position reports, the existing simultaneous timed Home profile (speed capped at 600, acceleration 10), then fresh steady readings within the existing 40-unit Home tolerance on every joint. Frame completion alone cannot claim Ready at Home. Restore-write completion gates telemetry; canceled generations cannot start movement after a late USB response. Feedback loss, failed writes and unverified Home completion fault without automatic retry.
+
+The main Positions panel offers Restore & Return Home and secondary Hold current position. The latter retains the existing restoration behavior without sending a Home target. Starting recovery ends keyboard listening and pending program preparation. Stop/Space interrupts using the established hold/steady-readings/release sequence; focus loss retains hold-only cancellation. No blocks resume automatically. The activity tower includes recovery phases. Diagnostics include homeRecovery and explicitly leave route clearance and physical holding unverified. Factory firmware and root prototype remain unchanged.
+
+Validation: build/type-check, all 374 unit tests and all 85 Chrome browser tests pass. Browser tests use mocked robot USB. Root `index.html` is unchanged.
+
+See [Home recovery](./HOME_RECOVERY.md) for hardware checks. Unit and browser tests model cancellation, delayed writes, failed restoration, frame shortfall and fresh-feedback verification; physical recovery still needs operator observation.
 
 ## Restore the hardware-tested release gate
 

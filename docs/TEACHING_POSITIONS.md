@@ -1,12 +1,15 @@
-# Teach and use a position: dev.55
+# Teach and use a position: dev.56
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.55**, and Connect.
+[Restore & Return Home](./HOME_RECOVERY.md) restores holding and deliberately moves Home.
+Use **Hold current position** when teaching a pose without returning Home. Neither resumes a program.
+
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.56**, and Connect.
 
 Stop and Space send a fast hold, then request release after fresh steady readings. Support the
-arm and use Restore holding before another Run; see [the hardware check](./SIGNAL_AND_STOP.md).
+arm and use Hold current position before another Run; see [the hardware check](./SIGNAL_AND_STOP.md).
 The separate test button is removed; normal Release/Restore and recording remain.
 The **Positions** side panel contains Teach a position, Release holding,
-live readings and ranges, naming/Record, and Restore holding. Run and Stop
+live readings and ranges, naming/Record, and Hold current position. Run and Stop
 remain in the top toolbar while you teach or scroll the saved-position list.
 
 Live targets must fit the [current operating ranges](./OPERATING_RANGES.md).
@@ -31,7 +34,7 @@ is checked before its first movement; rejection leaves controls available for ed
    releasing. It waits for fresh feedback and no active movement/write.
 4. You may record additional supported positions while released. Each must have
    a unique name. Use position labels rather than student names or identifiers.
-5. Still supporting the arm, click **Restore servo holding**. Controls become
+5. Still supporting the arm, click **Hold current position**. Controls become
    ready after its write finishes and fresh position readings stabilize. There
    is no confirmation checkbox or button. The app does not measure holding power;
    check the arm holds the placed pose before removing support.

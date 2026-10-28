@@ -1,4 +1,8 @@
-# Robot setup control testing: 0.7.0-dev.55
+# Robot setup control testing: 0.7.0-dev.56
+
+On the classroom page, [Restore & Return Home](./HOME_RECOVERY.md) restores holding and deliberately moves Home.
+Its **Hold current position** option keeps a taught pose. Neither resumes a program.
+The separate setup page below retains its existing Restore servo holding and Home controls.
 
 Stop motion now sends the fast hold, then releases all six servos as soon as
 fresh post-hold feedback becomes steady. Support the arm and Restore servo

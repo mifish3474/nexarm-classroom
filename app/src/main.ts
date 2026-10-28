@@ -65,7 +65,7 @@ function refresh(){
   // Controller reports retain past runs. An explicitly rearmed key-only project
   // must show its current listening state rather than an old Stopped/Fault phase.
   const signal=programSignal({connectionState:robot?.connectionState,faulted:!!robot?.faulted&&!keyEvents.active&&robot.program?.phase!=='Running',
-    running:robot?.program?.phase==='Running'||robot?.home?.phase==='Running',keysActive:keyEvents.active,preparing,
+    running:!!robot?.recovery?.active||robot?.program?.phase==='Running'||robot?.home?.phase==='Running',keysActive:keyEvents.active,preparing,
     stopped:stopRequested,released:!!robot&&robot.manualPhase!=='Normal'});
   element('signal-tower').dataset.state=signal.state;
   if(element('signal-label').textContent!==signal.label)element('signal-label').textContent=signal.label;
@@ -85,13 +85,15 @@ function refresh(){
   element<HTMLButtonElement>('robot-connect').disabled=!!robot&&!robot.canConnect;
   element<HTMLButtonElement>('robot-disconnect').disabled=!robot||['Disconnected','Closing'].includes(robot.connectionState);
   element<HTMLButtonElement>('robot-diagnostics').disabled=!control;
-  const readiness=robot?.canMove?'Ready. Choose Run or a saved position.':robot?.reason??'Connect the robot.';
+  const readiness=robot?.recovery?.active?robot.recovery.message:robot?.connectionState==='Listening'&&['Manual setup','Recovery required'].includes(robot.manualPhase)?'Choose Restore & Return Home, or Hold current position to keep this pose. Support the arm through holding recovery.':robot?.canMove?'Ready. Choose Run or a saved position.':robot?.reason??'Connect the robot.';
   const readinessNode=element('robot-readiness');if(readinessNode.textContent!==readiness)readinessNode.textContent=readiness;
 
   const technicalStatus=robot?`${robot.connectionState} · ${robot.armed?'Robot enabled':'Robot disabled'} · ${robot.message}`:'Disconnected.';
   if(element('robot-status').textContent!==technicalStatus)element('robot-status').textContent=technicalStatus;
   const state=preparing?'Preparing':loadingProgram?'Loading':!robot?'Disconnected':robot.connectionState!=='Listening'?robot.connectionState:robot.manualPhase!=='Normal'?(robot.manualPhase==='Manual setup'?'Release sent':robot.manualPhase):robot.program?.phase??(robot.canMove?'Ready':'Reading positions');
   element('state').textContent=state;
+  if(robot?.recovery&&robot.operation==='Home'&&robot.manualPhase==='Normal')element('state').textContent=robot.recovery.phase;
+  if(robot?.recovery?.active)element('state').textContent=robot.recovery.phase;
   if(robot?.stopRelease?.active)element('state').textContent=robot.stopRelease.phase;
   if(live&&robot?.operation==='Saved position'&&robot.connectionState==='Listening'&&robot.manualPhase==='Normal')element('state').textContent=robot.home?.phase??state;
   if(keyEvents.active&&!busy)element('state').textContent='Keys active';
@@ -105,6 +107,7 @@ function refresh(){
   }
   if(keyEvents.active&&!busy&&robot?.canMove)activity=`Listening for keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Space or Stop ends keyboard events.`;
   if(interfaceError)activity=interfaceError;
+  if(robot?.recovery&&robot.operation==='Home'&&robot.connectionState==='Listening')activity=robot.recovery.message;
   if(stopRequested&&robot?.connectionState==='Listening')activity=robot.message;
   if(status.textContent!==activity)status.textContent=activity;
   const keyControl=element('keyboard-control');
@@ -235,6 +238,12 @@ run.onclick=()=>prepareProgram(true);
 element('program-check').onclick=()=>prepareProgram(false);
 
 stop.onclick=()=>cancel(true,true);
+element('teach-home').onclick=()=>{
+  cancel(false);stopRequested=false;interfaceError='';interfaceErrorBlock=null;reviewMessage='';
+  try{if(!control)throw Error('Connect the robot first.');control.restoreAndHome();}
+  catch(error){interfaceError=error instanceof Error?error.message:'Home recovery could not start.';}
+  refresh();
+};
 lesson.onclick=()=>{interfaceError='';cancel(false);editor.lesson();keyboardFields();refresh();};
 practice.onclick=()=>{interfaceError='';cancel(false);editor.teacherLesson();keyboardFields();refresh();};
 element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();positionOptions();keyboardFields();refresh();};
@@ -311,7 +320,7 @@ window.addEventListener('keyup',event=>{
 window.addEventListener('blur',()=>{
   spaceHeld=false;
   keyEvents.releaseAll();
-  if(control?.snapshot().stopRelease?.active){cancel();return;}
+  if(control?.snapshot().stopRelease?.active||control?.snapshot().recovery?.active){cancel();return;}
   if(preparing&&editor.listStacks().some(stack=>stack.name!=='When Run clicked')){
     keyMessage='Keyboard preparation canceled when this window lost focus. Run program to listen again.';cancel(false);return;
   }

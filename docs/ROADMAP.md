@@ -1,5 +1,9 @@
 # NexArm Classroom development roadmap
 
+## Dev.56 recovery usability
+
+The operator confirms dev.55 integrated Stop/release works. Dev.56 adds deliberate Restore & Return Home and separate Hold current position, with fresh steady readings before and after Home. Verify the combined action on hardware from representative supported poses and test interruption. Home is a destination, not a collision-free route guarantee. Protected student motion policy and pinch-response validation remain release requirements. See [Home recovery](./HOME_RECOVERY.md).
+
 Updated 2026-10-28.
 
 ## Current safety usability step
