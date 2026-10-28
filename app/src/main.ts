@@ -10,7 +10,7 @@ import {createTeachingPanel} from './poses/TeachingPanel';
 import {OPERATING_RANGES,assertPoseTargets,assertJointTarget} from './safety/OperatingRanges';
 import {ProgramError} from './runtime/ProgramLanguage';
 import {saveProjectFile,loadProjectFile,MAX_PROGRAM_FILE_BYTES} from './runtime/ProgramFile';
-import {copyProject} from './runtime/ProgramProject';
+import {copyProject,projectName,projectFilename} from './runtime/ProgramProject';
 import type {KeyHandler} from './runtime/ProgramProject';
 import {KeyboardEvents,isKeyboardEditing,keyLabel,isStopKey} from './runtime/KeyboardEvents';
 import {programSignal} from './ProgramSignal';
@@ -33,6 +33,7 @@ const robotMode=()=>true;
 const teaching=createTeachingPanel(()=>control);
 element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join('; ')}. J6: 1024 = open. These are operator-provided development ranges; protected student policy comes later.`;
 const editor=createEditor(element('blockly-editor'),()=>teaching.list());
+const projectTitle=element<HTMLInputElement>('project-name');
 const keyEvents=new KeyboardEvents();
 let keyHandlers=new Map<string,{handler:KeyHandler;result:PreparedProgram}>(),keyMessage='';
 let previousKeyFault=false,previousKeyPhase:string|undefined;
@@ -80,6 +81,7 @@ function refresh(){
   element<HTMLButtonElement>('new-program').disabled=!!busy;
   element<HTMLButtonElement>('program-save').disabled=!!busy;
   element<HTMLButtonElement>('program-load').disabled=!!busy;
+  projectTitle.disabled=!!busy;
   element('blockly-editor').inert=element('keyboard-fields').inert=!!busy;
   element('robot-controls').hidden=!live;element('mode-label').textContent=live?'Station robot':'Learn / Simulate';
   element<HTMLButtonElement>('robot-connect').disabled=!!robot&&!robot.canConnect;
@@ -111,7 +113,7 @@ function refresh(){
   if(stopRequested&&robot?.connectionState==='Listening')activity=robot.message;
   if(status.textContent!==activity)status.textContent=activity;
   const keyControl=element('keyboard-control');
-  const hasKeyStacks=editor.listStacks().some(stack=>stack.name!=='When Run clicked');
+  const hasKeyStacks=editor.listStacks().some(stack=>stack.kind==='key');
   document.querySelector<HTMLElement>('.home-cue')!.textContent=hasKeyStacks?'Key sequences use Home-first checks.':'Run starts from Home.';
   if(!hasKeyStacks&&!keyEvents.active)keyMessage='';
   keyControl.hidden=!keyEvents.active&&!keyMessage&&!hasKeyStacks;
@@ -134,6 +136,10 @@ function keyboardFields(){
   const stackSelect=element<HTMLSelectElement>('program-stack');stackSelect.replaceChildren();
   for(const stack of editor.listStacks()){const option=document.createElement('option');option.value=stack.id;option.textContent=stack.name;stackSelect.append(option);}
   stackSelect.value=editor.appendTarget();
+  const calls=element<HTMLSelectElement>('function-call'),selectedCall=calls.value;calls.replaceChildren();
+  for(const fn of editor.listFunctions()){const option=document.createElement('option');option.value=fn.name;option.textContent=fn.name;calls.append(option);}
+  if(editor.listFunctions().some(fn=>fn.name===selectedCall))calls.value=selectedCall;
+  element<HTMLButtonElement>('add-function-call').disabled=!editor.listFunctions().length;
   const container=element('keyboard-fields');container.replaceChildren();
   const addNumber=(block:import('blockly/core').Block,field:string,labelText:string,min:number,max:number,step:string)=>{
     const label=document.createElement('label');label.textContent=labelText;
@@ -175,6 +181,12 @@ element('keyboard-fields').addEventListener('change',beginEditing,true);
 document.addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('#add-block-menu button,.edit-actions button'))beginEditing();},true);
 element('add-position').onclick=()=>{try{editor.addPosition(element<HTMLSelectElement>('program-position').value);keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}};
 element('add-wait').onclick=()=>{try{editor.addWait();keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}};
+element('add-function').onclick=()=>{
+  try{editor.addFunction(element<HTMLInputElement>('function-name').value);interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not define My Block.';}refresh();
+};
+element('add-function-call').onclick=()=>{
+  try{editor.addFunctionCall(element<HTMLSelectElement>('function-call').value);interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add My Block call.';}refresh();
+};
 for(const [id,add] of [['add-joint',editor.addJoint],['add-repeat',editor.addRepeat],['add-if',editor.addIf],['add-set',editor.addSet],['add-change',editor.addChange],['add-key-event',editor.addKeyEvent]] as const)element(id).onclick=()=>{
   try{add();interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';}refresh();
 };
@@ -197,6 +209,8 @@ function showPrepared(result:PreparedProgram){
   rows=plan.map(step=>{const row=document.createElement('li');row.textContent=step.kind==='pose'?`Move to ${step.name}: ${step.positions.join(', ')}`:step.kind==='wait'?`Wait ${step.durationMs/1000} seconds`:`Move robot joint ${step.servo} to ${step.target}`;element('instructions').append(row);return row;});
   for(const variable of result.variables){const value=document.createElement('p');value.textContent=`${variable.name} = ${variable.value}`;element('variable-values').append(value);}
 }
+// The robot receives only the bounded, checked movement plan, never function definitions.
+const executable=(result:PreparedProgram)=>result.steps.map(step=>({...step,kind:step.kind??'move'}));
 async function prepareProgram(execute:boolean){
   if(spaceHeld||preparing||loadingProgram||control?.snapshot().busy)return;
   const ownSession=++session,live=robotMode();
@@ -209,15 +223,15 @@ async function prepareProgram(execute:boolean){
     // Validate every enabled key stack before any startup Home/movement write.
     for(const handler of project.keyEvents){
       if(!handler.body.length)continue;
-      const result=await runner.prepare(handler.body,true);if(ownSession!==session)return;
+      const result=await runner.prepare(handler.body,true,project.functions);if(ownSession!==session)return;
       validateTargets(result);handlers.set(handler.key,{handler,result});
     }
-    const result=await runner.prepare(instructions,!execute||handlers.size>0);
+    const result=await runner.prepare(instructions,!execute||handlers.size>0,project.functions);
     if(ownSession!==session||live!==robotMode())return;
     validateTargets(result);preparing=false;showPrepared(result);
     if(execute){
       if(!control||!control.snapshot().canMove)throw Error(control?.snapshot().reason??'Connect the robot first.');
-      if(result.steps.length)control.runProgram(instructions);
+      if(result.steps.length)control.runProgram(executable(result));
       if(result.steps.length&&control.snapshot().program?.phase==='Fault')throw new ProgramError(control.snapshot().program?.message??'Startup failed.');
       if(handlers.size){
         keyHandlers=handlers;previousKeyFault=control.snapshot().faulted;previousKeyPhase=control.snapshot().program?.phase;keyEvents.start([...handlers.keys()]);
@@ -247,16 +261,16 @@ element('teach-home').onclick=()=>{
 lesson.onclick=()=>{interfaceError='';cancel(false);editor.lesson();keyboardFields();refresh();};
 practice.onclick=()=>{interfaceError='';cancel(false);editor.teacherLesson();keyboardFields();refresh();};
 element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();positionOptions();keyboardFields();refresh();};
-element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();keyboardFields();refresh();};
+element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();projectTitle.value='Untitled program';keyboardFields();refresh();};
 
 const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status');
 const fileBusy=()=>preparing||loadingProgram||!!control?.snapshot().busy;
 element('program-save').onclick=()=>{
   if(fileBusy())return;
   try{
-    const text=saveProjectFile(editor.compileProject()),url=URL.createObjectURL(new Blob([text],{type:'application/json'})),link=document.createElement('a');
-    link.href=url;link.download='nexarm-program.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    fileStatus.textContent='Program file saved. It includes the positions used by its blocks. Keep it to reload this test later.';
+    const name=projectName(projectTitle.value),text=saveProjectFile({...editor.compileProject(),name}),url=URL.createObjectURL(new Blob([text],{type:'application/json'})),link=document.createElement('a');
+    projectTitle.value=name;link.href=url;link.download=projectFilename(name);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    fileStatus.textContent=`Program file saved as ${link.download}. It includes My Blocks and the positions used by its blocks. Keep it to reload this test later.`;
   }catch(error){fileStatus.textContent=error instanceof Error?error.message:'Program could not be saved.';}
 };
 element('program-load').onclick=()=>{if(!fileBusy()){endKeyEvents();programFile.click();refresh();}};
@@ -267,7 +281,7 @@ programFile.onchange=async()=>{
   try{
     if(file.size>MAX_PROGRAM_FILE_BYTES)throw Error('Program file exceeds 256 KB.');
     const project=loadProjectFile(await file.text());if(token!==session)return;
-    editor.loadProject(project);positionOptions();keyboardFields();plan=[];rows=[];element('instructions').replaceChildren();interfaceError='';
+    editor.loadProject(project);projectTitle.value=project.name??(file.name.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');positionOptions();keyboardFields();plan=[];rows=[];element('instructions').replaceChildren();interfaceError='';
     fileStatus.textContent=project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Check, Run or Save. Its blocks and positions are preserved. Nothing has run.':'Program loaded for review. Included positions are available to its blocks; your saved-position library is unchanged. Nothing has run.';
   }catch(error){if(token===session)fileStatus.textContent=error instanceof Error?error.message:'Program could not be loaded. Existing blocks are unchanged.';}
   finally{if(token===session){loadingProgram=false;refresh();}}
@@ -307,7 +321,7 @@ window.addEventListener('keydown',event=>{
   const binding=keyHandlers.get(key);if(!binding)return;
   try{
     interfaceError='';interfaceErrorBlock=null;reviewMessage='';showPrepared(binding.result);
-    if(binding.result.steps.length)control!.runProgram(binding.handler.body);
+    if(binding.result.steps.length)control!.runProgram(executable(binding.result));
     if(binding.result.steps.length&&control!.snapshot().program?.phase==='Fault')endKeyEvents();
     refresh();
   }catch(error){endKeyEvents();interfaceError=error instanceof Error?error.message:'Key event could not run.';interfaceErrorBlock=error instanceof ProgramError?error.blockId:binding.handler.blockId;refresh();}
@@ -321,7 +335,7 @@ window.addEventListener('blur',()=>{
   spaceHeld=false;
   keyEvents.releaseAll();
   if(control?.snapshot().stopRelease?.active||control?.snapshot().recovery?.active){cancel();return;}
-  if(preparing&&editor.listStacks().some(stack=>stack.name!=='When Run clicked')){
+  if(preparing&&editor.listStacks().some(stack=>stack.kind==='key')){
     keyMessage='Keyboard preparation canceled when this window lost focus. Run program to listen again.';cancel(false);return;
   }
   if(keyEvents.active){

@@ -10,12 +10,14 @@ export type Condition = boolean
   | {kind:'logic';op:'AND'|'OR';left:Condition;right:Condition}
   | {kind:'not';value:Condition};
 export type Instruction =
+  | {kind:'call';blockId:string;name:string}
   | {kind:'move';blockId:string;servo:number;target:Numeric}
   | {kind:'pose';blockId:string;positionId:string;name:string;positions:number[];durationMs?:Numeric}
   | {kind:'wait';blockId:string;durationMs:Numeric}
   | {kind:'repeat';blockId:string;count:Numeric;body:Instruction[]}
   | {kind:'set'|'change';blockId:string;name:string;value:Numeric}
   | {kind:'if';blockId:string;branches:{condition:Condition;body:Instruction[]}[];elseBody:Instruction[]};
+export type FunctionDefinition={blockId:string;name:string;body:Instruction[]};
 export type PlannedStep=SimulationStep&{blockId:string};
 export type PreparedProgram={steps:PlannedStep[];variables:{name:string;value:number}[]};
 export class ProgramError extends Error {
@@ -80,6 +82,7 @@ export function copyInstructions(input:unknown,uniqueIds=false):Instruction[]{
         if(typeof node.blockId!=='string'||!node.blockId||node.blockId.length>200)throw Error('Program block references must be nonempty and valid.');
         blockId=node.blockId;if(uniqueIds&&ids.has(blockId))throw Error('Program block references must be unique and nonempty.');ids.add(blockId);
         switch(node.kind){
+          case 'call':return {kind:'call',blockId,name:variableName(node.name)};
           case 'coordinates':throw Error(XYZ_REMOVED_MESSAGE);
           case 'move':{
             const target=numeric(node.target,depth+1);
@@ -110,12 +113,15 @@ export function copyInstructions(input:unknown,uniqueIds=false):Instruction[]{
 }
 
 /** Pure bounded preparation. No USB, timers, browser state, or persistent values. */
-export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean}={}):PreparedProgram{
-  const instructions=copyInstructions(input),steps:PlannedStep[]=[],variables=new Map<string,number>();let visits=0,durationMs=0;
+export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;functions?:unknown}={}):PreparedProgram{
+  const instructions=copyInstructions(input),functions=copyFunctions(options.functions),steps:PlannedStep[]=[],variables=new Map<string,number>(),labels=new Map<string,string>();let visits=0,durationMs=0;
+  validateCalls([instructions],functions);
+  const definitions=new Map(functions.map(fn=>[fn.name.toLowerCase(),fn]));
+  const variableKey=(name:string)=>{const key=name.toLowerCase();if(!labels.has(key))labels.set(key,name);return key;};
   function budget(){if(++visits>10000)throw Error('Program exceeded its instruction budget. Try fewer calculations or repeats.');}
   function numeric(value:Numeric):number{
     budget();if(typeof value==='number')return value;
-    if(value.kind==='variable'){if(!variables.has(value.name))throw Error(`Set variable "${value.name}" before using it.`);return variables.get(value.name)!;}
+    if(value.kind==='variable'){const key=variableKey(value.name);if(!variables.has(key))throw Error(`Set variable "${value.name}" before using it.`);return variables.get(key)!;}
     if(value.kind==='round'){const n=numeric(value.value);return finite(value.op==='ROUND'?Math.round(n):value.op==='ROUNDUP'?Math.ceil(n):Math.floor(n));}
     const a=numeric(value.left),b=numeric(value.right);
     if(value.op==='DIVIDE'&&b===0)throw Error('Cannot divide by zero. Change the divisor.');
@@ -145,10 +151,11 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean}={
       try{
         budget();
         switch(node.kind){
-          case 'set':variables.set(node.name,numeric(node.value));break;
+          case 'call':walk(definitions.get(node.name.toLowerCase())!.body);break;
+          case 'set':variables.set(variableKey(node.name),numeric(node.value));break;
           case 'change':{
-            if(!variables.has(node.name))throw Error(`Set variable "${node.name}" before changing it.`);
-            variables.set(node.name,finite(variables.get(node.name)!+numeric(node.value)));break;
+            const key=variableKey(node.name);if(!variables.has(key))throw Error(`Set variable "${node.name}" before changing it.`);
+            variables.set(key,finite(variables.get(key)!+numeric(node.value)));break;
           }
           case 'if':{
             let body=node.elseBody;
@@ -171,5 +178,36 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean}={
   }
   walk(instructions);
   if(!steps.length&&!options.allowNoMotion)throw new ProgramError('Add a joint move, saved position, or Wait on the selected program path. Use Check program for calculations only.');
-  return {steps,variables:[...variables].map(([name,value])=>({name,value}))};
+  return {steps,variables:[...variables].map(([name,value])=>({name:labels.get(name)!,value}))};
+}
+
+export function copyFunctions(input:unknown):FunctionDefinition[]{
+  if(input===undefined)return [];
+  if(!Array.isArray(input)||input.length>16)throw Error('Use at most 16 My Blocks definitions.');
+  const names=new Set<string>();
+  return input.map(value=>{
+    const node=record(value),name=variableName(node.name),key=name.toLowerCase();
+    if(names.has(key))throw new ProgramError(`Use a unique My Block name: "${name}".`,typeof node.blockId==='string'?node.blockId:null);names.add(key);
+    if(typeof node.blockId!=='string'||!node.blockId||node.blockId.length>200)throw Error('Invalid My Block definition reference.');
+    return {blockId:node.blockId,name,body:copyInstructions(node.body,true)};
+  });
+}
+
+/** Check every branch and definition, even unused ones, before preparing motion. */
+export function validateCalls(stacks:Instruction[][],functions:FunctionDefinition[]){
+  const definitions=new Map(functions.map(fn=>[fn.name.toLowerCase(),fn]));
+  function calls(nodes:Instruction[]):Extract<Instruction,{kind:'call'}>[] {
+    return nodes.flatMap(node=>node.kind==='call'?[node]:node.kind==='repeat'?calls(node.body):node.kind==='if'?[...node.branches.flatMap(branch=>calls(branch.body)),...calls(node.elseBody)]:[]);
+  }
+  for(const nodes of [...stacks,...functions.map(fn=>fn.body)])for(const call of calls(nodes))if(!definitions.has(call.name.toLowerCase()))throw new ProgramError(`My Block "${call.name}" is missing. Define it or remove its call.`,call.blockId);
+  const depths=new Map<string,number>();
+  function visit(name:string,path:Set<string>):number{
+    const fn=definitions.get(name)!;
+    if(path.has(name))throw new ProgramError(`My Block "${fn.name}" calls itself through a cycle. Use Repeat instead of recursion.`,fn.blockId);
+    if(depths.has(name))return depths.get(name)!;
+    const next=new Set(path).add(name),depth=1+Math.max(0,...calls(fn.body).map(call=>visit(call.name.toLowerCase(),next)));
+    if(depth>12)throw new ProgramError('Use at most 12 nested My Block calls.',fn.blockId);
+    depths.set(name,depth);return depth;
+  }
+  for(const fn of functions)visit(fn.name.toLowerCase(),new Set());
 }

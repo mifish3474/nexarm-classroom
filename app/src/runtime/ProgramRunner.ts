@@ -1,5 +1,6 @@
 import { interpret } from './instructions';
 import type {Instruction,PreparedProgram} from './instructions';
+import type {FunctionDefinition} from './ProgramLanguage';
 import {ProgramError,variableName} from './ProgramLanguage';
 
 export class ProgramRunner {
@@ -11,7 +12,7 @@ export class ProgramRunner {
     clearTimeout(this.timer);
     this.reject?.(new Error('Program canceled.')); this.reject = null;
   }
-  prepare(instructions: Instruction[],allowNoMotion=false): Promise<PreparedProgram> {
+  prepare(instructions: Instruction[],allowNoMotion=false,functions:FunctionDefinition[]=[]): Promise<PreparedProgram> {
     this.cancel();
     return new Promise((resolve, reject) => {
       const worker = new Worker(new URL('./interpreter.worker.ts', import.meta.url), { type: 'module' });
@@ -37,7 +38,7 @@ export class ProgramRunner {
       };
       worker.onerror = () => { if (this.worker !== worker) return; finish(); reject(new Error('Interpreter could not start. Reload and try again.')); };
       this.timer = setTimeout(() => { finish(); reject(new Error('Program preparation timed out. Try a smaller program.')); }, 2000);
-      worker.postMessage({instructions,allowNoMotion});
+      worker.postMessage({instructions,allowNoMotion,functions});
     });
   }
 }

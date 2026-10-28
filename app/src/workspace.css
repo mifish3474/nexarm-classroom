@@ -30,3 +30,6 @@
 @keyframes tower-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @media(prefers-reduced-motion:reduce){.signal-tower[data-state=running] .tower-green{animation:none}}
 @media(max-width:850px){.workspace-status{display:grid;grid-template-columns:130px minmax(0,1fr);gap:4px 10px}.signal-tower{grid-row:span 2;min-width:0;padding-right:8px}.signal-tower svg{width:26px;height:48px}.signal-tower strong{font-size:.7rem}.signal-tower small{display:none}.workspace-status .badge{justify-self:start}.workspace-status p{min-width:0;font-size:.75rem}.workspace-status .home-cue{display:none}}
+
+.workspace-page #project-name{min-width:80px;max-width:240px;flex:1;padding:4px 8px;font-size:.85rem;height:30px;margin:0}.workspace-page .code-heading{align-items:center;padding:4px 16px}.workspace-page #function-name{width:100%;margin-top:4px}
+@media(max-width:1280px){.code-heading>span{display:none}}

@@ -1,9 +1,18 @@
-import {copyInstructions,evaluateProgram,ProgramError} from './ProgramLanguage';
-import type {Instruction} from './ProgramLanguage';
+import {copyInstructions,copyFunctions,validateCalls,evaluateProgram,ProgramError} from './ProgramLanguage';
+import type {Instruction,FunctionDefinition} from './ProgramLanguage';
 import {isEventKey,keyLabel,SPACE_RESERVED_MESSAGE} from './KeyboardEvents';
 
 export type KeyHandler={blockId:string;key:string;body:Instruction[]};
-export type ProgramProject={instructions:Instruction[];keyEvents:KeyHandler[]};
+export type ProgramProject={instructions:Instruction[];keyEvents:KeyHandler[];functions?:FunctionDefinition[];name?:string};
+
+export function projectName(value:unknown):string{
+  if(typeof value!=='string'||!value.trim()||value.trim().length>60||/[\u0000-\u001f\u007f]/.test(value))throw Error('Use a project name with 1–60 characters.');
+  return value.trim();
+}
+export function projectFilename(name:string):string{
+  const safe=projectName(name).replace(/\.json$/i,'').replace(/[<>:"/\\|?*]/g,'-').replace(/[. ]+$/g,'').slice(0,60)||'nexarm-program';
+  return (/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(safe)?'NexArm-'+safe:safe)+'.json';
+}
 
 /** Validate a complete project before replacing the editor or enabling events. */
 export function copyProject(input:unknown,allowUnassigned=false):ProgramProject{
@@ -23,7 +32,8 @@ export function copyProject(input:unknown,allowUnassigned=false):ProgramProject{
     if(key!=='unassigned'&&keys.has(key))throw new ProgramError(`Use one When ${keyLabel(key)} pressed stack. Combine its blocks into one sequence.`,event.blockId);
     keys.add(key);return {blockId:event.blockId,key,body:copyInstructions(event.body,true)};
   });
-  const result={instructions,keyEvents},ids=new Set<string>(),names=new Set<string>();let nodes=0;
+  const functions=copyFunctions(project.functions);
+  const result:ProgramProject={instructions,keyEvents,...(functions.length?{functions}:{}),...(project.name!==undefined?{name:projectName(project.name)}:{})},ids=new Set<string>(),names=new Set<string>();let nodes=0;
   function visit(value:unknown){
     if(!value||typeof value!=='object')return;
     if(++nodes>1000)throw Error('Program project is too large.');
@@ -34,7 +44,8 @@ export function copyProject(input:unknown,allowUnassigned=false):ProgramProject{
     Object.values(node).forEach(visit);
   }
   visit(result);if(names.size>32)throw Error('Use at most 32 variables across the project.');
-  if(instructions.length)evaluateProgram(instructions,{allowNoMotion:true});
-  for(const handler of keyEvents)if(handler.body.length)evaluateProgram(handler.body,{allowNoMotion:true});
+  validateCalls([instructions,...keyEvents.map(handler=>handler.body)],functions);
+  if(instructions.length)evaluateProgram(instructions,{allowNoMotion:true,functions});
+  for(const handler of keyEvents)if(handler.body.length)evaluateProgram(handler.body,{allowNoMotion:true,functions});
   return result;
 }

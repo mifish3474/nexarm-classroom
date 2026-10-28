@@ -1,4 +1,16 @@
-# Classroom programming development preview 0.7.0-dev.56
+# Classroom programming development preview 0.7.0-dev.57
+
+## Project names and bounded My Blocks
+
+Dev.57 adds an editable project name above the code. Local JSON files retain the name; the download uses a filesystem-safe filename, with older-file fallback to its filename. Loading remains transactional and does not connect or move hardware.
+
+My Blocks reuse Blockly core procedure definitions/callers and rename synchronization. A filtered dynamic toolbox offers no-return, no-parameter sequences, plus accessible Define/Call actions and selectable definition bodies in Add blocks to. Shared numeric variables are case-insensitive across function bodies. Parameters, returns and local scope remain deferred.
+
+The data-only instruction language adds named calls and up to 16 definitions. All call references and the complete definition graph are checked, including unused branches; missing definitions, recursion and more than 12 nested calls are rejected. Worker evaluation expands calls under existing calculation, 100-step and 60-second budgets. Only the checked concrete movement plan reaches the existing controller, including key-event activation. Function bodies retain their block IDs for highlighting. Files with functions use schema 4; legacy formats 1-3 remain supported. No new hardware behavior, firmware or motion settings are introduced.
+
+Validation: build/type-check and all 382 unit tests pass. All 90 Chrome browser cases pass across the full regression run (88 passing) and targeted corrections for compact layout and case-insensitive variable display (2 passing). Checks cover creating/renaming calls, nested definitions, embedded position snapshots, filenames, legacy files, key activation, invalid targets, Home recovery and Stop. Browser USB is mocked; no physical robot was commanded. Layout checks cover five screen sizes, including a narrow phone view. Root `index.html` is unchanged.
+
+See [My Blocks](./MY_BLOCKS.md) for use and limits.
 
 ## Deliberate Restore & Return Home
 

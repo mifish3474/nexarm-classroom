@@ -58,6 +58,49 @@ async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[])
  await expect(page.locator('#program-file-status')).toContainText('loaded for review');
 }
 
+test('students name files and define, reuse, rename and reload My Blocks without connecting',async({page})=>{
+ await station(page);const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.getByRole('textbox',{name:'Project name',exact:true}).fill('Sorting challenge');
+ await openDetails(page,'#add-block-menu');await page.locator('#function-name').fill('Pause');await page.getByRole('button',{name:'Define My Block',exact:true}).click();
+ await clickControl(page,'Add wait block');await openDetails(page,'#add-block-menu');await page.locator('#program-stack').selectOption({label:'When Run clicked'});await page.getByRole('button',{name:'Add My Block call',exact:true}).click();
+ await openDetails(page,'#add-block-menu');await page.getByRole('button',{name:'Add My Block call',exact:true}).click();await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('2 planned moves/waits');
+ await page.clock.runFor(100);await page.locator('.procedures_defnoreturn .blocklyText').filter({hasText:/^Pause$/}).dblclick();await page.locator('.blocklyHtmlInput').fill('Short pause');await page.locator('.blocklyHtmlInput').press('Enter');await page.clock.runFor(100);
+ const downloading=page.waitForEvent('download');await clickControl(page,'Save program');const file=await downloading;expect(file.suggestedFilename()).toBe('Sorting challenge.json');
+ const text=await readFile((await file.path())!,'utf8'),data=JSON.parse(text);expect(data.schemaVersion).toBe(4);expect(data.name).toBe('Sorting challenge');expect(data.functions).toHaveLength(1);expect(data.functions[0].name).toBe('Short pause');expect(data.instructions.map((node:{name:string})=>node.name)).toEqual(['Short pause','Short pause']);
+ await clickControl(page,'New empty program');await expect(page.locator('#project-name')).toHaveValue('Untitled program');await page.locator('#program-file').setInputFiles({name:'renamed-download.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#project-name')).toHaveValue('Sorting challenge');
+ await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('2 planned moves/waits');expect(await writes(page)).toHaveLength(0);expect(errors).toEqual([]);
+ await page.getByRole('treeitem',{name:'My Blocks',exact:true}).click();await expect(page.locator('.blocklyFlyout').getByText('Short pause',{exact:true})).toBeVisible();
+});
+
+test('function calls run joint plans through Run and keyboard events, with Space canceling later calls',async({page})=>{
+ await station(page);
+ const project={format:'nexarm-classroom-program',schemaVersion:4,name:'Functions on the robot',instructions:[{kind:'call',blockId:'startup-call',name:'Wave'}],keyEvents:[{blockId:'key',key:'a',body:[{kind:'call',blockId:'key-call',name:'Wave'}]}],functions:[{blockId:'wave',name:'Wave',body:[{kind:'move',blockId:'out',servo:1,target:2130},{kind:'wait',blockId:'pause',durationMs:1000},{kind:'move',blockId:'back',servo:1,target:2050}]}]};
+ await page.locator('#program-file').setInputFiles({name:'functions.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await connect(page);await clickControl(page,'Run program');await page.clock.runFor(4000);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');expect((await writes(page)).some(b=>b[2]===1&&b[7]!+256*b[8]===2130)).toBe(true);
+ const before=(await writes(page)).length;await page.keyboard.press('a');await page.clock.runFor(1300);expect((await writes(page)).length).toBeGreaterThan(before);await page.keyboard.press('Space');await page.clock.runFor(600);await expect(page.locator('#state')).toHaveText('Release sent');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');const stopped=(await writes(page)).length;await page.clock.runFor(4000);expect(await writes(page)).toHaveLength(stopped);await clickControl(page,'Disconnect robot');
+});
+
+test('recursive or missing My Blocks and invalid function targets prevent movement and preserve loaded work',async({page})=>{
+ await station(page);await clickControl(page,'Add wait block');await page.locator('#project-name').fill('Keep this');
+ for(const body of [[{kind:'call',blockId:'recursive',name:'Loop'}],[{kind:'call',blockId:'missing',name:'Unknown'}]]){
+  await page.locator('#program-file').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:4,instructions:[{kind:'call',blockId:'call',name:'Loop'}],keyEvents:[],functions:[{blockId:'loop',name:'Loop',body}]}))});await expect(page.locator('#program-file-status')).not.toContainText('loaded for review');await expect(page.locator('#project-name')).toHaveValue('Keep this');
+ }
+ await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('1 planned moves/waits');
+ await page.locator('#program-file').setInputFiles({name:'out-of-range.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:4,instructions:[{kind:'call',blockId:'call',name:'Bad target'}],keyEvents:[],functions:[{blockId:'bad',name:'Bad target',body:[{kind:'move',blockId:'move',servo:3,target:1900}]}]}))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await connect(page);await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('outside');expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+});
+
+test('My Blocks preserve saved position snapshots across export and loading on another browser session',async({page})=>{
+ await seedPositions(page);await station(page);await openDetails(page,'#add-block-menu');await page.locator('#function-name').fill('Pickup');await page.getByRole('button',{name:'Define My Block',exact:true}).click();await selectPosition(page,'pickup');await clickControl(page,'Add position block');await openDetails(page,'#add-block-menu');await page.locator('#program-stack').selectOption({label:'When Run clicked'});await page.getByRole('button',{name:'Add My Block call',exact:true}).click();
+ const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(text).functions[0].body[0].positions).toEqual([2130,2230,2180,2280,2080,1160]);
+ await page.evaluate(()=>localStorage.clear());await page.reload();await page.locator('#program-file').setInputFiles({name:'pickup.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('1 planned moves/waits');await expect(page.locator('#instructions')).toContainText('Pickup');expect(await writes(page)).toHaveLength(0);
+});
+
+test('nested My Blocks load with shared variables and no phantom definitions or duplicate callers',async({page})=>{
+ await station(page);
+ const project={format:'nexarm-classroom-program',schemaVersion:4,instructions:[{kind:'set',blockId:'set',name:'count',value:0},{kind:'call',blockId:'start-call',name:'Twice'}],keyEvents:[],functions:[{blockId:'twice',name:'Twice',body:[{kind:'call',blockId:'one',name:'Increment'},{kind:'call',blockId:'two',name:'Increment'}]},{blockId:'increment',name:'Increment',body:[{kind:'change',blockId:'change',name:'COUNT',value:1},{kind:'wait',blockId:'w',durationMs:100}]}]};
+ await page.locator('#program-file').setInputFiles({name:'Nested.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#project-name')).toHaveValue('Nested');await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('2 planned moves/waits');await expect(page.locator('#variable-values')).toHaveText(/count = 2/i);
+ const downloading=page.waitForEvent('download');await clickControl(page,'Save program');const data=JSON.parse(await readFile((await (await downloading).path())!,'utf8'));expect(data.functions).toHaveLength(2);expect(data.functions.map((fn:{name:string})=>fn.name)).toEqual(['Twice','Increment']);expect(await writes(page)).toHaveLength(0);
+});
+
 async function moveReportedPose(page:Page,offset=100){
  await page.evaluate(offset=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;const home=[2050,2150,2100,2200,2000,1080];home.forEach((value,i)=>{s.positions[i]=value+offset;s.targets[i]=value+offset;});},offset);await page.clock.runFor(300);
 }
@@ -321,7 +364,7 @@ test('an unsuccessful Home return faults without starting block 1 or retrying',a
 test('program save/load restores loops and joint values without movement and malformed files preserve the editor',async({page})=>{
  await station(page);await clickControl(page,'Reload lesson');await page.getByText('Program steps and keyboard editing',{exact:true}).click();
  await page.getByRole('spinbutton',{name:/repeat count/}).fill('3');await page.getByRole('spinbutton',{name:/repeat count/}).dispatchEvent('change');
- const download=page.waitForEvent('download');await clickControl(page,'Save program');const file=await download;expect(file.suggestedFilename()).toBe('nexarm-program.json');
+ const download=page.waitForEvent('download');await clickControl(page,'Save program');const file=await download;expect(file.suggestedFilename()).toBe('Untitled program.json');
  const text=await readFile((await file.path())!,'utf8');expect(JSON.parse(text).instructions.some((node:{kind:string;count:number})=>node.kind==='repeat'&&node.count===3)).toBe(true);
  await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'sample.json',mimeType:'application/json',buffer:Buffer.from(text)});
  await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.getByRole('spinbutton',{name:/repeat count/})).toHaveValue('3');expect(await writes(page)).toHaveLength(0);

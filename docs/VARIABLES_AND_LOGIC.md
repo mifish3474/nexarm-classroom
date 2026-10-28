@@ -1,5 +1,8 @@
 # Variables, math and conditionals: dev.49
 
+Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
+program variables and work from Run or key events. Earlier phase notes below are historical.
+
 Open the classroom page and confirm **0.7.0-dev.49**. The toolbox now has Motion,
 Control, Math, Logic and Variables categories. Click a category to open its
 palette. New and loaded programs close the palette so the code stays visible.

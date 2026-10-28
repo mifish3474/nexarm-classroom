@@ -31,8 +31,7 @@ export function loadProgramFile(text:string):Instruction[]{
 
 export function saveProjectFile(input:ProgramProject):string{
   const project=copyProject(input);
-  if(!project.keyEvents.length)return saveProgramFile(project.instructions);
-  const text=JSON.stringify({format:'nexarm-classroom-program',schemaVersion:3,...project},null,2);
+  const text=JSON.stringify({format:'nexarm-classroom-program',schemaVersion:project.functions?.length?4:project.keyEvents.length?3:2,...project},null,2);
   if(new TextEncoder().encode(text).length>MAX_PROGRAM_FILE_BYTES)throw Error('Program file exceeds 256 KB.');
   return text;
 }
@@ -43,6 +42,9 @@ export function loadProjectFile(text:string):ProgramProject{
   if(!data||typeof data!=='object'||Array.isArray(data))throw Error('Choose a NexArm program file.');
   const file=data as Record<string,unknown>;
   // Preserve old Space stacks for editing, without silently rebinding to a new key.
-  if(file.format==='nexarm-classroom-program'&&file.schemaVersion===3)return copyProject(file,true);
-  return {instructions:loadProgramFile(text),keyEvents:[]};
+  if(file.format==='nexarm-classroom-program'&&[3,4].includes(file.schemaVersion as number)){
+    if(file.schemaVersion===3&&file.functions!==undefined)throw Error('My Blocks require program file version 4.');
+    return copyProject(file,true);
+  }
+  return copyProject({instructions:loadProgramFile(text),keyEvents:[],...(file.name!==undefined?{name:file.name}:{})},true);
 }

@@ -1,5 +1,8 @@
 # Keyboard events: dev.56
 
+Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
+program variables and work from Run or key events. Earlier phase notes below are historical.
+
 [Restore & Return Home](./HOME_RECOVERY.md) restores holding and deliberately moves Home.
 Use **Hold current position** when teaching a pose without returning Home. Neither resumes a program.
 

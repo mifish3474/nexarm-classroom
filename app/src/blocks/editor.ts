@@ -2,7 +2,7 @@ import * as Blockly from 'blockly/core';
 import * as English from 'blockly/msg/en';
 import 'blockly/blocks';
 import type {Instruction,Numeric} from '../runtime/instructions';
-import {ProgramError} from '../runtime/ProgramLanguage';
+import {ProgramError,variableName} from '../runtime/ProgramLanguage';
 import type {NamedPosition} from '../poses/NamedPositions';
 import {programInstructions} from '../runtime/ProgramFile';
 import {copyProject} from '../runtime/ProgramProject';
@@ -13,6 +13,10 @@ import {inputBlock,numericBlock,conditionBlock,variableLabel,milliseconds,second
 const messages:Record<string,string>={};
 for(const [key,value] of Object.entries(English))if(typeof value==='string')messages[key]=value;
 Blockly.setLocale(messages);
+// Blockly's existing procedure naming, callers, and rename synchronization.
+// This first classroom version uses shared variables, without parameters/returns.
+const procedure=Blockly.Blocks['procedures_defnoreturn']!,procedureInit=procedure.init;
+Blockly.Blocks['procedures_defnoreturn']={...procedure,init:function(this:Blockly.Block){procedureInit.call(this);this.removeIcon(Blockly.icons.MutatorIcon.TYPE);this.setTooltip('Define a reusable sequence. It runs only when called. Uses shared program variables.');}};
 // Use Blockly's variable editors with numeric-only values in this first phase.
 for(const type of ['variables_get','variables_set']){
   const original=Blockly.Blocks[type]!,standard=original.init;
@@ -58,9 +62,15 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       {kind:'category',name:'Math',colour:'#5965a5',contents:[{kind:'block',type:'math_number'},{kind:'block',type:'math_arithmetic',inputs:{A:numberInput(0),B:numberInput(0)}},{kind:'block',type:'math_round',inputs:{NUM:numberInput(0)}}]},
       {kind:'category',name:'Logic',colour:'#3d7694',contents:[{kind:'block',type:'logic_compare',inputs:{A:numberInput(0),B:numberInput(0)}},{kind:'block',type:'logic_operation'},{kind:'block',type:'logic_negate'},{kind:'block',type:'logic_boolean'}]},
       {kind:'category',name:'Variables',colour:'#985082',custom:'VARIABLE'},
+      {kind:'category',name:'My Blocks',colour:'#995ba5',custom:'CLASSROOM_PROCEDURES'},
     ]},
     trashcan:true,scrollbars:true,zoom:{controls:true,wheel:false,startScale:.85},
   });
+  const definitions=()=>workspace.getTopBlocks(false).filter(block=>block.type==='procedures_defnoreturn');
+  workspace.registerToolboxCategoryCallback('CLASSROOM_PROCEDURES',()=>[
+    {kind:'block',type:'procedures_defnoreturn'},
+    ...definitions().map(block=>({kind:'block',type:'procedures_callnoreturn',extraState:{name:String(block.getFieldValue('NAME'))}})),
+  ]);
   new ResizeObserver(()=>Blockly.svgResize(workspace)).observe(container);
   const newProgram=()=>{
     Blockly.serialization.workspaces.load({blocks:{languageVersion:0,blocks:[{type:'lesson_start',x:20,y:24}]}},workspace);
@@ -72,8 +82,10 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     if(workspace.getAllBlocks(false).filter(block=>!block.isShadow()).length>100)throw new ProgramError('Use at most 100 blocks, including calculations.');
     if(workspace.getVariableMap().getAllVariables().length>32)throw new ProgramError('Use at most 32 variables.');
     const roots=workspace.getTopBlocks(false);
-    const starts=roots.filter(block=>block.type==='lesson_start'),events=roots.filter(block=>block.type==='lesson_key');
-    if(starts.length!==1||starts.length+events.length!==roots.length)throw new ProgramError('Connect blocks beneath When Run clicked or a When key pressed event.');
+    const starts=roots.filter(block=>block.type==='lesson_start'),events=roots.filter(block=>block.type==='lesson_key'),functions=definitions();
+    if(starts.length!==1||starts.length+events.length+functions.length!==roots.length)throw new ProgramError('Connect blocks beneath When Run clicked, a When key pressed event, or a My Block definition.');
+    if(functions.length>16)throw new ProgramError('Use at most 16 My Blocks definitions.');
+    for(const fn of functions)if(!fn.isEnabled())throw new ProgramError('Remove or enable disabled My Blocks before running.',fn.id);
     if(events.length>16)throw new ProgramError('Use at most 16 keyboard event stacks.');
     const keys=new Set<string>();
     for(const event of events){
@@ -90,6 +102,10 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
         if(!block.isEnabled())throw new ProgramError('Remove or enable disabled blocks before running.',block.id);
         const blockId=block.id,n=(name:string)=>numericBlock(inputBlock(block!,name));
         switch(block.type){
+          case 'procedures_callnoreturn':{
+            if(block.getInput('ARG0'))throw new ProgramError('My Blocks use shared variables; parameters are not supported yet.',blockId);
+            nodes.push({kind:'call',blockId,name:String(block.getFieldValue('NAME'))});break;
+          }
           case 'lesson_move':nodes.push({kind:'move',blockId,servo:Number(block.getFieldValue('SERVO')),target:n('TARGET')});break;
           case 'lesson_wait':nodes.push({kind:'wait',blockId,durationMs:milliseconds(n('SECONDS'))});break;
           case 'lesson_repeat':nodes.push({kind:'repeat',blockId,count:n('COUNT'),body:chain(block.getInputTargetBlock('BODY'),depth+1)});break;
@@ -109,17 +125,20 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       }
       return nodes;
     }
-    return {instructions:chain(starts[0]!.getNextBlock()),keyEvents:events.map(event=>({blockId:event.id,key:String(event.getFieldValue('KEY')),body:chain(event.getNextBlock())}))};
+    return {instructions:chain(starts[0]!.getNextBlock()),keyEvents:events.map(event=>({blockId:event.id,key:String(event.getFieldValue('KEY')),body:chain(event.getNextBlock())})),...(functions.length?{functions:functions.map(fn=>({blockId:fn.id,name:variableName(fn.getFieldValue('NAME')),body:chain(fn.getInputTargetBlock('STACK'))}))}:{})};
   };
   const append=(type:string,fields:State['fields']={},inputs:State['inputs']={},extraState?:unknown)=>{
     const roots=workspace.getTopBlocks(false);
-    const selected=roots.find(block=>block.id===appendTargetId&&['lesson_start','lesson_key'].includes(block.type))??roots.find(block=>block.type==='lesson_start');
+    const selected=roots.find(block=>block.id===appendTargetId&&['lesson_start','lesson_key','procedures_defnoreturn'].includes(block.type))??roots.find(block=>block.type==='lesson_start');
     if(!selected)throw new ProgramError('Choose a When Run clicked or key-event stack first.');
-    let last=selected;while(last.getNextBlock())last=last.getNextBlock()!;
+    const first=selected.type==='procedures_defnoreturn'?selected.getInputTargetBlock('STACK'):selected.getNextBlock();
+    let last=first;while(last?.getNextBlock())last=last.getNextBlock()!;
     Blockly.Events.setGroup(true);
     try{
       const state:State={type,fields,inputs};if(extraState)state.extraState=extraState;
-      const block=Blockly.serialization.blocks.append(state,workspace,{recordUndo:true});last.nextConnection!.connect(block.previousConnection!);
+      const block=Blockly.serialization.blocks.append(state,workspace,{recordUndo:true});
+      const connection=last?.nextConnection??(selected.type==='procedures_defnoreturn'?selected.getInput('STACK')!.connection:selected.nextConnection);
+      connection!.connect(block.previousConnection!);
     }finally{Blockly.Events.setGroup(false);}
   };
   const loadProject=(input:ProgramProject)=>{
@@ -137,6 +156,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       for(const node of [...nodes].reverse()){
         let state:State;
         switch(node.kind){
+          case 'call':state={type:'procedures_callnoreturn',extraState:{name:node.name}};break;
           case 'move':state={type:'lesson_move',fields:{SERVO:String(node.servo)},inputs:{TARGET:value(node.target)}};break;
           case 'pose':state={type:'lesson_pose',fields:{POSITION:poseId(node)},inputs:{SECONDS:value(seconds(node.durationMs??1000))}};break;
           case 'wait':state={type:'lesson_wait',inputs:{SECONDS:value(seconds(node.durationMs))}};break;
@@ -154,7 +174,12 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       return next;
     }
     try{
-      programPositions=loaded;const next=chain(instructions);
+      programPositions=loaded;
+      for(const [i,fn] of (project.functions??[]).entries()){
+        const body=chain(fn.body);
+        Blockly.serialization.blocks.append({type:'procedures_defnoreturn',id:fn.blockId,fields:{NAME:fn.name},x:640+(i%2)*300,y:24+Math.floor(i/2)*260,...(body?{inputs:{STACK:{block:body}}}:{})},stage);
+      }
+      const next=chain(instructions);
       const root:State={type:'lesson_start',x:20,y:24,deletable:false,...(next?{next:{block:next}}:{})};
       Blockly.serialization.blocks.append(root,stage);
       project.keyEvents.forEach((event,i)=>{
@@ -189,8 +214,17 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     try{const block=Blockly.serialization.blocks.append({type:'lesson_key',fields:{KEY:'a'},x:20+(index%2)*300,y:24+Math.floor(index/2)*260},workspace,{recordUndo:true});appendTargetId=block.id;}
     finally{Blockly.Events.setGroup(false);}
   };
-  const listStacks=()=>workspace.getTopBlocks(false).filter(block=>['lesson_start','lesson_key'].includes(block.type)).map(block=>({id:block.id,name:block.type==='lesson_start'?'When Run clicked':`When ${keyLabel(String(block.getFieldValue('KEY')))} pressed`}));
-  return {workspace,compile:()=>compileProject().instructions,compileProject,lesson,teacherLesson,logicLesson,loadProgram,loadProject,newProgram,listPositions:allPositions,addKeyEvent,listStacks,
+  const listFunctions=()=>definitions().map(block=>({id:block.id,name:String(block.getFieldValue('NAME'))}));
+  const addFunction=(name:string)=>{
+    const label=variableName(name.trim());if(definitions().length>=16)throw new ProgramError('Use at most 16 My Blocks definitions.');
+    if(listFunctions().some(fn=>fn.name.toLowerCase()===label.toLowerCase()))throw new ProgramError('Choose a unique My Block name.');
+    Blockly.Events.setGroup(true);
+    try{const block=Blockly.serialization.blocks.append({type:'procedures_defnoreturn',fields:{NAME:label},x:360,y:24+definitions().length*140},workspace,{recordUndo:true});appendTargetId=block.id;workspace.centerOnBlock(block.id);}
+    finally{Blockly.Events.setGroup(false);}
+  };
+  const listStacks=()=>workspace.getTopBlocks(false).filter(block=>['lesson_start','lesson_key','procedures_defnoreturn'].includes(block.type)).map(block=>({id:block.id,kind:block.type==='lesson_start'?'start':block.type==='lesson_key'?'key':'function',name:block.type==='lesson_start'?'When Run clicked':block.type==='lesson_key'?`When ${keyLabel(String(block.getFieldValue('KEY')))} pressed`:`Define ${String(block.getFieldValue('NAME'))}`}));
+  return {workspace,compile:()=>compileProject().instructions,compileProject,lesson,teacherLesson,logicLesson,loadProgram,loadProject,newProgram,listPositions:allPositions,addKeyEvent,listStacks,listFunctions,addFunction,
+    addFunctionCall:(name:string)=>{if(!listFunctions().some(fn=>fn.name===name))throw new ProgramError('Define a My Block first.');append('procedures_callnoreturn',{}, {},{name});},
     appendTarget:()=>listStacks().some(stack=>stack.id===appendTargetId)?appendTargetId:listStacks().find(stack=>stack.name==='When Run clicked')?.id??'',
     selectAppendTarget:(id:string)=>{if(!listStacks().some(stack=>stack.id===id))throw new ProgramError('Choose a program stack.');appendTargetId=id;},
     refreshPositions:()=>{
