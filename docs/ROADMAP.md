@@ -4,6 +4,12 @@ Updated 2026-10-28.
 
 ## Current safety usability step
 
+Dev.54's immediate release failed physically despite a successful write status.
+Dev.55 restores the hardware-tested post-hold feedback gate while retaining Stop/
+Space integration, adds honest Release sent status and permits explicit manual
+All Off retry. Verify recovery on hardware before any further timing reduction;
+USB write completion cannot substitute for device execution or torque feedback.
+
 The operator confirms the dev.53 stop/release test works. Dev.54 integrates it
 into coding Stop/Space and setup Stop motion, removing the three-reading wait.
 Release follows the completed hold USB write with fresh feedback. Validate the

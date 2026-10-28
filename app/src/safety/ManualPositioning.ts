@@ -39,7 +39,9 @@ export class ManualPositioning {
     this.phase = 'Release enabled'; this.message = 'Release enabled. Support the arm before the separate Release action; it can fall when holding is removed.';
   }
   begin(action: 'release' | 'restore', at: number, positions: readonly number[]) {
-    if (action === 'release' ? this.phase !== 'Release enabled' : !['Manual setup','Recovery required'].includes(this.phase)) throw new Error('Manual setup action is not available.');
+    // All Off is an explicit idempotent retry when a prior write was sent but
+    // physical release was not observed. Never silently restore holding to retry.
+    if (action === 'release' ? !['Release enabled','Manual setup'].includes(this.phase) : !['Manual setup','Recovery required'].includes(this.phase)) throw new Error('Manual setup action is not available.');
     this.phase = action === 'release' ? 'Release pending' : 'Restore pending';
     this.pendingSince = at;
     this.message = `${action === 'release' ? 'Release' : 'Restore'} requested. Physical holding state is unverified.`;

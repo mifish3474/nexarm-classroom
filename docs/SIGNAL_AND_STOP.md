@@ -1,7 +1,7 @@
-# Signal tower and Stop: dev.54
+# Signal tower and Stop: dev.55
 
-The operator confirmed the dev.53 fast-hold-then-release test works. Dev.54 makes
-that sequence the normal **Stop button** and **Spacebar** action on the coding
+The operator confirmed the dev.53 fast-hold-then-release test works. Dev.55 retains
+that sequence as the normal **Stop button** and **Spacebar** action on the coding
 page. **Stop motion** on the sliders/setup page uses it too. The separate test
 button is removed.
 
@@ -11,17 +11,23 @@ button is removed.
    listening. No later program action resumes automatically.
 2. Submit the proven six-joint hold at **speed 600 / acceleration 100**, taking
    priority after an already-active USB write.
-3. As soon as the hold stream write completes, send factory **All Off** once,
-   provided the connection is still valid and position feedback is fresh.
+3. After the hold stream write completes, collect three new strong-checksum
+   position reports spanning at least 150 ms with no more than nine raw units
+   of spread on any joint. Send factory **All Off** once after those readings.
 
-There is **no added delay or three-reading settling wait** between the hold
-write and release. The normal half-second command interval does not apply to
-this sequence. A completed USB write is not proof that the arm has physically
-stopped before release. The shortened response needs an operator hardware check.
-Support the arm, which can sag when holding releases.
+The zero-gap dev.54 version reported release sent but did not physically release
+on the arm. Dev.55 restores the post-hold gate that worked in dev.53, with Stop
+integration retained. This normally adds a few tenths of a second. The exact
+firmware cause is not confirmed; host write completion does not establish that
+the controller has finished processing a command batch. The normal half-second
+command interval is bypassed, but the feedback gate is not. Support the arm,
+which can sag when holding releases.
 
-Repeated Stop presses are combined while the sequence runs. If holding is already
-released, another Stop does not issue another command or restore holding. Use
+Repeated Stop presses are combined while the sequence runs. If release was already
+requested, another Stop does not assume physical release or restore holding.
+If the arm still holds after Release sent, use **Release holding** to send All Off
+again; the button becomes available after the normal command interval. This
+explicit retry sends no position goal and never enables torque. Use
 **Restore holding** deliberately, with support maintained, before another Run.
 There is no new Enable or confirmation step, and Restore never resumes a program.
 
@@ -62,22 +68,24 @@ not holding force, clearance, pinch detection or verified physical standstill.
 
 ## Hardware check
 
-1. Refresh and confirm **0.7.0-dev.54**. Connect with the arm stationary, supported,
+1. Refresh and confirm **0.7.0-dev.55**. Connect with the arm stationary, supported,
    and the gripper empty.
-2. Click **Stop**. Expect a fast hold followed promptly by Release command sent /
-   Released. Observe actual release while maintaining support.
+2. Click **Stop**. Expect a fast hold, a short Waiting for steady readings phase, then
+   Release sent. That label describes a USB write, not measured holding. Observe
+   actual release while maintaining support.
 3. Click **Restore holding**, wait for fresh readiness, and check that it holds
    before removing support. Nothing should resume on its own.
 4. Repeat with **Space** during an already-tested movement, with support and the
-   sweep clear. Observe whether the shorter interval changes the stop/release
-   response. End the check if motion is unexpected; do not restrain a joint.
+   sweep clear. Observe the restored stop/release response. End the check if
+   motion is unexpected; do not restrain a joint.
 5. Export robot diagnostics before closing the page if anything differs from
    expectations. Report the delay and any sag, twitch, or backward correction.
 
 In the export, diagnostics.stopping retains hold-request/write timing and bounded
 post-stop readings. diagnostics.stopThenRelease reports holdWriteFinishedAtMs,
 releaseSubmittedAtMs, releaseFinishedAtMs, the phase and the policy
-immediately-after-hold-write. These help separate host delay from physical
+post-hold-steady-feedback, with the selected post-hold samples.
+These help separate host delay from physical
 behavior; they do not certify stopping time or confirm torque state.
 
 ## Existing keyboard programs

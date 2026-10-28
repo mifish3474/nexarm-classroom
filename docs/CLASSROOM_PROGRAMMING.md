@@ -1,12 +1,11 @@
-# Programming development test: dev.54
+# Programming development test: dev.55
 
 Stop and Space now cancel the program, send the proven fast hold, and release
-all six servos immediately after that USB write completes with fresh feedback.
+all six servos after fresh, steady post-hold readings.
 The separate test button is removed. Support the arm and Restore holding before
 another Run; nothing resumes automatically. Disconnect/focus/error cancellation
 does not add release. See [Signal tower and Stop](./SIGNAL_AND_STOP.md) for the
-shortened-sequence hardware check and timing diagnostics. Physical stopping is
-not verified by USB completion. Normal movement profiles are unchanged.
+restored-sequence hardware check and timing diagnostics. Neither physical stopping nor release is verified by USB completion. Normal movement profiles are unchanged.
 
 [Keyboard events](./KEYBOARD_EVENTS.md) adds separate When key pressed stacks.
 Run starts listening after checking every stack; Stop ends it. Add block's

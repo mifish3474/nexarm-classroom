@@ -1,10 +1,11 @@
-# Robot setup control testing: 0.7.0-dev.54
+# Robot setup control testing: 0.7.0-dev.55
 
 Stop motion now sends the fast hold, then releases all six servos as soon as
-the hold write completes with fresh feedback. Support the arm and Restore servo
+fresh post-hold feedback becomes steady. Support the arm and Restore servo
 holding before another move. This is the same sequence as coding-page Stop/Space.
-There is no three-reading wait or separate test button. Disconnect and faults
-do not add release. Check the shorter physical response using the guide below.
+The hardware-tested three-reading gate is restored; the separate test button
+stays removed. Disconnect and faults do not add release. Check the restored
+physical response using the guide below.
 
 Stop motion now shares the approved fast-hold profile (600/100) with the coding
 page. A pending Stop takes priority after the current USB write; it does not

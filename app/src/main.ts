@@ -90,7 +90,7 @@ function refresh(){
 
   const technicalStatus=robot?`${robot.connectionState} · ${robot.armed?'Robot enabled':'Robot disabled'} · ${robot.message}`:'Disconnected.';
   if(element('robot-status').textContent!==technicalStatus)element('robot-status').textContent=technicalStatus;
-  const state=preparing?'Preparing':loadingProgram?'Loading':!robot?'Disconnected':robot.connectionState!=='Listening'?robot.connectionState:robot.manualPhase!=='Normal'?(robot.manualPhase==='Manual setup'?'Released':robot.manualPhase):robot.program?.phase??(robot.canMove?'Ready':'Reading positions');
+  const state=preparing?'Preparing':loadingProgram?'Loading':!robot?'Disconnected':robot.connectionState!=='Listening'?robot.connectionState:robot.manualPhase!=='Normal'?(robot.manualPhase==='Manual setup'?'Release sent':robot.manualPhase):robot.program?.phase??(robot.canMove?'Ready':'Reading positions');
   element('state').textContent=state;
   if(robot?.stopRelease?.active)element('state').textContent=robot.stopRelease.phase;
   if(live&&robot?.operation==='Saved position'&&robot.connectionState==='Listening'&&robot.manualPhase==='Normal')element('state').textContent=robot.home?.phase??state;

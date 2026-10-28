@@ -1,4 +1,33 @@
-# Classroom programming development preview 0.7.0-dev.54
+# Classroom programming development preview 0.7.0-dev.55
+
+## Restore the hardware-tested release gate
+
+The operator reports dev.54 still holds the servos while displaying a successful
+release write and no error. That evidence means the browser write path completed;
+it does not establish device execution. The zero-gap change is reverted to the
+dev.53 gate: hold write completion, then three new strong-checksum samples over
+at least 150 ms with spread <=9 on each joint, within a two-second window. Stop/
+Space and setup Stop motion retain integration and fast hold priority. The exact
+firmware/timing cause remains unconfirmed; no experimental packets or retries are
+sent automatically. Earlier dev.54 timing assertions below are superseded.
+
+The UI and sequence diagnostic now say Release sent, not Released, and explicitly
+mark physicalReleaseVerified=false. Manual All Off can be explicitly retried from
+Manual setup, without sending All On or a new joint goal. The durable interlock,
+feedback/write gates and Restore-before-Run workflow remain. Reload recovery is
+unchanged. Retry is idempotent at the command level, not proof of a physical effect.
+
+Browser regression models now distinguish a successful host write from device
+execution: one modeled controller ignores All Off too close to the hold batch;
+another ignores the first release write. Tests check the real simulated holding
+state, command spacing and explicit retry, not just the page's status label.
+
+Validation: build/type-check and all 361 unit tests pass. All 59 classroom/setup
+browser cases pass across the regression and targeted timing-assertion update;
+the targeted run also passes layout and read-only diagnostic/version checks.
+The device-busy/ignored-command cases are models, not measurements or proof of
+the installed firmware's cause. No physical robot was commanded. Hardware
+verification of the restored integrated sequence is still required.
 
 ## Operator Stop integrates prompt release
 

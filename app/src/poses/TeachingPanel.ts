@@ -48,6 +48,7 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     moveButtons.forEach(({button,issue})=>{button.disabled=!!issue||isPreparing||!state?.canMove;button.title=issue||state?.reason||'Send all six targets at speeds up to 600, acceleration 10. Completes on frame time; inspect live readings.';});
     addButtons.forEach(button=>button.disabled=isPreparing||!!state?.busy);
     node<HTMLButtonElement>('teach-release').disabled=isPreparing||!state?.canRelease;
+    node('teach-release').title=state?.manualPhase==='Manual setup'?'Release was requested but physical holding is not measured. Support the arm and click to send Release again.':'Support the arm before releasing holding.';
     node<HTMLButtonElement>('teach-restore').disabled=isPreparing||!state?.canRestore;
     node<HTMLButtonElement>('pose-record').disabled=isPreparing||!state?.canCapture||!saved.canAdd||!name.value.trim();
     const text=state?.manualPhase==='Normal'?(state.feedbackFresh?'Record a stationary pose, or Release to position by hand.':'Waiting for fresh joint readings.'):state?`${state.manualPhase}: ${state.manualMessage}${state.manualReason?` ${state.manualReason}`:''}`:'Connect for joint readings and position teaching.';

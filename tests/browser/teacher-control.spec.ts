@@ -64,7 +64,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.54');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.55');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeEnabled(); await ready(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {
@@ -101,7 +101,7 @@ test('Home dispatches all targets within 600 and reports elapsed time without cl
 test('Stop releases a long gripper return and Restore permits another Home without reconnecting',async({page})=>{
   await robot(page,[2050,2150,2100,2200,2000,2050]);await connect(page);await ready(page);
   await expect(page.locator('#teacher-home-preview')).toContainText('1 joints differ');await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(100);
-  await page.getByRole('button',{name:'Stop motion'}).click();const count=(await writes(page)).length;await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(count);
+  await page.getByRole('button',{name:'Stop motion'}).click();await page.clock.runFor(600);const count=(await writes(page)).length;await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(count);
   await expect(page.locator('#teacher-status')).toContainText('Listening');
   await expect(page.getByRole('button',{name:'Servo 1 minus 20',exact:true})).toBeDisabled();await page.getByRole('button',{name:'Restore servo holding'}).click();await page.clock.runFor(1400);await ready(page);await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(130000);
   await expect(page.locator('#teacher-home-status')).toContainText('Complete');await expect(page.locator('[data-servo-value="6"]')).toHaveText('1085');

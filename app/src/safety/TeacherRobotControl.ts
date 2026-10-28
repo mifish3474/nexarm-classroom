@@ -25,7 +25,7 @@ const STOP_SPEED=600,STOP_ACCELERATION=100,STOP_WRITE_DEADLINE_MS=2000;
 const PROGRAM_HOME_TOLERANCE=40,PROGRAM_HOME_GRACE_MS=2000;
 type WriteDiagnostic={atMs:number;operation:Operation|null;bytes:number[];positions:number[]|null;finishedAtMs:number|null;outcome:'not-submitted'|'pending'|'stream-write-resolved'|'stream-write-rejected'};
 type StopDiagnostic={requestedAtMs:number;submittedAtMs:number|null;finishedAtMs:number|null;servos:number[];targets:number[]|null;feedbackAgeAtSendMs:number|null;outcome:'waiting-for-writer'|'submitted'|'stream-write-resolved'|'unavailable'|'canceled';message:string;feedback:{atMs:number;positions:number[]}[]};
-type StopRelease={generation:number;requestedAtMs:number;hold:StopDiagnostic;phase:'Stopping'|'Release pending'|'Released'|'Canceled'|'Fault';releaseSubmittedAtMs:number|null;releaseFinishedAtMs:number|null;message:string};
+type StopRelease={generation:number;requestedAtMs:number;hold:StopDiagnostic;phase:'Stopping'|'Waiting for steady readings'|'Release pending'|'Release sent'|'Canceled'|'Fault';deadlineMs:number|null;samples:{atMs:number;positions:number[]}[];releaseSubmittedAtMs:number|null;releaseFinishedAtMs:number|null;message:string};
 
 // Teacher-only direct controls. All jog, Home, and holding writes pass through
 // the same executor and exclusive USB lease. Live dragging retains only the
@@ -50,7 +50,7 @@ export class TeacherRobotControl {
   private stops:StopDiagnostic[]=[];
   private stopObservation:StopDiagnostic|null=null;
   private stopRelease:StopRelease|null=null;
-  private get stopReleaseActive(){return !!this.stopRelease&&['Stopping','Release pending'].includes(this.stopRelease.phase);}
+  private get stopReleaseActive(){return !!this.stopRelease&&['Stopping','Waiting for steady readings','Release pending'].includes(this.stopRelease.phase);}
   private lastCommandAt = -Infinity;
   private generation = 0;
   private writeStartedAt=-Infinity;
@@ -230,7 +230,7 @@ export class TeacherRobotControl {
       manualPhase: this.options.directSession&&this.manual.phase==='Confirm holding'?'Restore settling':this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
       feedbackFresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.receivedAt<=500,
       canCapture:captureReason===null,captureReason,
-      canRelease: this.manual.phase === 'Normal' && idle === null,
+      canRelease: ['Normal','Manual setup'].includes(this.manual.phase) && idle === null,
       canRestore: ['Manual setup', 'Recovery required'].includes(this.manual.phase) && idle === null,
       canConfirmHolding: ['Confirm holding', 'Recovery required'].includes(this.manual.phase) && idle === null};
   }
@@ -420,6 +420,8 @@ export class TeacherRobotControl {
       this.positions = positions; this.reportedPose=decodeReportedPose(frame); this.receivedAt = at;
       const stop=this.stopObservation;
       if(stop&&at-(stop.submittedAtMs??stop.requestedAtMs)<=2000&&stop.feedback.length<40)stop.feedback.push({atMs:at,positions:[...positions]});
+      const release=this.stopRelease;
+      if(release?.phase==='Waiting for steady readings'&&at>(release.hold.finishedAtMs??Infinity))release.samples=[...release.samples,{atMs:at,positions:[...positions]}].slice(-3);
       if (this.route?.phase === 'Running') {
         this.route.observe(positions, at);
         const phase = this.route.status().phase;
@@ -544,11 +546,11 @@ export class TeacherRobotControl {
     } else if(moving.length)this.message='Future commands canceled. Hold not sent because connection or servo holding is unavailable; use the physical cutoff if needed.';
     this.changed();
   }
-  /** Operator-approved Stop/Space: fast hold followed immediately by All Off. */
+  /** Operator Stop/Space uses the hardware-tested post-hold feedback gate. */
   stopThenRelease(){
     if(this.stopReleaseActive)return;
     if(this.connectionState==='Listening'&&this.manual.phase==='Manual setup'&&!this.writeInFlight){
-      this.message='Holding is already released. Support the arm and use Restore holding before Run.';this.changed();return;
+      this.message='A release command was sent; physical holding is not measured. If the arm still holds, support it and use Release holding to send it again.';this.changed();return;
     }
     if(this.connectionState!=='Listening'||!this.visible()||this.writeUncertain||this.manual.blocked||!this.positions||this.now()-this.receivedAt>500){
       this.stop();this.message+=' No new release command was sent; check holding and the connection.';this.changed();return;
@@ -556,7 +558,7 @@ export class TeacherRobotControl {
     const requestedAtMs=this.now();this.requestStop(true);
     const hold=this.pendingStop?.diagnostic??this.stopObservation;
     if(!hold||['unavailable','canceled'].includes(hold.outcome)){this.message+=' Release was not scheduled.';this.changed();return;}
-    this.stopRelease={generation:this.generation,requestedAtMs,hold,phase:'Stopping',releaseSubmittedAtMs:null,releaseFinishedAtMs:null,message:'Fast hold requested; release follows its completed USB write. Support the arm.'};
+    this.stopRelease={generation:this.generation,requestedAtMs,hold,phase:'Stopping',deadlineMs:null,samples:[],releaseSubmittedAtMs:null,releaseFinishedAtMs:null,message:'Fast hold requested; waiting for new steady readings before release. Support the arm.'};
     this.recordEvent('stop-release-requested',this.stopRelease.message);this.message=this.stopRelease.message;
     this.progressStopRelease();this.changed();
   }
@@ -574,17 +576,21 @@ export class TeacherRobotControl {
     if(release.phase==='Stopping'){
       if(['unavailable','canceled'].includes(release.hold.outcome)){this.cancelStopRelease('Fast hold was not completed.');return;}
       if(release.hold.outcome!=='stream-write-resolved'||release.hold.finishedAtMs===null)return;
+      release.phase='Waiting for steady readings';release.deadlineMs=release.hold.finishedAtMs+2000;
+      this.message=release.message='Fast hold sent. Waiting for fresh, steady readings before release. Support the arm.';
     }
-    if(!this.positions||this.now()-this.receivedAt>500){this.cancelStopRelease('Position feedback is stale.');return;}
+    if(this.now()>=release.deadlineMs!||!this.positions||this.now()-this.receivedAt>500){this.cancelStopRelease('Fresh, steady readings were not received in time.');return;}
     if(this.writeInFlight)return;
+    const samples=release.samples;
+    if(samples.length!==3||samples[2]!.atMs-samples[0]!.atMs<150||samples[0]!.atMs<this.now()-1000||this.positions.some((_,i)=>Math.max(...samples.map(sample=>sample.positions[i]!))-Math.min(...samples.map(sample=>sample.positions[i]!))>9))return;
     try{
       // Persist the ordinary holding-recovery interlock before sending All Off.
       this.manual.enable();this.manual.begin('release',this.now(),this.positions!);
       this.armed=false;release.phase='Release pending';const submittedAtMs=this.now();
-      this.message=release.message='Fast hold write completed. Release requested; support the arm.';
+      this.message=release.message='Post-hold steady readings observed. Release requested; support the arm.';
       this.write(encodeFactoryHolding(false),()=>{
         this.lastMovingServos=[];this.timedHoldServos=[];this.manual.sent('release',this.positions??[]);
-        release.phase='Released';this.message=release.message='Release command sent. Keep the arm supported. Use Restore holding before Run; nothing resumes automatically.';this.changed();
+        release.phase='Release sent';this.message=release.message='Release command sent; physical release is not confirmed. Keep supporting the arm. If it still holds, use Release holding to retry. Restore holding before Run.';this.changed();
       },true);
       if(!this.writeInFlight)return;
       release.releaseSubmittedAtMs=submittedAtMs;this.recordEvent('stop-release-submitted',release.message);
@@ -604,7 +610,7 @@ export class TeacherRobotControl {
       operatingRanges:{source:'Operator-provided factory-software ranges, adjusted during development; 2026-10-23',protectedStudentPolicy:false,joints:OPERATING_RANGES.map((range,i)=>({servo:i+1,...range}))},
       diagnostics:{clock:'page monotonic milliseconds',state:this.connectionState,message:this.message,feedbackAgeMs:Number.isFinite(this.receivedAt)?this.now()-this.receivedAt:null,
         stopping:{speed:STOP_SPEED,acceleration:STOP_ACCELERATION,physicalStoppingVerified:false,pending:!!this.pendingStop,attempts:this.stops.map(stop=>({...stop,servos:[...stop.servos],targets:stop.targets?[...stop.targets]:null,feedback:stop.feedback.map(sample=>({...sample,positions:[...sample.positions]}))}))},
-        stopThenRelease:this.stopRelease?{requestedAtMs:this.stopRelease.requestedAtMs,phase:this.stopRelease.phase,message:this.stopRelease.message,holdRequestedAtMs:this.stopRelease.hold.requestedAtMs,holdWriteFinishedAtMs:this.stopRelease.hold.finishedAtMs,releaseSubmittedAtMs:this.stopRelease.releaseSubmittedAtMs,releaseFinishedAtMs:this.stopRelease.releaseFinishedAtMs,releasePolicy:'immediately-after-hold-write',physicalStoppingVerified:false}:null,
+        stopThenRelease:this.stopRelease?{requestedAtMs:this.stopRelease.requestedAtMs,phase:this.stopRelease.phase,message:this.stopRelease.message,holdRequestedAtMs:this.stopRelease.hold.requestedAtMs,holdWriteFinishedAtMs:this.stopRelease.hold.finishedAtMs,releaseSubmittedAtMs:this.stopRelease.releaseSubmittedAtMs,releaseFinishedAtMs:this.stopRelease.releaseFinishedAtMs,releasePolicy:'post-hold-steady-feedback',physicalStoppingVerified:false,physicalReleaseVerified:false,samples:this.stopRelease.samples.map(sample=>({...sample,positions:[...sample.positions]}))}:null,
         writePending:this.writeInFlight,powerAndTorqueState:'not measured',
         writes:this.writes.map(entry=>({...entry,bytes:[...entry.bytes],positions:entry.positions?[...entry.positions]:null})),
         events:this.events.map(entry=>({...entry,positions:entry.positions?[...entry.positions]:null}))},
