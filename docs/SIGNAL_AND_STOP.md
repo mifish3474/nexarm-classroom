@@ -1,93 +1,89 @@
-# Signal tower and Space stop: dev.52
+# Signal tower and Stop: dev.54
 
-Dev.52 enables the operator-approved faster-stop test: **speed 600 / acceleration
-100** for Stop's measured-position hold. Ordinary motion still uses its previous
-settings. This is a stopping-response experiment, not a measured stopping-time
-guarantee. Servo holding is retained; no Release or Restore is sent.
+The operator confirmed the dev.53 fast-hold-then-release test works. Dev.54 makes
+that sequence the normal **Stop button** and **Spacebar** action on the coding
+page. **Stop motion** on the sliders/setup page uses it too. The separate test
+button is removed.
 
-The coding page has a fixed industrial signal-tower graphic beside the program
-status. It works offline, has text labels, and stays visible above the code.
+## What Stop now does
+
+1. Cancel preparation, the program/Home return, pending slider targets and key
+   listening. No later program action resumes automatically.
+2. Submit the proven six-joint hold at **speed 600 / acceleration 100**, taking
+   priority after an already-active USB write.
+3. As soon as the hold stream write completes, send factory **All Off** once,
+   provided the connection is still valid and position feedback is fresh.
+
+There is **no added delay or three-reading settling wait** between the hold
+write and release. The normal half-second command interval does not apply to
+this sequence. A completed USB write is not proof that the arm has physically
+stopped before release. The shortened response needs an operator hardware check.
+Support the arm, which can sag when holding releases.
+
+Repeated Stop presses are combined while the sequence runs. If holding is already
+released, another Stop does not issue another command or restore holding. Use
+**Restore holding** deliberately, with support maintained, before another Run.
+There is no new Enable or confirmation step, and Restore never resumes a program.
+
+A failed/expired write, stale feedback, lost connection or lifecycle cancellation
+prevents an unsent release from being replayed later. If release is unavailable,
+Stop still cancels the program and attempts its existing hold where possible;
+read the status rather than assuming holding released. A release already sent
+cannot be recalled. The durable holding-recovery record is saved before All Off,
+so reload/interrupted USB cannot silently authorize movement.
+
+## Explicit Stop versus leaving the page
+
+Only an explicit Stop/Space or setup Stop motion requests this combined sequence.
+Disconnect, page hiding, errors, and existing focus-loss cancellation do not add
+release. They can cancel a release that has not been sent. Reconnecting, opening
+a file, Check, ordinary program completion, and Restore never start a release
+or resume a program. Diagnostic and legacy commissioning pages retain their own
+read-only/cancellation controls.
+
+Space works only when the coding page receives the key. While a program or key
+session is active, it takes priority over fields, menus and modifiers. Idle text
+entry still accepts ordinary spaces. Holding/releasing Space never repeats or
+restarts code. It is not a computer-wide shortcut; the physical power cutoff
+remains the independent option taught in the classroom safety lesson.
+
+## Signal tower
 
 | Appearance | Software activity |
 | --- | --- |
 | Pulsing green | Program or saved-position motion running, including Home and Wait |
-| Steady amber | Listening for programmed keys, checking a program, or holding needs attention; read the label |
-| Steady red | Stop requested or a robot fault; read the status message |
+| Steady amber | Listening for keys, checking, or holding needs attention; read the label |
+| Steady red | Stop requested or a fault; read status and holding recovery instructions |
 | Gray | Idle, connecting, or disconnected; read the label |
 
-The pulse is slow (one cycle per 1.5 seconds). With the system's reduced-motion
-preference enabled, running uses steady green. Colors are accompanied by words.
-The tower reports application state; it does not measure holding force or prove
-that a physical joint has stopped. Red says **Stop requested**, not “safe.”
-
-## Space means Stop
-
-On the focused coding page, **Space** uses the same stop operation as the Stop
-button. It cancels preparation, Home, the current sequence, and further keyboard
-events. Where fresh readings and the USB writer permit it, the controller
-requests a fast hold at the latest measured positions. It sends no automatic Release
-or Restore command. A joint already moving may not stop immediately; read the
-status message if a hold could not be sent. The physical power cutoff remains
-available as taught in the classroom safety lesson.
-
-If a USB write is already active, one priority stop request waits for that write
-to finish, then submits the hold immediately using the newest available readings.
-It bypasses the normal command interval. Repeated Stop presses do not duplicate
-the pending hold or restart the original movement. No new movement/Release/Restore
-can start while it waits. A failed write, the existing two-second write deadline,
-stale readings at transmission, disconnect, or a holding-state change prevents
-the pending hold from being replayed later. The page reports that condition.
-Disconnecting while waiting cancels the pending hold; use Space/Stop while staying
-connected for this hardware check.
-
-During a program or active keyboard session, Space takes priority even over text
-fields, Blockly fields, menus, and modifier combinations. At idle you can still
-type spaces in a position name or other text field. Space on a focused Run or
-other control button stops instead of activating that button while connected.
-Holding Space does not repeatedly send stop requests. Run and position/holding
-actions remain disabled while the consumed Space press is held. Releasing it
-does not resume anything or activate a button; deliberately use Run again.
-
-This shortcut belongs to the coding page. It is not a computer-wide hotkey, and
-does not control another browser tab, the factory app, or the separate setup
-pages. If the browser/USB cannot respond, use the physical cutoff. No background
-keyboard hook or logging is added. Space does not provide pinch detection.
-
-## Existing keyboard programs
-
-Space is no longer offered as an event key. New key hats default to **A**.
-Arrows, letters, and digits remain available. Old format-3 programs with Space
-hats load with their code and saved-position snapshots preserved, but those hats
-show **Choose key (Space is Stop)**. Choose an explicit replacement key in each
-hat. Check, Run and Save explain the correction until all hats have valid keys.
-The app does not silently choose a replacement that might trigger movement.
+The fixed local SVG has text labels. Its slow 1.5-second pulse becomes steady
+green with the system reduced-motion preference. It reports application state,
+not holding force, clearance, pinch detection or verified physical standstill.
 
 ## Hardware check
 
-1. Refresh the coding page and confirm **0.7.0-dev.52**. Save your current work.
-2. Connect with the arm clear for the existing Home return. Start with a program
-   containing only a several-second Wait. Run should show pulsing green,
-   including during Home if needed. Press Space: the program should stop, the
-   tower turn red, and holding remain enabled. No Release/Restore is needed.
-3. Release Space. Nothing should restart. Use Run deliberately for another trial.
-   Repeat with an existing, already-tested movement program and stop it early
-   in a clear part of its path. Verify its later actions do not execute. Observe
-   whether stopping is quicker and whether there is a small backward correction
-   or a jerk as the measured-position hold takes over. End the check if motion
-   is unexpected; do not repeat an uncomfortable stopping response.
-4. For key events, Run an A-key stack. Amber means listening; an accepted A press
-   turns it green until completion, then amber again. Space ends the session and
-   turns it red. Pressing A afterward must do nothing until another Run.
-5. Export robot diagnostics after the stop, before closing the page. Under
-   `diagnostics.stopping`, each bounded record includes request/submission/write
-   completion times, held joints, the selected position readings and their age,
-   and up to two seconds of subsequent feedback (at most 40 samples). The regular
-   events log also records the time from Stop to hold submission. Stream write
-   completion is not an acknowledgment of physical stopping; these observations
-   help distinguish host delay from joint response, not certify a stopping time.
+1. Refresh and confirm **0.7.0-dev.54**. Connect with the arm stationary, supported,
+   and the gripper empty.
+2. Click **Stop**. Expect a fast hold followed promptly by Release command sent /
+   Released. Observe actual release while maintaining support.
+3. Click **Restore holding**, wait for fresh readiness, and check that it holds
+   before removing support. Nothing should resume on its own.
+4. Repeat with **Space** during an already-tested movement, with support and the
+   sweep clear. Observe whether the shorter interval changes the stop/release
+   response. End the check if motion is unexpected; do not restrain a joint.
+5. Export robot diagnostics before closing the page if anything differs from
+   expectations. Report the delay and any sag, twitch, or backward correction.
 
-Do not restrain or pinch-test a powered joint for this check. This update leaves
-ordinary movement speeds/acceleration, joint ranges, Home and firmware unchanged.
-Only the Stop hold uses the new 600/100 profile and priority submission.
-Automatic stop-then-release is
-the separate next investigation, subject to observation and approval.
+In the export, diagnostics.stopping retains hold-request/write timing and bounded
+post-stop readings. diagnostics.stopThenRelease reports holdWriteFinishedAtMs,
+releaseSubmittedAtMs, releaseFinishedAtMs, the phase and the policy
+immediately-after-hold-write. These help separate host delay from physical
+behavior; they do not certify stopping time or confirm torque state.
+
+## Existing keyboard programs
+
+Space stays reserved for Stop. Arrows, letters and digits remain programmable.
+Old Space hats load as Choose key (Space is Stop), preserving code and used pose
+snapshots. Assign a replacement before Check, Run or Save. No automatic binding,
+key logging, upload, custom firmware, motion-profile change or automatic holding
+restoration is introduced by this update.

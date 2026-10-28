@@ -45,6 +45,64 @@ const dispatchPose=async(f:ReturnType<typeof fixture>,positions:readonly number[
   for(let i=0;i<5;i++){await f.feed(f.time()+2,positions);f.control.tick();await flush();}
 };
 
+describe('operator Stop and immediate release',()=>{
+ const program=[{kind:'move',blockId:'first',servo:1,target:2700},{kind:'move',blockId:'later',servo:2,target:2400}];
+ it('sends one six-joint fast hold and one All Off at the hold completion without waiting for another reading',async()=>{
+  const f=fixture({directSession:true});await f.ready();f.control.stopThenRelease();f.control.stopThenRelease();await flush();
+  expect(f.writes).toHaveLength(2);expect(f.writes[0]!.bytes).toHaveLength(84);expect(f.writes[0]!.bytes[6]).toBe(100);expect(f.writes[1]!.bytes).toEqual([255,255,255,3,61,0,192]);
+  expect(f.writes[1]!.at).toBe(f.writes[0]!.at);expect(f.control.snapshot().stopRelease?.phase).toBe('Released');expect(f.control.snapshot().manualPhase).toBe('Manual setup');expect(f.control.snapshot().canMove).toBe(false);
+  expect(JSON.parse(f.stored.get(MANUAL_STATE_KEY)!).requiresHoldingVerification).toBe(true);
+  expect(f.control.report().diagnostics.stopThenRelease).toMatchObject({requestedAtMs:1100,holdWriteFinishedAtMs:1100,releaseSubmittedAtMs:1100,releaseFinishedAtMs:1100,releasePolicy:'immediately-after-hold-write',physicalStoppingVerified:false});
+  await f.window(1200);f.control.tick();expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
+ });
+ it('requires deliberate Restore, then permits another Run without Enable or auto-resume',async()=>{
+  const f=fixture({directSession:true});await f.ready();f.control.runProgram(program);await flush();f.control.stopThenRelease();await flush();expect(f.writes).toHaveLength(3);
+  await f.feed(1700);f.control.setHolding(true,true);await flush();await f.window(1800);f.control.tick();expect(f.control.snapshot().canMove).toBe(true);expect(f.writes).toHaveLength(4);expect(f.control.snapshot().program?.phase).toBe('Stopped');
+  f.control.runProgram(program);await flush();expect(f.writes).toHaveLength(5);expect(f.writes[4]!.bytes[6]).toBe(10);f.control.disconnect();await flush();
+ });
+ it('waits for the original and hold writes, then releases immediately rather than waiting for settling',async()=>{
+  const f=fixture({directSession:true,hangWrites:[1,2]});await f.ready();f.control.runProgram(program);await flush();f.control.stopThenRelease();await f.feed(1300);expect(f.writes).toHaveLength(1);
+  f.finish();await flush();expect(f.writes).toHaveLength(2);const actual=[...TEACHER_HOME];actual[0]+=80;await f.feed(1400,actual);f.finish();await flush();
+  expect(f.writes).toHaveLength(3);expect(f.writes[2]!.at).toBe(1400);expect(f.writes[2]!.bytes[4]).toBe(61);expect(f.control.snapshot().stopRelease?.phase).toBe('Released');f.control.disconnect();await flush();
+ });
+ it('cancels release when feedback becomes stale during the hold write and does not replay after feedback returns',async()=>{
+  const f=fixture({directSession:true,hangWrites:[1]});await f.ready();f.control.stopThenRelease();await flush();f.setTime(1800);f.finish();await flush();
+  expect(f.writes).toHaveLength(1);expect(f.control.snapshot().stopRelease?.phase).toBe('Canceled');await f.window(1900);f.control.tick();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it.each(['cancel','disconnect','hide','stream loss'])('lifecycle %s cancels an unsent release rather than adding release',async action=>{
+  const f=fixture({directSession:true,hangWrites:[1]});await f.ready();f.control.stopThenRelease();await flush();
+  if(action==='cancel')f.control.stop();else if(action==='disconnect')f.control.disconnect();else if(action==='hide'){f.hide();f.control.tick();}else f.endStream();
+  await flush();f.finish();await flush();expect(f.writes).toHaveLength(1);expect(f.control.snapshot().stopRelease?.phase).toBe('Canceled');f.control.disconnect();await flush();
+ });
+ it('never releases after a failed or late fast-hold write',async()=>{
+  const f=fixture({directSession:true,reject:true});await f.ready();f.control.stopThenRelease();await flush();expect(f.writes).toHaveLength(1);expect(f.control.snapshot().stopRelease?.phase).toBe('Fault');f.control.disconnect();await flush();
+  const g=fixture({directSession:true,hangWrites:[1]});await g.ready();g.control.stopThenRelease();await flush();await g.feed(3100);g.control.tick();g.finish();await flush();await g.window(3200);expect(g.writes).toHaveLength(1);expect(g.control.snapshot().stopRelease?.phase).toBe('Fault');g.control.disconnect();await flush();
+ });
+ it('persists recovery before release and sends no All Off if storage fails',async()=>{
+  const f=fixture({directSession:true,storageFails:true});await f.ready();f.control.stopThenRelease();await flush();expect(f.writes).toHaveLength(1);expect(f.control.snapshot().stopRelease?.phase).toBe('Fault');expect(f.control.snapshot().manualPhase).toBe('Recovery required');f.control.disconnect();await flush();
+ });
+ it('does not misreport release completion when its writer cannot be acquired',async()=>{
+  const f=fixture({directSession:true});await f.ready();const original=f.port.writable.getWriter.bind(f.port.writable);vi.spyOn(f.port.writable,'getWriter').mockImplementationOnce(original).mockImplementation(()=>{throw Error('Writer locked');});
+  f.control.stopThenRelease();await flush();expect(f.writes).toHaveLength(1);expect(f.control.snapshot().stopRelease?.phase).toBe('Fault');expect(f.control.report().diagnostics.stopThenRelease).toMatchObject({releaseSubmittedAtMs:null,releaseFinishedAtMs:null});f.control.disconnect();await flush();
+ });
+ it('an interrupted Release cannot auto-restore or clear durable recovery on reload',async()=>{
+  const f=fixture({directSession:true,hangWrites:[2]});await f.ready();f.control.stopThenRelease();await flush();expect(f.control.snapshot().stopRelease?.phase).toBe('Release pending');f.control.stop();f.fail();await flush();expect(f.writes).toHaveLength(2);expect(f.control.snapshot().manualPhase).toBe('Recovery required');f.control.disconnect();await flush();
+  const g=fixture({directSession:true,stored:f.stored});await g.ready();expect(g.control.snapshot().canMove).toBe(false);expect(g.writes).toHaveLength(0);g.control.disconnect();await flush();
+ });
+ it('repeated operator Stop coalesces instead of canceling or duplicating the release',async()=>{
+  const f=fixture({directSession:true,hangWrites:[2]});await f.ready();f.control.stopThenRelease();await flush();f.control.stopThenRelease();expect(f.control.snapshot().stopRelease?.phase).toBe('Release pending');expect(f.writes).toHaveLength(2);f.finish();await flush();expect(f.control.snapshot().stopRelease?.phase).toBe('Released');f.control.disconnect();await flush();
+ });
+ it('repeated Stop after release neither sends another command nor changes the normal Restore workflow',async()=>{
+  const f=fixture({directSession:true});await f.ready();f.control.stopThenRelease();await flush();f.control.stopThenRelease();await flush();expect(f.writes).toHaveLength(2);expect(f.control.snapshot().manualPhase).toBe('Manual setup');expect(f.control.snapshot().message).toContain('already released');f.control.disconnect();await flush();
+ });
+ it('still cancels a program when release is unavailable because readings are stale',async()=>{
+  const f=fixture({directSession:true});await f.ready();f.control.runProgram(program);await flush();f.setTime(1800);f.control.stopThenRelease();await flush();expect(f.control.snapshot().program?.phase).toBe('Stopped');expect(f.writes).toHaveLength(1);await f.window(1900);f.control.tick();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it('an explicit operator Stop can release after a motion fault when communication and the new hold succeed',async()=>{
+  const f=fixture({directSession:true});await f.ready();f.control.runProgram(program);await flush();const actual=[...TEACHER_HOME];actual[0]=3900;await f.feed(1200,actual);expect(f.control.snapshot().faulted).toBe(true);f.control.stopThenRelease();await flush();expect(f.writes).toHaveLength(3);expect(f.writes[2]!.bytes[4]).toBe(61);expect(f.control.snapshot().manualPhase).toBe('Manual setup');f.control.disconnect();await flush();
+ });
+});
+
 describe('priority fast Stop',()=>{
  const program=[{kind:'move',blockId:'first',servo:1,target:2700},{kind:'move',blockId:'later',servo:2,target:2400}];
  it('uses the approved 600/100 profile immediately without changing normal movement or releasing holding',async()=>{

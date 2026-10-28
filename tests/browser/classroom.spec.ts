@@ -44,6 +44,7 @@ async function ready(page:Page){
 async function connect(page:Page){
  await clickControl(page,'Connect robot');await page.clock.runFor(1200);
 }
+async function restoreHolding(page:Page){await page.clock.runFor(600);await clickControl(page,'Restore servo holding');await page.clock.runFor(900);await ready(page);}
 async function seedPositions(page:Page){
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[
    {id:'pickup',name:'Pickup',positions:[2130,2230,2180,2280,2080,1160],capturedAt:'2026-10-23T00:00:00Z'},
@@ -56,58 +57,54 @@ async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[])
  await expect(page.locator('#program-file-status')).toContainText('loaded for review');
 }
 
-test('Space stops a running key sequence from a text field, retains holding and never repeats or resumes',async({page})=>{
- await station(page);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','disconnected');await connect(page);
- await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'out',servo:1,target:2700},{kind:'wait',blockId:'pause',durationMs:2000},{kind:'move',blockId:'back',servo:1,target:2050}]}]);
- await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','listening');
- await page.keyboard.press('a');await page.clock.runFor(200);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','running');expect(await writes(page)).toHaveLength(1);
- await page.locator('#pose-name').focus();await page.keyboard.down('Space');await page.clock.runFor(100);
- await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');await expect(page.locator('#state')).toHaveText('Stopped');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
- const stopped=await writes(page);expect(stopped).toHaveLength(2);expect(stopped[1]![7]!+256*stopped[1]![8]!).toBeLessThan(2700);
- expect(stopped[1]![6]).toBe(100);expect(stopped[1]!.slice(11,13)).toEqual([88,2]);
- expect(stopped.every(bytes=>bytes[4]!==61)).toBe(true);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{holding:boolean}}).classroomRobot.holding)).toBe(true);
- await expect(page.locator('#run')).toBeDisabled();await page.keyboard.down('Space');await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(2);
- await page.keyboard.up('Space');await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1500);expect(await writes(page)).toHaveLength(2);await ready(page);
- await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','listening');
- await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(2);
- await clickControl(page,'Disconnect robot');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','disconnected');
+test('Stop ends key events and releases immediately after its hold write, with deliberate Restore',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2700}]}]);
+ await expect(page.locator('#stop-release-test')).toHaveCount(0);await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await clickControl(page,'Stop');
+ await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');await expect(page.locator('#state')).toHaveText('Released');await expect(page.locator('#run')).toBeDisabled();expect((await writes(page)).map(bytes=>bytes[4])).toEqual([3,61]);
+ await page.clock.runFor(200);await page.locator('#keyboard-control').click();await page.keyboard.press('a');expect(await writes(page)).toHaveLength(2);await restoreHolding(page);expect(await writes(page)).toHaveLength(3);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ const download=page.waitForEvent('download');await clickControl(page,'Export robot diagnostics');const report=JSON.parse(await readFile((await (await download).path())!,'utf8'));expect(report.diagnostics.stopThenRelease).toMatchObject({phase:'Released',releasePolicy:'immediately-after-hold-write',physicalStoppingVerified:false});expect(report.diagnostics.stopThenRelease.releaseSubmittedAtMs).toBe(report.diagnostics.stopThenRelease.holdWriteFinishedAtMs);await clickControl(page,'Disconnect robot');
 });
 
-test('Space queues one fast hold behind an active USB write and exports timing and post-stop readings',async({page})=>{
- await station(page);await connect(page);await loadKeys(page,[],[{kind:'move',blockId:'first',servo:1,target:2700},{kind:'move',blockId:'later',servo:2,target:2400}]);
- await page.evaluate(()=>(window as unknown as {classroomRobot:{deferNextWrite:boolean}}).classroomRobot.deferNextWrite=true);
- await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(100);
- await page.keyboard.press('Space');await expect(page.locator('#run-status')).toContainText('Waiting for the active USB write');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');expect(await writes(page)).toHaveLength(1);
- await page.clock.runFor(100);const latest=await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];finishWrite:()=>void}}).classroomRobot;const latest=[...s.positions];s.finishWrite();return latest;});
- await expect(page.locator('#run-status')).toContainText('Fast hold targets sent');const commands=await writes(page);expect(commands).toHaveLength(2);expect(commands[1]![6]).toBe(100);expect(commands[1]!.slice(11,13)).toEqual([88,2]);expect(commands[1]![7]!+256*commands[1]![8]!).toBe(latest[0]);
- await page.clock.runFor(600);const downloaded=page.waitForEvent('download');await clickControl(page,'Export robot diagnostics');const report=JSON.parse(await readFile((await (await downloaded).path())!,'utf8'));
- const stop=report.diagnostics.stopping.attempts[0];expect(stop.submittedAtMs-stop.requestedAtMs).toBe(100);expect(stop.outcome).toBe('stream-write-resolved');expect(stop.feedback.length).toBeGreaterThan(0);expect(report.diagnostics.stopping).toMatchObject({speed:600,acceleration:100,physicalStoppingVerified:false});
- await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(2);await expect(page.locator('#state')).toHaveText('Stopped');await clickControl(page,'Disconnect robot');
+for(const action of ['blur','disconnect'])test(action+' cancels an unsent release without adding release on its own',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[],[{kind:'move',blockId:'move',servo:1,target:2700},{kind:'move',blockId:'later',servo:2,target:2400}]);
+ await page.evaluate(()=>(window as unknown as {classroomRobot:{deferNextWrite:boolean}}).classroomRobot.deferNextWrite=true);await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await clickControl(page,'Stop');
+ if(action==='blur')await page.evaluate(()=>dispatchEvent(new Event('blur')));else await clickControl(page,'Disconnect robot');
+ await page.evaluate(()=>(window as unknown as {classroomRobot:{finishWrite:()=>void}}).classroomRobot.finishWrite());await page.clock.runFor(1000);const commands=await writes(page);expect(commands.every(bytes=>bytes[4]!==61)).toBe(true);
+ if(action==='blur'){await ready(page);await clickControl(page,'Disconnect robot');}
 });
 
-test('Space stops Home and waits, and cannot activate a focused Run button on key release',async({page})=>{
- await station(page);await connect(page);await loadKeys(page,[],[{kind:'wait',blockId:'pause',durationMs:2000},{kind:'move',blockId:'after',servo:1,target:2500}]);
- await page.locator('#run').focus();await page.keyboard.press('Space');await page.clock.runFor(600);expect(await writes(page)).toHaveLength(0);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');
- await page.locator('#pose-name').fill('Pick');await page.locator('#pose-name').press('End');await page.keyboard.type(' up');await expect(page.locator('#pose-name')).toHaveValue('Pick up');
- await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(500);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','running');
- await page.locator('#pose-name').focus();await page.keyboard.press('Shift+Space');await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(0);await expect(page.locator('#state')).toHaveText('Stopped');
- await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;s.positions.forEach((n,i)=>{s.positions[i]=n+100;s.targets[i]=n+100;});});await page.clock.runFor(600);
- await clickControl(page,'Run program');await page.clock.runFor(100);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','running');await expect(page.locator('#run-status')).toContainText('Home');
- await page.keyboard.press('Space');await page.clock.runFor(4000);await expect(page.locator('#state')).toHaveText('Stopped');expect((await writes(page)).length).toBeLessThanOrEqual(2);await clickControl(page,'Disconnect robot');
+test('stale feedback during a delayed hold cancels release without replay on fresh readings',async({page})=>{
+ await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{deferNextWrite:boolean}}).classroomRobot.deferNextWrite=true);await clickControl(page,'Stop');
+ await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=true);await page.clock.runFor(800);await page.evaluate(()=>(window as unknown as {classroomRobot:{finishWrite:()=>void}}).classroomRobot.finishWrite());
+ await expect(page.locator('#run-status')).toContainText('No release command sent');expect(await writes(page)).toHaveLength(1);await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=false);await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(1);await clickControl(page,'Disconnect robot');
 });
 
-test('Space cancels pending preparation before late results can move or arm keys',async({page})=>{
- await page.addInitScript(()=>{
-  const NativeWorker=Worker;
-  window.Worker=class extends NativeWorker{
-   override postMessage(message:unknown){setTimeout(()=>super.postMessage(message),500);}
-  } as typeof Worker;
- });
- await station(page);await connect(page);await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2700}]}],[{kind:'move',blockId:'startup',servo:1,target:2600}]);
- await page.locator('#run').evaluate(button=>{(button as HTMLButtonElement).click();});
- await expect(page.locator('#state')).toHaveText('Preparing');
- await page.keyboard.press('Space');await page.clock.runFor(2000);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
- expect(await writes(page)).toHaveLength(0);await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+test('Space stops and releases from a field, never repeats held keys, and requires Restore before Run',async({page})=>{
+ await station(page);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','disconnected');await connect(page);await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'out',servo:1,target:2700},{kind:'move',blockId:'back',servo:1,target:2050}]}]);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.keyboard.press('a');await page.clock.runFor(200);await page.locator('#pose-name').focus();await page.keyboard.down('Space');await page.clock.runFor(100);
+ await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');await expect(page.locator('#state')).toHaveText('Released');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');const commands=await writes(page);expect(commands).toHaveLength(3);expect(commands[1]![6]).toBe(100);expect(commands[1]!.slice(11,13)).toEqual([88,2]);expect(commands[2]![4]).toBe(61);expect(commands[2]![5]).toBe(0);
+ await page.keyboard.down('Space');await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(3);await expect(page.locator('#run')).toBeDisabled();await page.keyboard.up('Space');await page.locator('#keyboard-control').click();await page.keyboard.press('a');expect(await writes(page)).toHaveLength(3);
+ await restoreHolding(page);expect(await writes(page)).toHaveLength(4);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');await clickControl(page,'Disconnect robot');
+});
+
+test('Space prioritizes its hold after a busy writer, then releases without any settling delay',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[],[{kind:'move',blockId:'first',servo:1,target:2700},{kind:'move',blockId:'later',servo:2,target:2400}]);await page.evaluate(()=>(window as unknown as {classroomRobot:{deferNextWrite:boolean}}).classroomRobot.deferNextWrite=true);
+ await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(100);await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(1);await page.clock.runFor(100);
+ const latest=await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];finishWrite:()=>void}}).classroomRobot;const latest=[...s.positions];s.finishWrite();return latest;});await expect(page.locator('#state')).toHaveText('Released');const commands=await writes(page);expect(commands).toHaveLength(3);expect(commands[1]![7]!+256*commands[1]![8]!).toBe(latest[0]);expect(commands[2]![4]).toBe(61);
+ await page.clock.runFor(600);const downloaded=page.waitForEvent('download');await clickControl(page,'Export robot diagnostics');const report=JSON.parse(await readFile((await (await downloaded).path())!,'utf8'));expect(report.diagnostics.stopThenRelease.releaseSubmittedAtMs-report.diagnostics.stopThenRelease.holdWriteFinishedAtMs).toBe(0);expect(report.diagnostics.stopping.attempts[0].submittedAtMs-report.diagnostics.stopping.attempts[0].requestedAtMs).toBe(100);await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(3);await clickControl(page,'Disconnect robot');
+});
+
+test('Space releases during Home and waits and cannot activate a focused Run button on keyup',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[],[{kind:'wait',blockId:'pause',durationMs:2000},{kind:'move',blockId:'after',servo:1,target:2500}]);await page.locator('#run').focus();await page.keyboard.press('Space');await expect(page.locator('#state')).toHaveText('Released');expect(await writes(page)).toHaveLength(2);
+ await page.locator('#pose-name').fill('Pick');await page.locator('#pose-name').press('End');await page.keyboard.type(' up');await expect(page.locator('#pose-name')).toHaveValue('Pick up');await restoreHolding(page);
+ await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(500);await page.locator('#pose-name').focus();await page.keyboard.press('Shift+Space');await page.clock.runFor(2500);await expect(page.locator('#state')).toHaveText('Released');expect(await writes(page)).toHaveLength(5);
+ await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;s.positions.forEach((n,i)=>{s.positions[i]=n+100;s.targets[i]=n+100;});});await restoreHolding(page);const before=(await writes(page)).length;
+ await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(100);await page.keyboard.press('Space');await page.clock.runFor(3000);await expect(page.locator('#state')).toHaveText('Released');const commands=(await writes(page)).slice(before);expect(commands.some(b=>b[2]===1&&b[7]!+256*b[8]===2500)).toBe(false);expect(commands.at(-1)![4]).toBe(61);await clickControl(page,'Disconnect robot');
+});
+
+test('Space cancels pending preparation, holds and releases, and late worker results never run blocks',async({page})=>{
+ await page.addInitScript(()=>{const NativeWorker=Worker;window.Worker=class extends NativeWorker{override postMessage(message:unknown){setTimeout(()=>super.postMessage(message),500);}} as typeof Worker;});await station(page);await connect(page);await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2700}]}],[{kind:'move',blockId:'startup',servo:1,target:2600}]);
+ await page.locator('#run').evaluate(button=>(button as HTMLButtonElement).click());await expect(page.locator('#state')).toHaveText('Preparing');await page.keyboard.press('Space');await page.clock.runFor(2000);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');await expect(page.locator('#state')).toHaveText('Released');expect(await writes(page)).toHaveLength(2);await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(2);await clickControl(page,'Disconnect robot');
 });
 
 test('old Space stacks remain editable, but cannot Check or Run until explicitly reassigned',async({page})=>{
@@ -144,7 +141,7 @@ test('key events require Run, do not queue busy presses or repeat held keys, and
 
 test('typing, modifiers and synthetic keys do not trigger motion; editing ends listening',async({page})=>{
  await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'move',blockId:'s1',servo:1,target:2130}]},{blockId:'b',key:'b',body:[{kind:'move',blockId:'s2',servo:1,target:2120}]}]);
- await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.getByRole('textbox',{name:'Position name'}).focus();await page.keyboard.type('a a');expect(await writes(page)).toHaveLength(0);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.getByRole('textbox',{name:'Position name'}).focus();await page.keyboard.type('aa');expect(await writes(page)).toHaveLength(0);
  await page.locator('#keyboard-control').click();await page.keyboard.press('Control+A');await page.keyboard.press('Shift+A');expect(await writes(page)).toHaveLength(0);
  await page.evaluate(()=>dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true})));expect(await writes(page)).toHaveLength(0);
  await clickControl(page,'Add wait block');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
@@ -172,9 +169,9 @@ test('keyboard stacks and their position snapshots save/load without connecting 
 test('faults and lost window focus cancel keyboard listening without automatic restart',async({page})=>{
  await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2130},{kind:'wait',blockId:'wait',durationMs:1000}]}]);
  await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.keyboard.press('a');await expect(page.locator('#state')).toHaveText('Running');await page.evaluate(()=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions[0]=3900);await page.clock.runFor(100);
- await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','fault');await clickControl(page,'Stop');const count=(await writes(page)).length;
+ await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','fault');await clickControl(page,'Stop');let count=(await writes(page)).length;
  await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);
- await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;const home=[2050,2150,2100,2200,2000,1080];s.positions.splice(0,6,...home);s.targets.splice(0,6,...home);});await page.clock.runFor(600);
+ await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;const home=[2050,2150,2100,2200,2000,1080];s.positions.splice(0,6,...home);s.targets.splice(0,6,...home);});await page.clock.runFor(600);await restoreHolding(page);count=(await writes(page)).length;
  await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.evaluate(()=>dispatchEvent(new Event('blur')));await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
  await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);await clickControl(page,'Disconnect robot');
 });
@@ -258,7 +255,7 @@ test('Run from a different pose returns Home before a wait block, and Stop cance
  await page.clock.runFor(1200);const commands=await writes(page);expect(commands).toHaveLength(6);expect(commands.map(b=>b[7]!+256*b[8]!)).toEqual([2050,2150,2100,2200,2000,1080]);await expect(page.locator('#run-status')).toContainText('Waiting');
  await page.clock.runFor(1200);await expect(page.locator('#state')).toHaveText('Completed');
  await moveAway();await page.clock.runFor(300);await clickControl(page,'Run program');await page.clock.runFor(100);await clickControl(page,'Stop');const count=(await writes(page)).length;
- await page.clock.runFor(4000);expect(await writes(page)).toHaveLength(count);await expect(page.locator('#state')).toHaveText('Stopped');await clickControl(page,'Disconnect robot');
+ await page.clock.runFor(4000);expect(await writes(page)).toHaveLength(count);await expect(page.locator('#state')).toHaveText('Released');await clickControl(page,'Disconnect robot');
 });
 
 test('an unsuccessful Home return faults without starting block 1 or retrying',async({page})=>{
@@ -349,8 +346,8 @@ test('endpoint-path deviations do not interrupt timed pose playback and Stop rem
  await page.clock.runFor(100);await expect(page.locator('#state')).toHaveText('Running');await expect(page.locator('#robot-status')).not.toContainText('outside its commanded path');
  await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);await ready(page);
  await expect(page.locator('.joint-card strong').first()).toHaveText('2290');
- await clickControl(page,'Stop');expect(await writes(page)).toHaveLength(13);expect((await writes(page)).at(-1)).toHaveLength(84);
- await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(13);await clickControl(page,'Disconnect robot');
+ await clickControl(page,'Stop');expect(await writes(page)).toHaveLength(14);expect((await writes(page)).at(-2)).toHaveLength(84);expect((await writes(page)).at(-1)![4]).toBe(61);
+ await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(14);await clickControl(page,'Disconnect robot');
 });
 
 test('live recording boxes show ranges beside the name and block every out-of-range or stale capture',async({page})=>{
@@ -431,7 +428,7 @@ test('Stop cancels subsequent blocks and students can recover',async({page})=>{
  await station(page);await connect(page);await ready(page);await clickControl(page,'Load short practice program');
  await clickControl(page,'Load short practice program');await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');
  await page.clock.runFor(100);await clickControl(page,'Stop');const count=(await writes(page)).length;await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(count);
- await expect(page.locator('#state')).toHaveText('Stopped');await ready(page);await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');
+ await expect(page.locator('#state')).toHaveText('Released');await restoreHolding(page);await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');
  await clickControl(page,'Disconnect robot');
 });
 test('Stop stays available after a program fault and sends a hold without resuming later blocks',async({page})=>{
@@ -441,8 +438,8 @@ test('Stop stays available after a program fault and sends a hold without resumi
  await expect(page.locator('#state')).toHaveText('Fault');await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeEnabled();
  const beforeExport=(await writes(page)).length,download=page.waitForEvent('download');await clickControl(page,'Export robot diagnostics');
  expect((await download).suggestedFilename()).toBe('nexarm-robot-diagnostics.json');expect(await writes(page)).toHaveLength(beforeExport);
- await clickControl(page,'Stop');const commands=await writes(page);expect(commands).toHaveLength(2);expect(commands[1]!.slice(11,13)).toEqual([88,2]);expect(commands[1]![6]).toBe(100);
- await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(2);await clickControl(page,'Disconnect robot');
+ await clickControl(page,'Stop');const commands=await writes(page);expect(commands).toHaveLength(3);expect(commands[1]!.slice(11,13)).toEqual([88,2]);expect(commands[1]![6]).toBe(100);expect(commands[2]![4]).toBe(61);
+ await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(3);await clickControl(page,'Disconnect robot');
 });
 
 test('stale feedback explains disabled Run and fresh feedback restores it without moving',async({page})=>{

@@ -1,6 +1,10 @@
-# Teach and use a position: dev.52
+# Teach and use a position: dev.54
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.52**, and Connect.
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.54**, and Connect.
+
+Stop and Space now send a fast hold followed promptly by release. Support the
+arm and use Restore holding before another Run; see [the hardware check](./SIGNAL_AND_STOP.md).
+The separate test button is removed; normal Release/Restore and recording remain.
 The **Positions** side panel contains Teach a position, Release holding,
 live readings and ranges, naming/Record, and Restore holding. Run and Stop
 remain in the top toolbar while you teach or scroll the saved-position list.

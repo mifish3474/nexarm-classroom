@@ -4,6 +4,18 @@ Updated 2026-10-28.
 
 ## Current safety usability step
 
+The operator confirms the dev.53 stop/release test works. Dev.54 integrates it
+into coding Stop/Space and setup Stop motion, removing the three-reading wait.
+Release follows the completed hold USB write with fresh feedback. Validate the
+shortened physical interval; USB completion does not establish standstill.
+Restore remains explicit. Lifecycle cancellation and faults do not add release.
+
+The operator reports the dev.52 fast hold dramatically improved stopping.
+Dev.53 adds an explicit Positions test: six-joint fast hold, new steady readings,
+then factory All Off. Verify stationary and supported moving-arm behavior before
+deciding whether Space should use it. Regular Space/Stop remain hold-only.
+Pinch response and physical stopping/release behavior are still unverified.
+
 Dev.52 enables the operator-approved 600/100 fast hold and priority submission
 after an active USB write. Validate physical stop response, possible position
 correction and diagnostic timing on the arm before treating it as classroom

@@ -1,4 +1,4 @@
-# Keyboard events: dev.52
+# Keyboard events: dev.54
 
 Use **When [A] pressed** to run a block sequence from a key. The same event
 hat can contain a function call when My Blocks is implemented later. Functions
@@ -6,7 +6,7 @@ are not part of this update.
 
 ## Build and check without hardware
 
-1. Confirm **0.7.0-dev.52** and save any work you want to keep.
+1. Confirm **0.7.0-dev.54** and save any work you want to keep.
 2. Open **Events** and drag a When A pressed hat into the workspace, or use
    **Add block → Add key event block**. It is a separate stack beside When Run
    clicked, not a block inside that stack.
@@ -44,7 +44,8 @@ are saved but do not listen until code is attached.
    it. Key presses while preparing, moving or unready are discarded; none are
    queued to execute later. Release and press again when ready.
 6. **Space or Stop** cancels future keyboard triggers as well as the current sequence and
-   attempts the existing measured-position holds. Run is needed to listen again.
+   sends the fast hold followed promptly by release. Support the arm and use
+   Restore holding before Run. Run is then needed to listen again.
 
 Typing in names, numbers, dropdowns, Blockly, dialogs, or editable content does
 not trigger the arm. While connected, Space on buttons is reserved for Stop.
@@ -66,7 +67,7 @@ there is no keyboard logging, upload, or persistence of listening state.
 - A program fault or disconnect ends listening. Recover using the existing
   controls, then explicitly Run again; there is no automatic retry or Enable step.
 - Losing window focus stops keyboard listening. An active keyboard session's
-  running sequence is canceled through the existing Stop path. Pending keyboard
+  running sequence is canceled with holding retained; focus loss does not add release. Pending keyboard
   preparation is canceled before it can activate. Returning focus never resumes
   events automatically. Hidden-page behavior still stops/disconnects as before.
 - Software Stop remains the existing software control; hardware capabilities,

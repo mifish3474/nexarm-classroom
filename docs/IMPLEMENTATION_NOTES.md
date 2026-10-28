@@ -1,4 +1,77 @@
-# Classroom programming development preview 0.7.0-dev.52
+# Classroom programming development preview 0.7.0-dev.54
+
+## Operator Stop integrates prompt release
+
+After confirming the dev.53 experiment physically works, the operator requested
+less delay and integration into Stop. Main-page Stop and trusted Space now
+select stopThenRelease, as does setup Stop motion. Their sequence cancels the
+worker/program/key handlers, sends the six-joint 600/100 hold with writer priority,
+then sends factory All Off directly from the hold stream-completion callback.
+The former three-sample/150-ms settling gate is removed; fresh feedback <=500 ms,
+connection/generation checks, writer deadlines and durable holding recovery remain.
+USB completion is not physical standstill; the changed interval needs observation.
+
+The separate experiment control and its styles are removed. The controller's
+hold-only stop remains the lifecycle-cancellation path for blur/hidden/disconnect
+and error cleanup; those actions do not add release. New faults cancel an unsent
+release. Explicit Stop can follow an earlier motion fault when the current hold
+and communication succeed, while failed/uncertain delivery never authorizes off.
+Release-unavailable cases still cancel the program and attempt a hold where
+possible; Stop must not become a no-op because its release precondition fails.
+
+Repeated operator Stop coalesces an active sequence and does not cancel or
+duplicate release. Already-released holding keeps its ordinary Restore workflow.
+Restore is deliberate and never resumes blocks/keys. Diagnostics replace the
+removed steady samples with hold-write-finished time and an explicit
+immediately-after-hold-write policy. Ordinary movement/firmware/ranges are unchanged.
+
+Earlier dev.53/52 sections below describe the preceding development stages.
+
+Validation: build/type-check and all 359 unit tests pass. All 57 classroom/setup
+browser scenarios pass across the regression and targeted assertion update;
+the final five-case run also passes the layout and read-only diagnostic checks.
+Unit coverage verifies release at the same clock instant as hold completion,
+writer ordering, no new-feedback/settling wait, lifecycle/failure cancellation,
+motion-fault recovery, repeated Stop coalescing and already-released behavior.
+No physical robot was connected; the shorter interval needs operator observation.
+
+## Explicit stop-then-release experiment
+
+The operator confirms the faster hold dramatically improved stopping and asks
+to test release afterward. A separate Positions button cancels preparation/key
+events/programs and requests a six-joint 600/100 hold. Ordinary Stop and Space
+retain holding and cancel an active experiment; neither selects release.
+
+StopRelease owns a single generation-bound sequence. After its hold write
+resolves, it collects three new strong-checksum position reports over at least
+150 ms, with spread <=9 on every joint. Earlier/in-flight/weak frames cannot
+authorize release. Within a two-second post-write window, these criteria permit
+one factory All Off write through the existing serialized writer, bypassing the
+normal command interval. The ordinary ManualPositioning recovery interlock is
+persisted before All Off. Steady readings do not prove physical standstill.
+
+The sequence blocks Run, manual motion and ordinary release/restore while active.
+Stale feedback, timeout, faults, disconnect or visibility/focus loss cancel an
+unsent release without retry. Space/Stop also cancel it. An already submitted
+release cannot be recalled; interruption retains Recovery required and never
+restores torque automatically. Explicit Restore follows the existing fresh
+feedback workflow, with no new teacher approval, Enable or confirmation steps.
+
+The shared controller exports the latest test phase, hold reference, three
+selected samples and release timestamps. Main-page status shows intermediate
+phases and the normal holding recovery UI afterward. No new firmware commands,
+movement profiles, background release, physical stop verification or automatic
+restart are introduced. See SIGNAL_AND_STOP.md for the supported-arm check.
+
+Validation: build/type-check and all 356 unit tests pass. The full 76-scenario
+Chrome regression passes with mocked USB, followed by the five targeted release
+and layout checks after the final guard/text refinement. Coverage includes
+ordered hold/steady-feedback/All Off, delayed writers, weak/stale/moving readings,
+Stop/focus/disconnect cancellation, durable storage failure, unavailable Release
+writer, interrupted release/reload, and explicit Restore without auto-resume.
+Root index.html is unchanged. The operator's hardware observation is still
+required for the combined stopping and release response; no robot was connected
+or commanded during these automated checks.
 
 ## Operator-approved priority fast-stop test
 

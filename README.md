@@ -3,6 +3,18 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.54: Stop includes prompt release.** Stop/Space and setup Stop motion send
+the fast hold, then factory All Off immediately after the hold write completes
+with fresh feedback. The three-reading wait and separate test button are removed.
+Restore holding deliberately before another Run. Disconnect, focus cancellation,
+and faults do not add release. See the [hardware check](docs/SIGNAL_AND_STOP.md).
+
+**Dev.53 (superseded): separate stop-then-release test.** Positions includes a test button
+that sends the proven fast hold, waits for new steady readings, then sends
+factory All Off once. Support the arm. Space/Stop cancel a pending release and
+still retain holding when used on their own. Restore is deliberate; nothing
+resumes automatically. See the [hardware test guide](docs/SIGNAL_AND_STOP.md).
+
 **Dev.52: faster-stop test.** Stop uses a dedicated 600/100 hold profile and
 waits for an active USB write instead of skipping its hold. It uses fresh readings
 when submitting, cancels pending movement, and never releases holding or resumes

@@ -97,7 +97,7 @@ node('teacher-connect').onclick = () => act(() => control?.connect(() => serial!
 node('teacher-disconnect').onclick = () => act(() => control?.disconnect());
 node('teacher-servo3-factory').onclick=()=>act(()=>control?.compareServo3Factory());
 node('teacher-home').onclick = () => act(() => control?.returnHome());
-node('teacher-stop').onclick = () => act(() => control?.stop());
+node('teacher-stop').onclick = () => act(() => control?.stopThenRelease());
 node('teacher-release').onclick = () => act(() => control?.setHolding(false,true));
 node('teacher-restore').onclick = () => act(() => control?.setHolding(true,true));
 node('teacher-export').onclick = () => {

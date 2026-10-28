@@ -92,6 +92,7 @@ function refresh(){
   if(element('robot-status').textContent!==technicalStatus)element('robot-status').textContent=technicalStatus;
   const state=preparing?'Preparing':loadingProgram?'Loading':!robot?'Disconnected':robot.connectionState!=='Listening'?robot.connectionState:robot.manualPhase!=='Normal'?(robot.manualPhase==='Manual setup'?'Released':robot.manualPhase):robot.program?.phase??(robot.canMove?'Ready':'Reading positions');
   element('state').textContent=state;
+  if(robot?.stopRelease?.active)element('state').textContent=robot.stopRelease.phase;
   if(live&&robot?.operation==='Saved position'&&robot.connectionState==='Listening'&&robot.manualPhase==='Normal')element('state').textContent=robot.home?.phase??state;
   if(keyEvents.active&&!busy)element('state').textContent='Keys active';
   let activity=preparing?'Checking your program…':loadingProgram?'Loading program for review…':robot?.program?.message??readiness;
@@ -181,7 +182,7 @@ document.addEventListener('add-position-to-code',event=>{
   try{editor.addPosition((event as CustomEvent<string>).detail);interfaceError='';keyboardFields();refresh();}
   catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}
 });
-function cancel(stopRobot=true){endKeyEvents();session++;runner.cancel();preparing=loadingProgram=false;if(stopRobot){stopRequested=true;control?.stop();}refresh();}
+function cancel(stopRobot=true,releaseHolding=false){endKeyEvents();session++;runner.cancel();preparing=loadingProgram=false;if(stopRobot){stopRequested=true;if(releaseHolding)control?.stopThenRelease();else control?.stop();}refresh();}
 function validateTargets(result:PreparedProgram){
   for(const step of result.steps){
     try{if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
@@ -233,7 +234,7 @@ async function prepareProgram(execute:boolean){
 run.onclick=()=>prepareProgram(true);
 element('program-check').onclick=()=>prepareProgram(false);
 
-stop.onclick=()=>cancel();
+stop.onclick=()=>cancel(true,true);
 lesson.onclick=()=>{interfaceError='';cancel(false);editor.lesson();keyboardFields();refresh();};
 practice.onclick=()=>{interfaceError='';cancel(false);editor.teacherLesson();keyboardFields();refresh();};
 element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();positionOptions();keyboardFields();refresh();};
@@ -287,7 +288,7 @@ window.addEventListener('keydown',event=>{
   const typing=event.target instanceof Element&&!!event.target.closest('input,textarea,select,[contenteditable],.blocklyWidgetDiv,.blocklyDropDownDiv');
   if(isStopKey(event)&&(spaceHeld||preparing||loadingProgram||robot?.busy||keyEvents.active||robot?.connectionState==='Listening'&&!typing)){
     event.preventDefault();event.stopImmediatePropagation();
-    if(!spaceHeld){spaceHeld=true;cancel();}
+    if(!spaceHeld){spaceHeld=true;cancel(true,true);}
     return;
   }
   if(event.target instanceof Element&&event.target.closest('#blockly-editor,#keyboard-fields,.blocklyWidgetDiv,.blocklyDropDownDiv'))beginEditing();
@@ -310,6 +311,7 @@ window.addEventListener('keyup',event=>{
 window.addEventListener('blur',()=>{
   spaceHeld=false;
   keyEvents.releaseAll();
+  if(control?.snapshot().stopRelease?.active){cancel();return;}
   if(preparing&&editor.listStacks().some(stack=>stack.name!=='When Run clicked')){
     keyMessage='Keyboard preparation canceled when this window lost focus. Run program to listen again.';cancel(false);return;
   }

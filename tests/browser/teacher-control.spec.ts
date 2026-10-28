@@ -5,19 +5,19 @@ async function robot(page: Page, initial = [2050,2150,2100,2200,2000,1080]) {
   await page.clock.install(); await page.clock.pauseAt(new Date(Date.now() + 100));
   await page.addInitScript(pose => {
     const positions = [...pose], targets=[...pose], speeds=Array(6).fill(100), writes: {at:number;bytes:number[]}[] = [];
-    const state = {positions, writes, paused:false}; Object.assign(window, {teacherRobot:state});
+    const state = {positions, writes, paused:false, holding:true}; Object.assign(window, {teacherRobot:state});
     Object.defineProperty(navigator, 'serial', {value:{requestPort: async () => {
       let timer: ReturnType<typeof setInterval>;
       return {open:async()=>{}, close:async()=>clearInterval(timer),
         readable:new ReadableStream<Uint8Array>({start(controller) { timer=setInterval(()=>{
           if (state.paused) return;
-          for(let i=0;i<6;i++){const d=targets[i]!-positions[i]!;if(Math.abs(d)>5)positions[i]!+=Math.sign(d)*Math.min(speeds[i]*0.1,Math.abs(d)-5);}
+          if(state.holding)for(let i=0;i<6;i++){const d=targets[i]!-positions[i]!;if(Math.abs(d)>5)positions[i]!+=Math.sign(d)*Math.min(speeds[i]*0.1,Math.abs(d)-5);}
           const body=[255,26,11,...Array(12).fill(0),...positions.flatMap(n=>[n&255,n>>8])];
           controller.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255]));
         },100); },cancel(){clearInterval(timer);}}),
         writable:new WritableStream<Uint8Array>({write(bytes){
           writes.push({at:performance.now(),bytes:[...bytes]});
-          for(let offset=0;offset<bytes.length;){const frame=bytes.slice(offset,offset+bytes[offset+3]!+4);if(frame[2]!>=1&&frame[2]!<=6&&frame[5]===41){const i=frame[2]!-1;targets[i]=frame[7]!+256*frame[8]!;speeds[i]=frame[11]!+256*frame[12]!;}offset+=frame.length;}
+          for(let offset=0;offset<bytes.length;){const frame=bytes.slice(offset,offset+bytes[offset+3]!+4);if(frame[2]===255&&frame[4]===61){state.holding=frame[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);}else if(frame[2]!>=1&&frame[2]!<=6&&frame[5]===41){const i=frame[2]!-1;targets[i]=frame[7]!+256*frame[8]!;speeds[i]=frame[11]!+256*frame[12]!;}offset+=frame.length;}
         }})};
     }}});
   }, initial);
@@ -64,7 +64,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.52');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.54');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeEnabled(); await ready(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {
@@ -98,12 +98,12 @@ test('Home dispatches all targets within 600 and reports elapsed time without cl
   expect((await download).suggestedFilename()).toBe('nexarm-teacher-control-session.json');await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
 
-test('Stop cancels a long gripper return and permits a new Home run without reconnecting',async({page})=>{
+test('Stop releases a long gripper return and Restore permits another Home without reconnecting',async({page})=>{
   await robot(page,[2050,2150,2100,2200,2000,2050]);await connect(page);await ready(page);
   await expect(page.locator('#teacher-home-preview')).toContainText('1 joints differ');await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(100);
   await page.getByRole('button',{name:'Stop motion'}).click();const count=(await writes(page)).length;await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(count);
   await expect(page.locator('#teacher-status')).toContainText('Listening');
-  await ready(page);await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(130000);
+  await expect(page.getByRole('button',{name:'Servo 1 minus 20',exact:true})).toBeDisabled();await page.getByRole('button',{name:'Restore servo holding'}).click();await page.clock.runFor(1400);await ready(page);await page.getByRole('button',{name:'Return together to Home'}).click();await page.clock.runFor(130000);
   await expect(page.locator('#teacher-home-status')).toContainText('Complete');await expect(page.locator('[data-servo-value="6"]')).toHaveText('1085');
   await page.getByRole('button',{name:'Disconnect',exact:true}).click();
 });
