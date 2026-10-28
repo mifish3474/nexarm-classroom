@@ -36,7 +36,7 @@ describe('shared Run-session variables',()=>{
  it('saves shared-variable projects without embedding runtime state or requiring the events to initialize themselves',()=>{
   const project={instructions:startup,keyEvents:[{blockId:'a',key:'a',body:increment}]};
   const text=saveProjectFile({...project,variables:[{name:'Joint1',value:2800}]} as typeof project);
-  expect(JSON.parse(text).variables).toBeUndefined();expect(loadProjectFile(text)).toEqual(project);
+  expect(JSON.parse(text).variables).toBeUndefined();expect(loadProjectFile(text)).toEqual({...project,positions:[]});
   expect(evaluateProgram(loadProjectFile(text).instructions,{allowNoMotion:true}).variables[0]!.value).toBe(2100);
  });
 });

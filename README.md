@@ -15,6 +15,8 @@ writes. Status now says Release sent, not confirmed release; the manual Release
 control permits an explicit All Off retry without restoring torque first.
 See [the recovery check](docs/SIGNAL_AND_STOP.md).
 
+**Dev.59: positions travel with the program.** Save includes all saved positions, including unused ones. New empty program clears blocks and positions; Load replaces both with the file contents. The browser is a working copy. See [program files](docs/PROJECT_FILES.md).
+
 **Dev.58: shared Run-session variables.** Run, all keyboard stacks and My Blocks share variable values. Each key press recalculates and validates its targets; Home runs once at startup. Busy presses are ignored, rejected preparations retain prior values, and Stop ends the session. See [the incrementing-joint example](docs/KEYBOARD_EVENTS.md).
 
 **Dev.57: project names and My Blocks.** Name a project above the code to choose its downloaded filename. Define reusable sequences in My Blocks and call them from Run, keyboard events, loops or other functions. Calls share existing variables and retain all expanded movement/time limits; recursion is rejected. See [the walkthrough](docs/MY_BLOCKS.md).
@@ -143,8 +145,8 @@ an unfinished release requires an explicit Restore, with no confirmation button.
 The earlier mapping suite and Reference A return remain at `/mapping-tests.html`,
 with their original approval history; see [the earlier scope](docs/JOINT_SUITE_AND_HOME.md).
 **Save program / Load program** download and reload a local JSON file with the
-blocks and snapshots of their named positions. Loading preserves the browser's
-saved-position library and never connects, restores holding or runs automatically.
+blocks and all saved positions, including unused ones. Loading replaces the
+current position list and never connects, restores holding or runs automatically.
 Files contain program data only; no accounts or uploads are involved.
 
 Use Node.js 24 or newer. From the repository folder:

@@ -1,4 +1,4 @@
-# Programming development test: dev.58
+# Programming development test: dev.59
 
 Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
 program variables and work from Run or key events. Earlier phase notes below are historical.
@@ -17,13 +17,12 @@ restored-sequence hardware check and timing diagnostics. Neither physical stoppi
 Run starts listening after checking every stack; Stop ends it. Add block's
 Add blocks to selector chooses the startup/key stack for quick-add actions.
 Run checks Home once. Every accepted key uses current shared variables and
-continues from the current pose, with no concurrent or queued sequences. Files with key hats use format 3.
+continues from the current pose, with no concurrent or queued sequences. New files use format 5 with the complete saved-position list.
 
 Numeric variables, math and conditionals are now available. Use
 [Variables and logic](./VARIABLES_AND_LOGIC.md) to try the example with Check
-program before connecting hardware. Programs without key hats save in format 2;
-key projects use format 3. Both preserve expressions and branches, and old
-format-1 joint/pose programs still load.
+program before connecting hardware. New format-5 files preserve expressions, branches and all saved positions. Older
+formats 1-4 still load.
 Variables reset every Check/Run; their displayed final values are prepared
 results, not live sensors. Existing movement profiles and Home-first startup remain.
 
@@ -39,7 +38,7 @@ The user confirms Blockly motion is working after identifying the selected J3
 block. Diagnostic export remains available for unexpected behavior. To release,
 physically position, and name a measured pose, see [Teach a position](./TEACHING_POSITIONS.md).
 That guide also covers Move to position and Blockly sequences of saved positions
-with Wait and Repeat. Start with New empty program when using only saved poses.
+with Wait and Repeat. New empty program clears positions as well as code; teach positions afterward or load them with a program.
 
 Operator-provided [operating ranges](./OPERATING_RANGES.md) are checked before
 live movement. Stricter protected student policy is deferred. There is no station
@@ -81,9 +80,8 @@ The current build is for development hardware testing.
    Release and Restore stay together in Positions.
 
 Use **Save program** to download a local `nexarm-program.json` file. It includes
-the blocks and snapshots of named positions they use. **Load program** restores
-the blocks for review without modifying the browser's position library,
-connecting or moving. Only Run executes. Invalid files preserve existing blocks;
+the blocks and every saved position, including unused ones. **Load program**
+replaces code and the position list for review without connecting or moving. Only Run executes. Invalid files preserve existing blocks;
 files cannot import servo settings or executable code. There is no autosave yet.
 Programs use joint moves and saved six-joint positions, connected with Wait and
 Repeat. XYZ blocks have been removed. Older files containing XYZ are rejected

@@ -33,7 +33,7 @@ let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
 const robotMode=()=>true;
 const teaching=createTeachingPanel(()=>control);
 element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join('; ')}. J6: 1024 = open. These are operator-provided development ranges; protected student policy comes later.`;
-const editor=createEditor(element('blockly-editor'),()=>teaching.list());
+const editor=createEditor(element('blockly-editor'),()=>teaching.list(),positions=>teaching.replacePositions(positions));
 const projectTitle=element<HTMLInputElement>('project-name');
 const keyEvents=new KeyboardEvents();
 type KeyPreview={handler:KeyHandler;result:PreparedProgram|null;deferred:string|null};
@@ -289,7 +289,7 @@ element('teach-home').onclick=()=>{
 lesson.onclick=()=>{interfaceError='';cancel(false);editor.lesson();keyboardFields();refresh();};
 practice.onclick=()=>{interfaceError='';cancel(false);editor.teacherLesson();keyboardFields();refresh();};
 element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();positionOptions();keyboardFields();refresh();};
-element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();projectTitle.value='Untitled program';keyboardFields();refresh();};
+element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();projectTitle.value='Untitled program';element('program-file-status').textContent='New empty program. Blocks and saved positions cleared.';positionOptions();keyboardFields();refresh();};
 
 const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status');
 const fileBusy=()=>preparing||loadingProgram||!!control?.snapshot().busy;
@@ -298,7 +298,7 @@ element('program-save').onclick=()=>{
   try{
     const name=projectName(projectTitle.value),text=saveProjectFile({...editor.compileProject(),name}),url=URL.createObjectURL(new Blob([text],{type:'application/json'})),link=document.createElement('a');
     projectTitle.value=name;link.href=url;link.download=projectFilename(name);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    fileStatus.textContent=`Program file saved as ${link.download}. It includes My Blocks and the positions used by its blocks. Keep it to reload this test later.`;
+    fileStatus.textContent=`Program file saved as ${link.download}. It includes My Blocks and all ${teaching.list().length} saved positions, including unused ones.`;
   }catch(error){fileStatus.textContent=error instanceof Error?error.message:'Program could not be saved.';}
 };
 element('program-load').onclick=()=>{if(!fileBusy()){endKeyEvents();programFile.click();refresh();}};
@@ -310,7 +310,7 @@ programFile.onchange=async()=>{
     if(file.size>MAX_PROGRAM_FILE_BYTES)throw Error('Program file exceeds 256 KB.');
     const project=loadProjectFile(await file.text());if(token!==session)return;
     editor.loadProject(project);projectTitle.value=project.name??(file.name.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');positionOptions();keyboardFields();plan=[];rows=[];element('instructions').replaceChildren();interfaceError='';
-    fileStatus.textContent=project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Check, Run or Save. Its blocks and positions are preserved. Nothing has run.':'Program loaded for review. Included positions are available to its blocks; your saved-position library is unchanged. Nothing has run.';
+    fileStatus.textContent=project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Check, Run or Save. Its blocks and positions are preserved. Nothing has run.':`Program loaded for review with ${teaching.list().length} saved positions. This program replaces the previous position list. Nothing has run.`;
   }catch(error){if(token===session)fileStatus.textContent=error instanceof Error?error.message:'Program could not be loaded. Existing blocks are unchanged.';}
   finally{if(token===session){loadingProgram=false;refresh();}}
 };

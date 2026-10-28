@@ -24,7 +24,7 @@ remain in effect.
    under **My Block to call**, and click **Add My Block call** twice.
 4. Click **Check program**. Expect two planned waits. No connection is needed.
 5. Use **File → Save program**, start a new empty project, then Load the file.
-   The project name, definition, calls and any used position snapshots return.
+   The project name, definition, calls and the complete saved-position list return.
 6. To use a keyboard event, add a key-event block, choose a supported key, and
    put a function call underneath it. Run explicitly starts listening. Space
    remains reserved for Stop.
@@ -46,9 +46,9 @@ position's **Add to code** or **Add position block**.
 - The existing limits apply after calls and repeats expand: 100 movement/wait
   steps, 60 seconds of pose/wait time, plus bounded calculation work. Authored
   blocks, variables, file size and joint-target limits still apply.
-- Programs containing functions save as data-only format 4. Formats 1–3 remain
-  loadable; function-free exports retain formats 2/3 with optional name metadata.
-  Older app builds cannot open format 4.
+- New programs save in data-only format 5 with all saved positions. Formats 1-4
+  remain loadable. New clears positions; Load replaces the list. See
+  [Program files](./PROJECT_FILES.md). Older builds cannot open format 5.
 
 All blocks are checked before robot movement. Only the prepared joint/pose/wait
 plan reaches the existing robot controller; no executable JavaScript is loaded

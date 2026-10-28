@@ -79,5 +79,5 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     link.href=url;link.download='nexarm-named-positions.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
   name.oninput=()=>refresh(live,preparing);
-  drawSaved();return {refresh,list:()=>saved.list()};
+  drawSaved();return {refresh,list:()=>saved.list(),replacePositions:(positions:unknown)=>{saved.replace(positions);error='';name.value='';drawSaved();refresh(live,preparing);}};
 }

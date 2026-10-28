@@ -1,5 +1,9 @@
 # NexArm Classroom development roadmap
 
+## Dev.59 portable projects
+
+Program format 5 owns all named positions, including unused records. New clears blocks/positions and Load replaces the project list; formats 1-4 recover only embedded positions. Browser storage remains a working copy, with no full-program autosave yet. See [Program files](./PROJECT_FILES.md).
+
 ## Dev.58 shared programming state
 
 All stacks and My Blocks now share Run-session variables. Key activations recalculate from current state, check every target before writing, and continue from the current pose after one startup Home check. Stop and session interruptions discard state. Parallel execution and live sensors remain deferred. See [Keyboard events](./KEYBOARD_EVENTS.md).

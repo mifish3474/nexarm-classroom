@@ -43,9 +43,9 @@ describe('bounded My Blocks',()=>{
   try{evaluateProgram([call('Bad')],{functions:[fn('Bad',[{kind:'move',blockId:'bad-target',servo:1,target:{kind:'arithmetic',op:'DIVIDE',left:1,right:0}}])]});throw Error('Expected failure');}
   catch(error){expect(error).toBeInstanceOf(ProgramError);expect((error as ProgramError).blockId).toBe('bad-target');}
  });
- it('round-trips definitions, key calls, names and embedded poses in v4 without executable state',()=>{
+ it('round-trips definitions, key calls, names and saved positions without executable state',()=>{
   const project={name:'Sorting challenge',instructions:[call('Pickup')],keyEvents:[{blockId:'key',key:'a',body:[call('Pickup','key-call')]}],functions:[fn('Pickup',[{kind:'pose',blockId:'pose',positionId:'p',name:'Pickup',positions:[2050,2150,2100,2200,2000,1080],durationMs:1000}])]};
-  const text=saveProjectFile(project);expect(JSON.parse(text).schemaVersion).toBe(4);expect(loadProjectFile(text)).toEqual(project);
+  const text=saveProjectFile(project);expect(JSON.parse(text).schemaVersion).toBe(5);expect(loadProjectFile(text)).toMatchObject(project);expect(loadProjectFile(text).positions).toEqual([{id:'p',name:'Pickup',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'1970-01-01T00:00:00.000Z'}]);
   expect(loadProjectFile(saveProjectFile({name:'Old style',instructions:[wait()],keyEvents:[]})).name).toBe('Old style');
  });
 });

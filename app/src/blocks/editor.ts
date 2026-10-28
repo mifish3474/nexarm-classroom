@@ -5,7 +5,7 @@ import type {Instruction,Numeric} from '../runtime/instructions';
 import {ProgramError,variableName} from '../runtime/ProgramLanguage';
 import type {NamedPosition} from '../poses/NamedPositions';
 import {programInstructions} from '../runtime/ProgramFile';
-import {copyProject} from '../runtime/ProgramProject';
+import {resolveProjectPositions} from '../runtime/ProjectPositions';
 import type {ProgramProject} from '../runtime/ProgramProject';
 import {KEY_OPTIONS,keyLabel,isEventKey,SPACE_RESERVED_MESSAGE} from '../runtime/KeyboardEvents';
 import {inputBlock,numericBlock,conditionBlock,variableLabel,milliseconds,seconds,valueState} from './expressions';
@@ -32,14 +32,14 @@ Blockly.defineBlocksWithJsonArray([
 const numberInput=(value:number)=>({shadow:{type:'math_number',fields:{NUM:value}}});
 type State=Blockly.serialization.blocks.State;
 
-export function createEditor(container:HTMLElement,getPositions:()=>NamedPosition[]=()=>[]){
-  let programPositions:NamedPosition[]=[];
+export function createEditor(container:HTMLElement,getPositions:()=>NamedPosition[],replacePositions:(positions:NamedPosition[])=>void){
+  let loadingPositions:NamedPosition[]|null=null;
   let appendTargetId='';
-  const allPositions=()=>[...getPositions(),...programPositions];
+  const allPositions=()=>loadingPositions??getPositions();
   Blockly.Blocks['lesson_pose']={init:function(this:Blockly.Block){
     const block=this;
     const field=new Blockly.FieldDropdown(()=>{
-      const options:[string,string][]=allPositions().map(pose=>[programPositions.some(p=>p.id===pose.id)?`${pose.name} (program file)`:pose.name,pose.id]);
+      const options:[string,string][]=allPositions().map(pose=>[pose.name,pose.id]);
       const current=block.getFieldValue('POSITION');
       if(current&&current!=='none'&&!options.some(option=>option[1]===current))options.push(['Missing position — choose another',current]);
       return options.length?options:[['Record a position first','none']];
@@ -72,12 +72,14 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     ...definitions().map(block=>({kind:'block',type:'procedures_callnoreturn',extraState:{name:String(block.getFieldValue('NAME'))}})),
   ]);
   new ResizeObserver(()=>Blockly.svgResize(workspace)).observe(container);
-  const newProgram=()=>{
+  const newProgram=(clearPositions=true)=>{
     Blockly.serialization.workspaces.load({blocks:{languageVersion:0,blocks:[{type:'lesson_start',x:20,y:24}]}},workspace);
     workspace.getToolbox()?.clearSelection();
     workspace.getTopBlocks(false)[0]?.setDeletable(false);appendTargetId=workspace.getTopBlocks(false)[0]!.id;workspace.clearUndo();
+    if(clearPositions)replacePositions([]);
   };
-  newProgram();
+  // Preserve an existing browser working copy on boot; New/Load are explicit.
+  newProgram(false);
   const compileProject=():ProgramProject=>{
     if(workspace.getAllBlocks(false).filter(block=>!block.isShadow()).length>100)throw new ProgramError('Use at most 100 blocks, including calculations.');
     if(workspace.getVariableMap().getAllVariables().length>32)throw new ProgramError('Use at most 32 variables.');
@@ -125,7 +127,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       }
       return nodes;
     }
-    return {instructions:chain(starts[0]!.getNextBlock()),keyEvents:events.map(event=>({blockId:event.id,key:String(event.getFieldValue('KEY')),body:chain(event.getNextBlock())})),...(functions.length?{functions:functions.map(fn=>({blockId:fn.id,name:variableName(fn.getFieldValue('NAME')),body:chain(fn.getInputTargetBlock('STACK'))}))}:{})};
+    return {instructions:chain(starts[0]!.getNextBlock()),keyEvents:events.map(event=>({blockId:event.id,key:String(event.getFieldValue('KEY')),body:chain(event.getNextBlock())})),positions:allPositions(),...(functions.length?{functions:functions.map(fn=>({blockId:fn.id,name:variableName(fn.getFieldValue('NAME')),body:chain(fn.getInputTargetBlock('STACK'))}))}:{})};
   };
   const append=(type:string,fields:State['fields']={},inputs:State['inputs']={},extraState?:unknown)=>{
     const roots=workspace.getTopBlocks(false);
@@ -142,13 +144,8 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     }finally{Blockly.Events.setGroup(false);}
   };
   const loadProject=(input:ProgramProject)=>{
-    const project=copyProject(input,true),instructions=project.instructions,previousPositions=programPositions;
+    const project=resolveProjectPositions(input,true),instructions=project.instructions,previousPositions=getPositions();
     const previous=Blockly.serialization.workspaces.save(workspace),stage=new Blockly.Workspace();
-    const loaded:NamedPosition[]=[],poseIds=new Map<string,string>();
-    const poseId=(node:Extract<Instruction,{kind:'pose'}>)=>{
-      const key=JSON.stringify([node.positionId,node.name,node.positions]);let id=poseIds.get(key);
-      if(!id){id=`program-${crypto.randomUUID()}`;poseIds.set(key,id);loaded.push({id,name:node.name,positions:[...node.positions],capturedAt:new Date().toISOString()});}return id;
-    };
     const variableId=(name:string)=>(stage.getVariableMap().getVariable(name)??stage.getVariableMap().createVariable(name)).getId();
     const value=(n:Numeric)=>typeof n==='number'?{shadow:valueState(n,variableId)}:{block:valueState(n,variableId)};
     function chain(nodes:Instruction[]):State|undefined{
@@ -158,7 +155,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
         switch(node.kind){
           case 'call':state={type:'procedures_callnoreturn',extraState:{name:node.name}};break;
           case 'move':state={type:'lesson_move',fields:{SERVO:String(node.servo)},inputs:{TARGET:value(node.target)}};break;
-          case 'pose':state={type:'lesson_pose',fields:{POSITION:poseId(node)},inputs:{SECONDS:value(seconds(node.durationMs??1000))}};break;
+          case 'pose':state={type:'lesson_pose',fields:{POSITION:node.positionId},inputs:{SECONDS:value(seconds(node.durationMs??1000))}};break;
           case 'wait':state={type:'lesson_wait',inputs:{SECONDS:value(seconds(node.durationMs))}};break;
           case 'repeat':{const body=chain(node.body);state={type:'lesson_repeat',inputs:{COUNT:value(node.count),...(body?{BODY:{block:body}}:{})}};break;}
           case 'set':case 'change':state={type:node.kind==='set'?'variables_set':'math_change',fields:{VAR:{id:variableId(node.name)}},inputs:{[node.kind==='set'?'VALUE':'DELTA']:value(node.value)}};break;
@@ -174,7 +171,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       return next;
     }
     try{
-      programPositions=loaded;
+      loadingPositions=project.positions;
       for(const [i,fn] of (project.functions??[]).entries()){
         const body=chain(fn.body);
         Blockly.serialization.blocks.append({type:'procedures_defnoreturn',id:fn.blockId,fields:{NAME:fn.name},x:640+(i%2)*300,y:24+Math.floor(i/2)*260,...(body?{inputs:{STACK:{block:body}}}:{})},stage);
@@ -189,8 +186,9 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       Blockly.serialization.workspaces.load(Blockly.serialization.workspaces.save(stage),workspace);
       workspace.getToolbox()?.clearSelection();
       const start=workspace.getTopBlocks(false).find(block=>block.type==='lesson_start')!;start.setDeletable(false);appendTargetId=start.id;workspace.clearUndo();
-    }catch(error){programPositions=previousPositions;Blockly.serialization.workspaces.load(previous,workspace);throw error;}
-    finally{stage.dispose();}
+      replacePositions(project.positions);
+    }catch(error){loadingPositions=previousPositions;Blockly.serialization.workspaces.load(previous,workspace);throw error;}
+    finally{loadingPositions=null;stage.dispose();}
   };
   const loadProgram=(input:unknown)=>loadProject({instructions:programInstructions(input),keyEvents:[]});
   const teacherLesson=()=>loadProgram([{kind:'move',blockId:'practice-out',servo:1,target:2130},{kind:'move',blockId:'practice-back',servo:1,target:2050}]);

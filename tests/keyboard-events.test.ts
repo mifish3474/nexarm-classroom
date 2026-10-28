@@ -33,9 +33,9 @@ it('never accepts Space as a programmed key, including a retained old binding',(
 });
 const body:Instruction[]=[{kind:'move',blockId:'move',servo:1,target:2070}];
 const project=()=>({instructions:[],keyEvents:[{blockId:'space-hat',key:'a',body}]});
-it('round-trips keyboard stacks through format 3 and preserves old program formats',()=>{
- const text=saveProjectFile(project());expect(JSON.parse(text).schemaVersion).toBe(3);expect(loadProjectFile(text)).toEqual(project());expect(()=>loadProgramFile(text)).toThrow('not supported');
- const legacy=saveProjectFile({instructions:body,keyEvents:[]});expect(JSON.parse(legacy).schemaVersion).toBe(2);expect(loadProjectFile(legacy)).toEqual({instructions:body,keyEvents:[]});
+it('round-trips keyboard stacks with a project position list and preserves old program formats',()=>{
+ const text=saveProjectFile(project());expect(JSON.parse(text).schemaVersion).toBe(5);expect(loadProjectFile(text)).toEqual({...project(),positions:[]});expect(()=>loadProgramFile(text)).toThrow('not supported');
+ const legacy=JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:body});expect(loadProjectFile(legacy)).toEqual({instructions:body,keyEvents:[],positions:[]});
  expect(loadProjectFile(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:1,instructions:body})).keyEvents).toEqual([]);
 });
 it('rejects duplicate keys and source IDs, unsupported events and invalid code in any event before activation',()=>{

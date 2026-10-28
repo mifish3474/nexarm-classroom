@@ -28,8 +28,8 @@ The site remains a development milestone, not a completed student-safety release
 
 The public HTTPS origin has separate browser storage and USB permission from
 localhost. Export local programs and positions before switching. Program files
-carry the used position snapshots; loading does not overwrite the saved-position
-library. No storage migration, reconnection or movement happens automatically.
+from dev.59 include all saved positions; loading replaces the current position list.
+Older files recover only embedded snapshots. No reconnection or movement happens automatically.
 Browser permission for the robot may need to be granted again on the public site.
 
 ## Preserve and recover

@@ -1,9 +1,12 @@
-# Teach and use a position: dev.56
+# Teach and use a position: dev.59
+
+Positions now belong to the program. Save includes the whole list; New clears it;
+Load replaces it. Read [Program files](./PROJECT_FILES.md) before switching projects.
 
 [Restore & Return Home](./HOME_RECOVERY.md) restores holding and deliberately moves Home.
 Use **Hold current position** when teaching a pose without returning Home. Neither resumes a program.
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.56**, and Connect.
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.59**, and Connect.
 
 Stop and Space send a fast hold, then request release after fresh steady readings. Support the
 arm and use Hold current position before another Run; see [the hardware check](./SIGNAL_AND_STOP.md).
@@ -46,12 +49,14 @@ steps. There is no consumed-attempt lockout. Reload never restores holding or
 clears the pending verification automatically. Deleting saved poses does not
 change servo holding or bypass recovery.
 
-Saved positions persist in this browser profile and may be visible to others
-using it. Up to 32 positions are retained, with names of at most 40 characters.
-Use **Position files & tools → Export saved positions** for a local JSON backup. If saving fails, the
-message says **Memory only**; export before reloading or closing. Individual
-Delete and Clear saved positions affect only pose records. Import is not yet
-implemented, so keep exported backups for the later import feature.
+Saved positions belong to the current program, with a browser working copy that
+may be visible to others using the same profile. Save program includes every
+position, even unused ones. New clears them; Load replaces the list. Up to 32
+positions are retained, with names of at most 40 characters. If browser saving
+fails, the message says Memory only; save the program before closing or reloading.
+Position files & tools also offers a separate positions-only export. Individual
+Delete and Clear affect pose records; blocks referencing deleted positions need
+a new selection before they can run. See [Program files](./PROJECT_FILES.md).
 
 To test one saved position, restore holding if released and check the full
 movement sweep, expand **Joint values & movement**, then click **Move to position**. All six
@@ -63,7 +68,7 @@ Use Stop to cancel and attempt holds at the latest measured positions.
 
 To connect positions in code:
 
-1. The page starts with an empty program. **File → New empty program** clears existing blocks.
+1. The page starts with an empty program. **File → New empty program** clears existing blocks and saved positions. Start a new project before teaching its positions, or Load an existing program file.
 2. Click **Add to code** beside a saved position. Add block's **Add blocks to** selector chooses When Run clicked or a key-event stack. Alternatively, use **Add block → Saved position for new block**, then **Add position block**.
 3. Each position block has an **over … seconds** field, default 1 second (0.1–10). The planner extends it if needed to keep speed at or below 600. The robot status and diagnostics show the effective duration. Click **Add wait block** for a one-second pause. Edit its seconds in Blockly
    or under **Program steps and keyboard editing** (0–10 seconds).
@@ -89,7 +94,7 @@ To connect positions in code:
 A missing/deleted position blocks Run until its block selects a valid position.
 Each run copies its targets; editing or deleting records cannot change an active
 run. Programs are limited to 100 expanded steps (including waits) and 60 seconds.
-Programs are lost on reload even though their saved positions persist locally.
+Code is lost on reload unless saved; the browser retains a working position copy. Save program includes the complete project and all positions.
 
 Playback connects endpoints; it does not reproduce the path used while moving
 the arm by hand. A recorded endpoint does not establish a collision-free route.

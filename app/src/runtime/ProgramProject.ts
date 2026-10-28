@@ -1,9 +1,11 @@
 import {copyInstructions,copyFunctions,validateCalls,evaluateProgram,ProgramError,UninitializedVariableError} from './ProgramLanguage';
 import type {Instruction,FunctionDefinition} from './ProgramLanguage';
 import {isEventKey,keyLabel,SPACE_RESERVED_MESSAGE} from './KeyboardEvents';
+import {copyNamedPositions} from '../poses/NamedPositions';
+import type {NamedPosition} from '../poses/NamedPositions';
 
 export type KeyHandler={blockId:string;key:string;body:Instruction[]};
-export type ProgramProject={instructions:Instruction[];keyEvents:KeyHandler[];functions?:FunctionDefinition[];name?:string};
+export type ProgramProject={instructions:Instruction[];keyEvents:KeyHandler[];functions?:FunctionDefinition[];name?:string;positions?:NamedPosition[]};
 
 export function projectName(value:unknown):string{
   if(typeof value!=='string'||!value.trim()||value.trim().length>60||/[\u0000-\u001f\u007f]/.test(value))throw Error('Use a project name with 1–60 characters.');
@@ -33,7 +35,7 @@ export function copyProject(input:unknown,allowUnassigned=false):ProgramProject{
     keys.add(key);return {blockId:event.blockId,key,body:copyInstructions(event.body,true)};
   });
   const functions=copyFunctions(project.functions);
-  const result:ProgramProject={instructions,keyEvents,...(functions.length?{functions}:{}),...(project.name!==undefined?{name:projectName(project.name)}:{})},ids=new Set<string>(),names=new Set<string>();let nodes=0;
+  const result:ProgramProject={instructions,keyEvents,...(functions.length?{functions}:{}),...(project.name!==undefined?{name:projectName(project.name)}:{}),...(project.positions!==undefined?{positions:copyNamedPositions(project.positions)}:{})},ids=new Set<string>(),names=new Set<string>();let nodes=0;
   function visit(value:unknown){
     if(!value||typeof value!=='object')return;
     if(++nodes>1000)throw Error('Program project is too large.');

@@ -72,9 +72,8 @@ This is a focused-page control, not a global computer shortcut.
 
 Only program variables and configured key identities are held in page memory.
 There is no keyboard logging, account, upload or persistence of runtime state.
-Saved files retain initial assignments, events and used position snapshots, not
-current variable values or listening state. Existing formats 1-4 remain supported;
-My Blocks require format 4. Old Space hats remain editable but must be reassigned
+Saved files retain initial assignments, events and all saved positions, not
+current variable values or listening state. New files use format 5; older formats 1-4 remain loadable. See [Program files](./PROJECT_FILES.md). Old Space hats remain editable but must be reassigned
 before Check/Run/Save. Invalid files preserve the current workspace.
 
 Parallel execution, live sensor variables and function parameters are deferred.

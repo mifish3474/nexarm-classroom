@@ -1,4 +1,16 @@
-# Classroom programming development preview 0.7.0-dev.58
+# Classroom programming development preview 0.7.0-dev.59
+
+## Program-owned saved positions
+
+Dev.59 adds a complete named-position table to data-only program format 5. Save serializes every current position, including unused ones. New explicitly clears the list/cache and workspace; loading replaces them rather than merging a browser library with a separate hidden instruction snapshot list. The initial browser working copy is retained on startup to avoid erasing unexported older data during the upgrade.
+
+One reusable validator copies at most 32 unique positions with six raw joint readings and bounded metadata. Format 5 verifies every pose reference against its table, rejecting mismatched targets. Legacy formats 1-4 recover/deduplicate embedded snapshots across startup, keys, branches and My Blocks, disambiguating clashing IDs/names without changing targets. Missing old capture times use a documented epoch placeholder. Positions absent from old files cannot be reconstructed.
+
+Editor loading stages the Blockly workspace against the incoming list, then commits that list only after successful construction. Malformed files preserve existing code, title and cached positions. Cache failures retain a usable memory-only list; Save program is independent of cache persistence. New/Load do not touch manual holding records or send motion. Runtime variable and connection state remain excluded from files.
+
+Validation: build/type-check, all 399 unit tests and all 100 Chrome browser tests pass. Tests cover unused records, code/position New and Load lifecycle, working-cache replacement, strict failed-load preservation, legacy migration, deletion without hidden fallback, and the existing robot control regressions. USB is mocked; no physical robot was commanded. Motion/protocol code and root `index.html` are unchanged.
+
+See [Program files](./PROJECT_FILES.md) for the workflow and migration details.
 
 ## Shared state across all stacks; Home once per Run
 

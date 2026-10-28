@@ -57,6 +57,42 @@ async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[])
  await page.locator('#program-file').setInputFiles({name:'keys.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:3,instructions,keyEvents}))});
  await expect(page.locator('#program-file-status')).toContainText('loaded for review');
 }
+const projectPose=(id:string,name:string)=>({id,name,positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-28T12:00:00.000Z'});
+
+test('Save includes unused positions; New clears them and Load restores only that program list',async({page})=>{
+ await station(page);
+ const poses=[projectPose('one','Pickup'),projectPose('unused','Unused position')];
+ const source={format:'nexarm-classroom-program',schemaVersion:5,name:'Positions only',instructions:[],keyEvents:[],positions:poses};
+ await page.locator('#program-file').setInputFiles({name:'Positions only.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(source))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#saved-positions li')).toHaveCount(2);
+ const download=page.waitForEvent('download');await clickControl(page,'Save program');const saved=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(saved).positions).toEqual(poses);expect(JSON.parse(saved).instructions).toEqual([]);
+ await clickControl(page,'New empty program');await expect(page.locator('#saved-positions li')).toHaveCount(0);await expect(page.locator('#program-position option')).toHaveCount(0);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!).poses)).toEqual([]);
+ await page.reload();await expect(page.locator('#saved-positions li')).toHaveCount(0);
+ await page.locator('#program-file').setInputFiles({name:'Positions only.json',mimeType:'application/json',buffer:Buffer.from(saved)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#saved-positions li')).toHaveCount(2);await expect(page.locator('#program-position option')).toHaveText(['Pickup','Unused position']);
+ await page.locator('#program-file').setInputFiles({name:'Other.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...source,name:'Other',positions:[projectPose('other','Other program position')]}))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#saved-positions li')).toHaveCount(1);await expect(page.locator('#saved-positions')).toContainText('Other program position');await expect(page.locator('#saved-positions')).not.toContainText('Unused position');expect(await writes(page)).toHaveLength(0);
+});
+
+test('newly recorded unused positions travel with the file and imported positions can be deleted without reappearing',async({page})=>{
+ await station(page);await connect(page);await page.getByRole('textbox',{name:'Position name'}).fill('Recorded first');await clickControl(page,'Record current position');await page.getByRole('textbox',{name:'Position name'}).fill('Recorded unused');await clickControl(page,'Record current position');
+ await page.getByRole('button',{name:'Add position Recorded first to code',exact:true}).click();const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');const file=JSON.parse(text);expect(file.positions.map((p:{name:string})=>p.name)).toEqual(['Recorded first','Recorded unused']);expect(file.instructions).toHaveLength(1);
+ await clickControl(page,'New empty program');await expect(page.locator('#saved-positions li')).toHaveCount(0);await page.locator('#program-file').setInputFiles({name:'Recorded.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#saved-positions li')).toHaveCount(2);await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('1 planned moves/waits');
+ await clickControl(page,'Delete position Recorded first');await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('saved position is missing');await expect(page.locator('#program-position option')).toHaveText(['Recorded unused']);expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+});
+
+test('an invalid position file preserves current code, title and working positions',async({page})=>{
+ await station(page);const pose=projectPose('keep','Keep me'),instructions=[{kind:'pose',blockId:'move',positionId:pose.id,name:pose.name,positions:pose.positions,durationMs:1000}];
+ await page.locator('#program-file').setInputFiles({name:'Keep.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:5,name:'Keep this project',instructions,keyEvents:[],positions:[pose]}))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ const original=await page.evaluate(()=>localStorage.getItem('nexarm.named-positions.v1'));
+ for(const positions of [[],[pose,pose],[{...pose,positions:[1]}],[{...pose,positions:[2100,...pose.positions.slice(1)]}]]){
+  await page.locator('#program-file').setInputFiles({name:'Invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:5,name:'Do not replace',instructions,keyEvents:[],positions}))});await expect(page.locator('#program-file-status')).not.toContainText('loaded for review');await expect(page.locator('#project-name')).toHaveValue('Keep this project');expect(await page.evaluate(()=>localStorage.getItem('nexarm.named-positions.v1'))).toBe(original);await expect(page.locator('#saved-positions li')).toHaveCount(1);
+ }
+ await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('1 planned moves/waits');expect(await writes(page)).toHaveLength(0);
+});
+
+test('legacy positions become visible project positions, and an empty legacy file clears the previous list',async({page})=>{
+ await station(page);await loadKeys(page,[{blockId:'key',key:'a',body:[{kind:'pose',blockId:'key-pose',positionId:'old',name:'Legacy pickup',positions:projectPose('p','P').positions,durationMs:1000}]}]);await expect(page.locator('#saved-positions li')).toHaveCount(1);await expect(page.locator('#saved-positions')).toContainText('Legacy pickup');
+ await page.locator('#program-file').setInputFiles({name:'Empty old.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:1,instructions:[]}))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#saved-positions li')).toHaveCount(0);expect(await writes(page)).toHaveLength(0);
+});
+
 async function pressKey(page:Page,key:string){await page.keyboard.press(key);await expect(page.locator('#state')).not.toHaveText('Preparing');}
 
 const jointVariable={kind:'variable',name:'Joint1'};
@@ -114,7 +150,7 @@ test('students name files and define, reuse, rename and reload My Blocks without
  await openDetails(page,'#add-block-menu');await page.getByRole('button',{name:'Add My Block call',exact:true}).click();await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('2 planned moves/waits');
  await page.clock.runFor(100);await page.locator('.procedures_defnoreturn .blocklyText').filter({hasText:/^Pause$/}).dblclick();await page.locator('.blocklyHtmlInput').fill('Short pause');await page.locator('.blocklyHtmlInput').press('Enter');await page.clock.runFor(100);
  const downloading=page.waitForEvent('download');await clickControl(page,'Save program');const file=await downloading;expect(file.suggestedFilename()).toBe('Sorting challenge.json');
- const text=await readFile((await file.path())!,'utf8'),data=JSON.parse(text);expect(data.schemaVersion).toBe(4);expect(data.name).toBe('Sorting challenge');expect(data.functions).toHaveLength(1);expect(data.functions[0].name).toBe('Short pause');expect(data.instructions.map((node:{name:string})=>node.name)).toEqual(['Short pause','Short pause']);
+ const text=await readFile((await file.path())!,'utf8'),data=JSON.parse(text);expect(data.schemaVersion).toBe(5);expect(data.name).toBe('Sorting challenge');expect(data.functions).toHaveLength(1);expect(data.functions[0].name).toBe('Short pause');expect(data.instructions.map((node:{name:string})=>node.name)).toEqual(['Short pause','Short pause']);
  await clickControl(page,'New empty program');await expect(page.locator('#project-name')).toHaveValue('Untitled program');await page.locator('#program-file').setInputFiles({name:'renamed-download.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#project-name')).toHaveValue('Sorting challenge');
  await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('2 planned moves/waits');expect(await writes(page)).toHaveLength(0);expect(errors).toEqual([]);
  await page.getByRole('treeitem',{name:'My Blocks',exact:true}).click();await expect(page.locator('.blocklyFlyout').getByText('Short pause',{exact:true})).toBeVisible();
@@ -304,7 +340,7 @@ test('every keyboard handler is checked before startup Home and duplicate key fi
 test('keyboard stacks and their position snapshots save/load without connecting or enabling events',async({page})=>{
  await station(page);const positions=[2130,2230,2180,2280,2080,1160];await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'pose',blockId:'pickup',positionId:'p',name:'Pickup',positions,durationMs:1000}]}]);
  await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('1 keyboard event stacks also checked');
- const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(text)).toMatchObject({schemaVersion:3,keyEvents:[{key:'a',body:[{kind:'pose',name:'Pickup',positions}]}]});
+ const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(text)).toMatchObject({schemaVersion:5,keyEvents:[{key:'a',body:[{kind:'pose',name:'Pickup',positions}]}]});
  await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'reload.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
  await page.locator('#keyboard-control').click();await pressKey(page,'a');expect(await writes(page)).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);
  await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
@@ -336,7 +372,7 @@ test('the variables example checks offline, resets values, and round-trips branc
  await expect(page.locator('#variable-values')).toContainText('counter = 3');await expect(page.locator('#variable-values')).toContainText('cycles = 3');
  await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked');await expect(page.locator('#variable-values')).toContainText('counter = 3');
  const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8'),file=JSON.parse(text);
- expect(file.schemaVersion).toBe(2);expect(file.instructions[2]).toMatchObject({kind:'repeat',count:{kind:'variable',name:'cycles'},body:[{kind:'if',elseBody:[{kind:'wait',durationMs:400}]},{kind:'change',name:'counter'}]});
+ expect(file.schemaVersion).toBe(5);expect(file.instructions[2]).toMatchObject({kind:'repeat',count:{kind:'variable',name:'cycles'},body:[{kind:'if',elseBody:[{kind:'wait',durationMs:400}]},{kind:'change',name:'counter'}]});
  await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'logic.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
  await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#variable-values')).toContainText('counter = 3');
  expect(await writes(page)).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);expect(errors).toEqual([]);
@@ -420,15 +456,15 @@ test('program save/load restores loops and joint values without movement and mal
  await connect(page);await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeEnabled();expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
 });
 
-test('a saved program carries its pose snapshots across reload without overwriting the position library or auto-running',async({page})=>{
- await seedPositions(page);await station(page);await clickControl(page,'New empty program');
+test('a saved program replaces the working position list and restores its poses without auto-running',async({page})=>{
+ await seedPositions(page);await station(page);
  await selectPosition(page,'pickup');await clickControl(page,'Add position block');await clickControl(page,'Add wait block');await selectPosition(page,'home');await clickControl(page,'Add position block');
  const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');
  await page.reload();expect(await writes(page)).toHaveLength(0);
- // A changed browser library must not change the program-file pose snapshots.
- await page.getByRole('tab',{name:'Positions',exact:true}).click();await clickControl(page,'Clear saved positions');const library=await page.evaluate(()=>localStorage.getItem('nexarm.named-positions.v1'));
+ // Loading the file restores its own list, independent of the current cache.
+ await page.getByRole('tab',{name:'Positions',exact:true}).click();await clickControl(page,'Clear saved positions');
  await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'positions.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
- expect(await page.evaluate(()=>localStorage.getItem('nexarm.named-positions.v1'))).toBe(library);expect(await writes(page)).toHaveLength(0);
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!).poses.map((p:{name:string})=>p.name))).toEqual(['Pickup','Home']);await expect(page.locator('#saved-positions li')).toHaveCount(2);expect(await writes(page)).toHaveLength(0);
  await connect(page);expect(await writes(page)).toHaveLength(0);await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(3600);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);
  await clickControl(page,'Disconnect robot');
 });
@@ -459,7 +495,7 @@ test('editing a joint-only program does not connect USB and the simulator stays 
 test('after Home readiness, a small J3 pose target completes on its editable duration without arrival',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[{id:'near',name:'Near',positions:[2050,2150,2127,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}]})));
  await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{holding:boolean}}).classroomRobot.holding=false);await page.clock.runFor(300);
- await clickControl(page,'New empty program');await clickControl(page,'Add position block');await page.getByText('Program steps and keyboard editing',{exact:true}).click();
+ await clickControl(page,'Add position block');await page.getByText('Program steps and keyboard editing',{exact:true}).click();
  await page.getByRole('spinbutton',{name:/pose duration seconds/}).fill('2');await page.getByRole('spinbutton',{name:/pose duration seconds/}).dispatchEvent('change');
  await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1500);await expect(page.locator('#state')).toHaveText('Running');expect(await writes(page)).toHaveLength(6);
  const command=(await writes(page))[2]!;expect(command[2]).toBe(3);expect(command[7]!+256*command[8]!).toBe(2127);
@@ -469,7 +505,7 @@ test('a measured 32-unit J3 offset advances through Blockly by frame time withou
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[
    {id:'reach',name:'Reach',positions:[2050,2150,2838,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'},
    {id:'home',name:'Home',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-23T00:00:00Z'}]})));
- await station(page);await connect(page);await clickControl(page,'New empty program');
+ await station(page);await connect(page);
  await selectPosition(page,'reach');await clickControl(page,'Add position block');await clickControl(page,'Add wait block');await selectPosition(page,'home');await clickControl(page,'Add position block');
  await page.evaluate(()=>(window as unknown as {classroomRobot:{j3Offset:number}}).classroomRobot.j3Offset=32);
  await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2000);
@@ -480,7 +516,7 @@ test('a measured 32-unit J3 offset advances through Blockly by frame time withou
 });
 test('endpoint-path deviations do not interrupt timed pose playback and Stop remains available',async({page})=>{
  await seedPositions(page);await station(page);await connect(page);
- await clickControl(page,'New empty program');
+
  for(const position of ['pickup','home']){await selectPosition(page,position);await clickControl(page,'Add position block');}
  // Freeze physical tracking and inject in-range readings beyond the current
  // endpoint interval, as can happen during overlapping frames or a reversal.
@@ -520,7 +556,7 @@ test('invalid recorded targets are flagged and prevent the entire live program w
  await station(page);await connect(page);await ready(page);await page.getByRole('tab',{name:'Positions',exact:true}).click();
  await expect(page.locator('#saved-positions')).toContainText('J3 target 3144 is outside its operating range 2000–2900');await expect(page.locator('#saved-positions')).toContainText('J4 target 3407');
  await openPosition(page,'t2');await expect(page.getByRole('button',{name:'Move to position t2',exact:true})).toBeDisabled();
- await clickControl(page,'Load short practice program');await clickControl(page,'Add position block');await clickControl(page,'Run program');
+ await clickControl(page,'Add joint block');await clickControl(page,'Add position block');await clickControl(page,'Run program');
  await expect(page.locator('#run-status')).toContainText('Saved position "t2": J3 target 3144');expect(await writes(page)).toHaveLength(0);await expect(page.locator('#robot-status')).toContainText('Robot enabled');
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!).poses[0].positions)).toEqual([1968,1335,3144,3407,2109,2397]);
  await clickControl(page,'Load short practice program');await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);
@@ -538,7 +574,7 @@ test('saved pose buttons send six targets after Connect and finish at frame time
 });
 test('Blockly chains named positions and a wait on the station robot without extra enable',async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));await seedPositions(page);await station(page);
- await clickControl(page,'New empty program');await selectPosition(page,'pickup');await clickControl(page,'Add position block');
+ await selectPosition(page,'pickup');await clickControl(page,'Add position block');
  await clickControl(page,'Add wait block');await selectPosition(page,'home');await clickControl(page,'Add position block');
  await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();expect(await writes(page)).toHaveLength(0);
  await connect(page);await ready(page);await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(700);
@@ -549,7 +585,7 @@ test('Blockly chains named positions and a wait on the station robot without ext
  await clickControl(page,'Disconnect robot');
 });
 test('a deleted position blocks compilation without sending commands',async({page})=>{
- await seedPositions(page);await station(page);await connect(page);await ready(page);await clickControl(page,'New empty program');
+ await seedPositions(page);await station(page);await connect(page);await ready(page);
  await selectPosition(page,'pickup');await clickControl(page,'Add position block');await page.getByRole('tab',{name:'Positions',exact:true}).click();await clickControl(page,'Delete position Pickup');
  await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('saved position is missing');expect(await writes(page)).toHaveLength(0);
  await page.getByText('Program steps and keyboard editing',{exact:true}).click();await page.locator('#keyboard-fields select').selectOption('home');await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(6);
