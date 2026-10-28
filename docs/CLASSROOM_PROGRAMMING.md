@@ -1,4 +1,10 @@
-# Programming development test: dev.50
+# Programming development test: dev.51
+
+[Signal tower and Space stop](./SIGNAL_AND_STOP.md): green pulses during programs
+(including Home/waits), amber means listening, and red means Stop requested or
+fault. Space now uses the existing Stop/position-hold path and ends key events.
+Servo holding is retained; no automatic release is introduced. Old Space hats
+load for reassignment before Check/Run/Save.
 
 [Keyboard events](./KEYBOARD_EVENTS.md) adds separate When key pressed stacks.
 Run starts listening after checking every stack; Stop ends it. Add block's

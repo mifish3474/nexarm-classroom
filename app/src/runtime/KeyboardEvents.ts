@@ -1,8 +1,10 @@
 export const KEY_OPTIONS:[string,string][]=[
-  ['Space','space'],['↑ arrow','up'],['↓ arrow','down'],['← arrow','left'],['→ arrow','right'],
+  ['↑ arrow','up'],['↓ arrow','down'],['← arrow','left'],['→ arrow','right'],
   ...'abcdefghijklmnopqrstuvwxyz0123456789'.split('').map(key=>[key.toUpperCase(),key] as [string,string]),
 ];
-export const keyLabel=(key:string)=>KEY_OPTIONS.find(option=>option[1]===key)?.[0]??key;
+export const keyLabel=(key:string)=>key==='unassigned'?'Choose a key':KEY_OPTIONS.find(option=>option[1]===key)?.[0]??key;
+export const SPACE_RESERVED_MESSAGE='Space is reserved for Stop. Choose another key for this event.';
+export const isStopKey=(event:Pick<KeyboardEvent,'key'|'code'>)=>event.code==='Space'||event.key===' '||event.key==='Spacebar';
 export const isEventKey=(value:unknown):value is string=>typeof value==='string'&&KEY_OPTIONS.some(option=>option[1]===value);
 function eventKey(key:string):string|null{
   const mapped:Record<string,string>={' ':'space',Spacebar:'space',ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};

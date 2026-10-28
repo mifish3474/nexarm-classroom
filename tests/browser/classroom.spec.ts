@@ -56,31 +56,91 @@ async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[])
  await expect(page.locator('#program-file-status')).toContainText('loaded for review');
 }
 
+test('Space stops a running key sequence from a text field, retains holding and never repeats or resumes',async({page})=>{
+ await station(page);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','disconnected');await connect(page);
+ await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'out',servo:1,target:2700},{kind:'wait',blockId:'pause',durationMs:2000},{kind:'move',blockId:'back',servo:1,target:2050}]}]);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','listening');
+ await page.keyboard.press('a');await page.clock.runFor(200);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','running');expect(await writes(page)).toHaveLength(1);
+ await page.locator('#pose-name').focus();await page.keyboard.down('Space');await page.clock.runFor(100);
+ await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');await expect(page.locator('#state')).toHaveText('Stopped');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ const stopped=await writes(page);expect(stopped).toHaveLength(2);expect(stopped[1]![7]!+256*stopped[1]![8]!).toBeLessThan(2700);
+ expect(stopped.every(bytes=>bytes[4]!==61)).toBe(true);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{holding:boolean}}).classroomRobot.holding)).toBe(true);
+ await expect(page.locator('#run')).toBeDisabled();await page.keyboard.down('Space');await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(2);
+ await page.keyboard.up('Space');await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1500);expect(await writes(page)).toHaveLength(2);await ready(page);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','listening');
+ await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(2);
+ await clickControl(page,'Disconnect robot');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','disconnected');
+});
+
+test('Space stops Home and waits, and cannot activate a focused Run button on key release',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[],[{kind:'wait',blockId:'pause',durationMs:2000},{kind:'move',blockId:'after',servo:1,target:2500}]);
+ await page.locator('#run').focus();await page.keyboard.press('Space');await page.clock.runFor(600);expect(await writes(page)).toHaveLength(0);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');
+ await page.locator('#pose-name').fill('Pick');await page.locator('#pose-name').press('End');await page.keyboard.type(' up');await expect(page.locator('#pose-name')).toHaveValue('Pick up');
+ await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(500);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','running');
+ await page.locator('#pose-name').focus();await page.keyboard.press('Shift+Space');await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(0);await expect(page.locator('#state')).toHaveText('Stopped');
+ await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;s.positions.forEach((n,i)=>{s.positions[i]=n+100;s.targets[i]=n+100;});});await page.clock.runFor(600);
+ await clickControl(page,'Run program');await page.clock.runFor(100);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','running');await expect(page.locator('#run-status')).toContainText('Home');
+ await page.keyboard.press('Space');await page.clock.runFor(4000);await expect(page.locator('#state')).toHaveText('Stopped');expect((await writes(page)).length).toBeLessThanOrEqual(2);await clickControl(page,'Disconnect robot');
+});
+
+test('Space cancels pending preparation before late results can move or arm keys',async({page})=>{
+ await page.addInitScript(()=>{
+  const NativeWorker=Worker;
+  window.Worker=class extends NativeWorker{
+   override postMessage(message:unknown){setTimeout(()=>super.postMessage(message),500);}
+  } as typeof Worker;
+ });
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2700}]}],[{kind:'move',blockId:'startup',servo:1,target:2600}]);
+ await page.locator('#run').evaluate(button=>{(button as HTMLButtonElement).click();});
+ await expect(page.locator('#state')).toHaveText('Preparing');
+ await page.keyboard.press('Space');await page.clock.runFor(2000);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
+ expect(await writes(page)).toHaveLength(0);await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+});
+
+test('old Space stacks remain editable, but cannot Check or Run until explicitly reassigned',async({page})=>{
+ await station(page);await connect(page);
+ await loadKeys(page,[{blockId:'old-space',key:'space',body:[{kind:'move',blockId:'old-move',servo:1,target:2130}]}]);
+ await expect(page.locator('#program-file-status')).toContainText('Space is reserved for Stop');
+ await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Space is reserved for Stop');
+ await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('Space is reserved for Stop');expect(await writes(page)).toHaveLength(0);
+ await page.locator('.blocklyText').filter({hasText:'Choose key (Space is Stop)'}).click();
+ await page.getByRole('option',{name:'A',exact:true}).click();await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('1 keyboard event stacks');
+ expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+});
+
+test('signal tower honors reduced motion and returns to amber after a key sequence completes',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'a',key:'a',body:[{kind:'wait',blockId:'pause',durationMs:1000}]}]);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.keyboard.press('a');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','running');
+ await page.screenshot({path:'test-results/signal-tower-running.png'});
+ await expect(page.locator('.tower-green')).toHaveCSS('animation-name','tower-pulse');await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('.tower-green')).toHaveCSS('animation-name','none');
+ await page.clock.runFor(2000);await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','listening');await clickControl(page,'Stop');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');await clickControl(page,'Disconnect robot');
+});
+
 test('key events require Run, do not queue busy presses or repeat held keys, and Stop disables them',async({page})=>{
  await station(page);await connect(page);
- await loadKeys(page,[{blockId:'space-hat',key:'space',body:[{kind:'move',blockId:'out',servo:1,target:2130},{kind:'wait',blockId:'pause',durationMs:1000},{kind:'move',blockId:'back',servo:1,target:2050}]},{blockId:'right-hat',key:'right',body:[{kind:'move',blockId:'right-joint',servo:2,target:2230}]}]);
- await page.locator('#keyboard-control').click();await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(0);
+ await loadKeys(page,[{blockId:'space-hat',key:'a',body:[{kind:'move',blockId:'out',servo:1,target:2130},{kind:'wait',blockId:'pause',durationMs:1000},{kind:'move',blockId:'back',servo:1,target:2050}]},{blockId:'right-hat',key:'right',body:[{kind:'move',blockId:'right-joint',servo:2,target:2230}]}]);
+ await page.locator('#keyboard-control').click();await page.keyboard.press('a');expect(await writes(page)).toHaveLength(0);
  await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');expect(await writes(page)).toHaveLength(0);
- await page.keyboard.down('Space');await page.clock.runFor(100);expect(await writes(page)).toHaveLength(1);
- await page.keyboard.down('Space');await page.keyboard.press('ArrowRight');await page.clock.runFor(4000);await expect(page.locator('#state')).toHaveText('Keys active');expect(await writes(page)).toHaveLength(2);
- await page.keyboard.down('Space');await page.clock.runFor(500);expect(await writes(page)).toHaveLength(2);await page.keyboard.up('Space');
- await page.keyboard.press('Space');await page.clock.runFor(4000);expect(await writes(page)).toHaveLength(4);
+ await page.keyboard.down('a');await page.clock.runFor(100);expect(await writes(page)).toHaveLength(1);
+ await page.keyboard.down('a');await page.keyboard.press('ArrowRight');await page.clock.runFor(4000);await expect(page.locator('#state')).toHaveText('Keys active');expect(await writes(page)).toHaveLength(2);
+ await page.keyboard.down('a');await page.clock.runFor(500);expect(await writes(page)).toHaveLength(2);await page.keyboard.up('a');
+ await page.keyboard.press('a');await page.clock.runFor(4000);expect(await writes(page)).toHaveLength(4);
  await clickControl(page,'Stop');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');const count=(await writes(page)).length;
- await page.locator('#keyboard-control').click();await page.keyboard.press('Space');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);await clickControl(page,'Disconnect robot');
+ await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);await clickControl(page,'Disconnect robot');
 });
 
 test('typing, modifiers and synthetic keys do not trigger motion; editing ends listening',async({page})=>{
- await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'space',body:[{kind:'move',blockId:'s1',servo:1,target:2130}]},{blockId:'a',key:'a',body:[{kind:'move',blockId:'s2',servo:1,target:2120}]}]);
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'move',blockId:'s1',servo:1,target:2130}]},{blockId:'b',key:'b',body:[{kind:'move',blockId:'s2',servo:1,target:2120}]}]);
  await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.getByRole('textbox',{name:'Position name'}).focus();await page.keyboard.type('a a');expect(await writes(page)).toHaveLength(0);
- await page.locator('#keyboard-control').click();await page.keyboard.press('Control+Space');await page.keyboard.press('Shift+A');expect(await writes(page)).toHaveLength(0);
+ await page.locator('#keyboard-control').click();await page.keyboard.press('Control+A');await page.keyboard.press('Shift+A');expect(await writes(page)).toHaveLength(0);
  await page.evaluate(()=>dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true})));expect(await writes(page)).toHaveLength(0);
  await clickControl(page,'Add wait block');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
- await page.locator('#keyboard-control').click();await page.keyboard.press('Space');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
+ await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
 });
 
 test('every keyboard handler is checked before startup Home and duplicate key files preserve the editor',async({page})=>{
  await station(page);await connect(page);await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;s.positions.forEach((n,i)=>{s.positions[i]=n+100;s.targets[i]=n+100;});});await page.clock.runFor(300);
- const bad={blockId:'key',key:'space',body:[{kind:'move',blockId:'bad',servo:3,target:1880}]};await loadKeys(page,[bad],[{kind:'move',blockId:'startup',servo:1,target:2130}]);
+ const bad={blockId:'key',key:'a',body:[{kind:'move',blockId:'bad',servo:3,target:1880}]};await loadKeys(page,[bad],[{kind:'move',blockId:'startup',servo:1,target:2130}]);
  await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('J3 target 1880');expect(await writes(page)).toHaveLength(0);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
  const duplicate={format:'nexarm-classroom-program',schemaVersion:3,instructions:[],keyEvents:[{blockId:'x',key:'a',body:[]},{blockId:'y',key:'a',body:[]}]};
  await page.locator('#program-file').setInputFiles({name:'duplicate.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(duplicate))});await expect(page.locator('#program-file-status')).toContainText('one When A');
@@ -88,30 +148,30 @@ test('every keyboard handler is checked before startup Home and duplicate key fi
 });
 
 test('keyboard stacks and their position snapshots save/load without connecting or enabling events',async({page})=>{
- await station(page);const positions=[2130,2230,2180,2280,2080,1160];await loadKeys(page,[{blockId:'space',key:'space',body:[{kind:'pose',blockId:'pickup',positionId:'p',name:'Pickup',positions,durationMs:1000}]}]);
+ await station(page);const positions=[2130,2230,2180,2280,2080,1160];await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'pose',blockId:'pickup',positionId:'p',name:'Pickup',positions,durationMs:1000}]}]);
  await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('1 keyboard event stacks also checked');
- const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(text)).toMatchObject({schemaVersion:3,keyEvents:[{key:'space',body:[{kind:'pose',name:'Pickup',positions}]}]});
+ const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(text)).toMatchObject({schemaVersion:3,keyEvents:[{key:'a',body:[{kind:'pose',name:'Pickup',positions}]}]});
  await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'reload.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
- await page.locator('#keyboard-control').click();await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);
+ await page.locator('#keyboard-control').click();await page.keyboard.press('a');expect(await writes(page)).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);
  await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
 });
 
 test('faults and lost window focus cancel keyboard listening without automatic restart',async({page})=>{
- await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'space',body:[{kind:'move',blockId:'move',servo:1,target:2130},{kind:'wait',blockId:'wait',durationMs:1000}]}]);
- await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.keyboard.press('Space');await expect(page.locator('#state')).toHaveText('Running');await page.evaluate(()=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions[0]=3900);await page.clock.runFor(100);
- await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');await clickControl(page,'Stop');const count=(await writes(page)).length;
- await page.locator('#keyboard-control').click();await page.keyboard.press('Space');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2130},{kind:'wait',blockId:'wait',durationMs:1000}]}]);
+ await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.keyboard.press('a');await expect(page.locator('#state')).toHaveText('Running');await page.evaluate(()=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions[0]=3900);await page.clock.runFor(100);
+ await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','fault');await clickControl(page,'Stop');const count=(await writes(page)).length;
+ await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);
  await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;const home=[2050,2150,2100,2200,2000,1080];s.positions.splice(0,6,...home);s.targets.splice(0,6,...home);});await page.clock.runFor(600);
  await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await page.evaluate(()=>dispatchEvent(new Event('blur')));await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
- await page.locator('#keyboard-control').click();await page.keyboard.press('Space');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);await clickControl(page,'Disconnect robot');
+ await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(count);await clickControl(page,'Disconnect robot');
 });
 
 test('release and restore end keyboard listening without adding confirmation or automatic reactivation',async({page})=>{
- await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'space',body:[{kind:'move',blockId:'move',servo:1,target:2130}]}]);
+ await station(page);await connect(page);await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'move',blockId:'move',servo:1,target:2130}]}]);
  await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');
  await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
  await clickControl(page,'Restore servo holding');await page.clock.runFor(600);await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
- expect(await writes(page)).toHaveLength(2);await page.locator('#keyboard-control').click();await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(2);
+ expect(await writes(page)).toHaveLength(2);await page.locator('#keyboard-control').click();await page.keyboard.press('a');expect(await writes(page)).toHaveLength(2);
  await ready(page);await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');expect(await writes(page)).toHaveLength(2);await clickControl(page,'Stop');await clickControl(page,'Disconnect robot');
 });
 

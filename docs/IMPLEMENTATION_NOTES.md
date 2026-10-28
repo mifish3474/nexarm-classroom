@@ -1,8 +1,40 @@
-# Classroom programming development preview 0.7.0-dev.50
+# Classroom programming development preview 0.7.0-dev.51
+
+## Signal tower and dedicated Space stop
+
+The coding page shows a local SVG signal tower with slow green pulsing for active
+programs/Home/Wait or manual pose movement, amber for key listening/preparation
+or holding attention, red for Stop requested/fault, and gray otherwise. Text
+labels distinguish activity states; reduced-motion preference disables pulsing.
+It indicates software state, never torque, clearance or confirmed standstill.
+
+A trusted capturing Space keydown precedes editor and programmable-key dispatch.
+It cancels the worker/session and key handlers and invokes the unchanged
+TeacherRobotControl.stop position-hold path. It works while busy or listening,
+including fields/menus and modifiers, and on non-text controls while connected.
+Idle text entry retains spaces. Held Space suppresses repeats and new Run/manual
+UI actions; its consumed keyup cannot activate a focused button or restart code.
+No torque-off, restore, new movement profile or firmware operation was added.
+The existing Stop limitation remains: an in-flight/unavailable writer or stale
+feedback can prevent its measured-position hold; physical cutoff is independent.
+
+Space is excluded from executable event keys and Blockly options. Import alone
+permits legacy Space/unassigned hats as non-executable `unassigned` placeholders,
+preserving their bodies and pose snapshots. Compile/Check/Run/Save reject them
+with a correction; reassignment is explicit. Newly added hats use A. File formats
+remain 1/2/3, and loading never enables control. See SIGNAL_AND_STOP.md for checks.
+
+Validation: build/type-check and 332 unit tests pass; the full 71-scenario Chrome
+regression passes using mocked USB. Space coverage includes Home, waits, moving
+sequences, fields, held/released keys, a focused Run button, and cancellation
+before a delayed worker can start motion. File reassignment, signal transitions,
+reduced-motion styling and five screen sizes pass. Root index.html is unchanged;
+the controller implementation and its built bundle are unchanged. No physical
+robot, firmware operation or hardware stopping-time measurement was used.
 
 ## Keyboard event stacks
 
-Events supplies a separate When key pressed hat for Space, arrows, letters and
+Events supplies a separate When key pressed hat for arrows, letters and
 digits. compileProject allows one startup and up to 16 distinct key stacks;
 quick-add targets a selected hat. All handler expressions and targets are checked
 before any startup movement or event activation. Startup can be empty. Each

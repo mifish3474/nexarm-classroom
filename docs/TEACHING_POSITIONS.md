@@ -1,6 +1,6 @@
-# Teach and use a position: dev.50
+# Teach and use a position: dev.51
 
-Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.50**, and Connect.
+Open `http://127.0.0.1:5173/`, confirm **0.7.0-dev.51**, and Connect.
 The **Positions** side panel contains Teach a position, Release holding,
 live readings and ranges, naming/Record, and Restore holding. Run and Stop
 remain in the top toolbar while you teach or scroll the saved-position list.

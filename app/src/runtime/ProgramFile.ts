@@ -42,6 +42,7 @@ export function loadProjectFile(text:string):ProgramProject{
   let data:unknown;try{data=JSON.parse(text);}catch{throw Error('Choose a valid NexArm program JSON file.');}
   if(!data||typeof data!=='object'||Array.isArray(data))throw Error('Choose a NexArm program file.');
   const file=data as Record<string,unknown>;
-  if(file.format==='nexarm-classroom-program'&&file.schemaVersion===3)return copyProject(file);
+  // Preserve old Space stacks for editing, without silently rebinding to a new key.
+  if(file.format==='nexarm-classroom-program'&&file.schemaVersion===3)return copyProject(file,true);
   return {instructions:loadProgramFile(text),keyEvents:[]};
 }

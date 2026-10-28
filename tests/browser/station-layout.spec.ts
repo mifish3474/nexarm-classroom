@@ -53,9 +53,9 @@ test('students create a variable and append set, change and if/else blocks throu
 test('adding a keyboard hat selects its stack for quick-add blocks and saves it without USB',async({page})=>{
  await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed while building key events');}}));await page.goto('/');
  await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add key event block',exact:true}).click();
- await page.locator('#add-block-menu > summary').click();await expect(page.locator('#program-stack option:checked')).toHaveText('When Space pressed');await page.getByRole('button',{name:'Add wait block',exact:true}).click();
+ await page.locator('#add-block-menu > summary').click();await expect(page.locator('#program-stack option:checked')).toHaveText('When A pressed');await page.getByRole('button',{name:'Add wait block',exact:true}).click();
  await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked: 0');await expect(page.locator('#run-status')).toContainText('1 keyboard event stacks');
  const download=page.waitForEvent('download');await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Save program',exact:true}).click();const data=JSON.parse(await readFile((await (await download).path())!,'utf8'));
- expect(data.instructions).toEqual([]);expect(data.keyEvents).toMatchObject([{key:'space',body:[{kind:'wait',durationMs:1000}]}]);
- await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add key event block',exact:true}).click();await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('one When Space');
+ expect(data.instructions).toEqual([]);expect(data.keyEvents).toMatchObject([{key:'a',body:[{kind:'wait',durationMs:1000}]}]);
+ await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add key event block',exact:true}).click();await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('one When A');
 });

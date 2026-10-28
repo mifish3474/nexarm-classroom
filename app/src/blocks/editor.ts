@@ -7,7 +7,7 @@ import type {NamedPosition} from '../poses/NamedPositions';
 import {programInstructions} from '../runtime/ProgramFile';
 import {copyProject} from '../runtime/ProgramProject';
 import type {ProgramProject} from '../runtime/ProgramProject';
-import {KEY_OPTIONS,keyLabel,isEventKey} from '../runtime/KeyboardEvents';
+import {KEY_OPTIONS,keyLabel,isEventKey,SPACE_RESERVED_MESSAGE} from '../runtime/KeyboardEvents';
 import {inputBlock,numericBlock,conditionBlock,variableLabel,milliseconds,seconds,valueState} from './expressions';
 
 const messages:Record<string,string>={};
@@ -20,7 +20,7 @@ for(const type of ['variables_get','variables_set']){
 }
 Blockly.defineBlocksWithJsonArray([
   {type:'lesson_start',message0:'When Run clicked',nextStatement:null,colour:'#086b73',tooltip:'The program begins here.'},
-  {type:'lesson_key',message0:'When %1 pressed',args0:[{type:'field_dropdown',name:'KEY',options:KEY_OPTIONS}],nextStatement:null,colour:'#946f12',tooltip:'Run starts listening. One press runs this stack when the robot is idle. Stop ends listening.'},
+  {type:'lesson_key',message0:'When %1 pressed',args0:[{type:'field_dropdown',name:'KEY',options:[['Choose key (Space is Stop)','unassigned'],...KEY_OPTIONS]}],nextStatement:null,colour:'#946f12',tooltip:'Run starts listening. One press runs this stack when the robot is idle. Space and Stop end listening.'},
   {type:'lesson_move',message0:'move joint %1 to %2',args0:[{type:'field_dropdown',name:'SERVO',options:['1','2','3','4','5','6'].map(id=>[id,id])},{type:'input_value',name:'TARGET',check:'Number'}],previousStatement:null,nextStatement:null,colour:'#2b6fa8',tooltip:'A whole-number raw target within this joint’s operating range.'},
   {type:'lesson_repeat',message0:'repeat %1 times',args0:[{type:'input_value',name:'COUNT',check:'Number'}],message1:'do %1',args1:[{type:'input_statement',name:'BODY'}],previousStatement:null,nextStatement:null,colour:'#9b620d',tooltip:'Evaluate the count once, then repeat 1–20 times.'},
   {type:'lesson_wait',message0:'wait %1 seconds',args0:[{type:'input_value',name:'SECONDS',check:'Number'}],previousStatement:null,nextStatement:null,colour:'#9b620d',tooltip:'Wait 0–10 seconds, in tenth-second steps.'},
@@ -52,7 +52,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     media:`${import.meta.env.BASE_URL}blockly-media/`,sounds:false,
     grid:{spacing:20,length:1,colour:'#cad7e2',snap:false},
     toolbox:{kind:'categoryToolbox',contents:[
-      {kind:'category',name:'Events',colour:'#946f12',contents:[{kind:'block',type:'lesson_key',fields:{KEY:'space'}}]},
+      {kind:'category',name:'Events',colour:'#946f12',contents:[{kind:'block',type:'lesson_key',fields:{KEY:'a'}}]},
       {kind:'category',name:'Motion',colour:'#2b6fa8',contents:[{kind:'block',type:'lesson_move',inputs:{TARGET:numberInput(2128)}},{kind:'block',type:'lesson_pose',inputs:{SECONDS:numberInput(1)}}]},
       {kind:'category',name:'Control',colour:'#9b620d',contents:[{kind:'block',type:'lesson_wait',inputs:{SECONDS:numberInput(1)}},{kind:'block',type:'lesson_repeat',inputs:{COUNT:numberInput(2)}},{kind:'block',type:'controls_if',extraState:{hasElse:true},inputs:{IF0:{shadow:{type:'logic_boolean',fields:{BOOL:'TRUE'}}}}}]},
       {kind:'category',name:'Math',colour:'#5965a5',contents:[{kind:'block',type:'math_number'},{kind:'block',type:'math_arithmetic',inputs:{A:numberInput(0),B:numberInput(0)}},{kind:'block',type:'math_round',inputs:{NUM:numberInput(0)}}]},
@@ -78,6 +78,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     const keys=new Set<string>();
     for(const event of events){
       const key=event.getFieldValue('KEY');
+      if(key==='space'||key==='unassigned')throw new ProgramError(SPACE_RESERVED_MESSAGE,event.id);
       if(!event.isEnabled()||!isEventKey(key))throw new ProgramError('Enable the key event and choose a supported key.',event.id);
       if(keys.has(key))throw new ProgramError(`Use one When ${keyLabel(key)} pressed stack. Combine its blocks into one sequence.`,event.id);
       keys.add(key);
@@ -122,7 +123,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     }finally{Blockly.Events.setGroup(false);}
   };
   const loadProject=(input:ProgramProject)=>{
-    const project=copyProject(input),instructions=project.instructions,previousPositions=programPositions;
+    const project=copyProject(input,true),instructions=project.instructions,previousPositions=programPositions;
     const previous=Blockly.serialization.workspaces.save(workspace),stage=new Blockly.Workspace();
     const loaded:NamedPosition[]=[],poseIds=new Map<string,string>();
     const poseId=(node:Extract<Instruction,{kind:'pose'}>)=>{
@@ -185,7 +186,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     if(events.length>=16)throw new ProgramError('Use at most 16 keyboard event stacks.');
     const index=events.length+1;
     Blockly.Events.setGroup(true);
-    try{const block=Blockly.serialization.blocks.append({type:'lesson_key',fields:{KEY:'space'},x:20+(index%2)*300,y:24+Math.floor(index/2)*260},workspace,{recordUndo:true});appendTargetId=block.id;}
+    try{const block=Blockly.serialization.blocks.append({type:'lesson_key',fields:{KEY:'a'},x:20+(index%2)*300,y:24+Math.floor(index/2)*260},workspace,{recordUndo:true});appendTargetId=block.id;}
     finally{Blockly.Events.setGroup(false);}
   };
   const listStacks=()=>workspace.getTopBlocks(false).filter(block=>['lesson_start','lesson_key'].includes(block.type)).map(block=>({id:block.id,name:block.type==='lesson_start'?'When Run clicked':`When ${keyLabel(String(block.getFieldValue('KEY')))} pressed`}));

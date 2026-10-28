@@ -19,3 +19,13 @@
 .workspace-page .teach-reading label{line-height:1.2}.workspace-page .teach-reading small{line-height:1.25}.workspace-page .support-note{padding:8px;line-height:1.35}.workspace-page #teach-status{margin:6px 0}.workspace-page .pose-recording{gap:8px}
 .workspace-page .blocklyToolboxCategory{height:44px;line-height:44px;margin-bottom:4px}.workspace-page .blocklyToolboxCategoryLabel{font-size:14px}
 .keyboard-control{padding:8px 16px;background:#f8f3e3;border-bottom:1px solid #d8cbaa;cursor:pointer}.keyboard-control[hidden]{display:none}.keyboard-control p{margin:0;font-size:.8rem;color:#655020}.keyboard-control[data-active=true]{background:#e6f4ef;border-color:#9bbfaf}.keyboard-control[data-active=true] p{color:#215f4a}.keyboard-control:focus-visible{outline:3px solid #b35005;outline-offset:-3px}
+.signal-tower{display:flex;align-items:center;gap:6px;flex-shrink:0;min-width:150px;border-right:1px solid #c9d7e0;padding-right:12px}
+.signal-tower svg{width:32px;height:58px;flex-shrink:0;overflow:visible}.signal-tower strong,.signal-tower span,.signal-tower small{display:block;line-height:1.4}.signal-tower strong{font-size:.75rem;max-width:145px}.signal-tower span{font-size:.72rem}.signal-tower small{font-size:.65rem;color:#526c7e}.signal-tower kbd{font:inherit;font-weight:700}
+.tower-lens rect{fill:#45515e;stroke:#18232d;stroke-width:1}.tower-lens path{stroke:#ffffff30;stroke-width:1}
+.signal-tower[data-state=running] .tower-green rect{fill:#18b56a;filter:drop-shadow(0 0 4px #18b56a)}
+.signal-tower[data-state=running] .tower-green{animation:tower-pulse 1.5s ease-in-out infinite}
+.signal-tower:is([data-state=listening],[data-state=checking],[data-state=released]) .tower-amber rect{fill:#f2b632;filter:drop-shadow(0 0 3px #f2b632)}
+.signal-tower:is([data-state=stopped],[data-state=fault]) .tower-red rect{fill:#e34141;filter:drop-shadow(0 0 3px #e34141)}
+@keyframes tower-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){.signal-tower[data-state=running] .tower-green{animation:none}}
+@media(max-width:850px){.workspace-status{display:grid;grid-template-columns:130px minmax(0,1fr);gap:4px 10px}.signal-tower{grid-row:span 2;min-width:0;padding-right:8px}.signal-tower svg{width:26px;height:48px}.signal-tower strong{font-size:.7rem}.signal-tower small{display:none}.workspace-status .badge{justify-self:start}.workspace-status p{min-width:0;font-size:.75rem}.workspace-status .home-cue{display:none}}

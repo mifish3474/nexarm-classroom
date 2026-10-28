@@ -3,7 +3,14 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
-**Dev.50: keyboard events.** Events adds When Space/arrow/letter/number pressed
+**Dev.51: signal tower and Space stop.** A fixed tower pulses green during
+programs, shows amber while listening for keys, and red after Stop or a fault.
+Space now uses Stop, retaining servo holding. It cancels preparation and events;
+held/released Space never restarts a program. Old Space hats remain editable but
+require an explicit replacement key. See [Signal tower and Space stop](docs/SIGNAL_AND_STOP.md).
+Automatic stop-then-release remains a separate future investigation.
+
+**Dev.50: keyboard events.** Events adds When arrow/letter/number pressed
 stacks. Run validates all stacks and starts listening; Stop ends listening.
 One idle key press runs its stack through the existing Home-first controller;
 held/busy presses are never queued or repeated. Typing is excluded, editing and

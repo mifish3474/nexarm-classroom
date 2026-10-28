@@ -12,7 +12,8 @@ import {ProgramError} from './runtime/ProgramLanguage';
 import {saveProjectFile,loadProjectFile,MAX_PROGRAM_FILE_BYTES} from './runtime/ProgramFile';
 import {copyProject} from './runtime/ProgramProject';
 import type {KeyHandler} from './runtime/ProgramProject';
-import {KeyboardEvents,isKeyboardEditing,keyLabel} from './runtime/KeyboardEvents';
+import {KeyboardEvents,isKeyboardEditing,keyLabel,isStopKey} from './runtime/KeyboardEvents';
+import {programSignal} from './ProgramSignal';
 
 
 
@@ -25,6 +26,7 @@ const run=element<HTMLButtonElement>('run'),stop=element<HTMLButtonElement>('sto
 const practice=element<HTMLButtonElement>('practice-lesson');
 const status=element('run-status');
 let preparing=false,loadingProgram=false,session=0,control:TeacherRobotControl|null=null,interfaceError='';
+let spaceHeld=false,stopRequested=false;
 let interfaceErrorBlock:string|null=null,reviewMessage='';
 let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
 const robotMode=()=>true;
@@ -52,14 +54,21 @@ const cards=Array.from({length:6},(_,index)=>{
   card.append(title,measured,target);element('joints').append(card);return {measured,target};
 });
 function refresh(){
-  teaching.refresh(true,preparing||loadingProgram);
+  teaching.refresh(true,preparing||loadingProgram||spaceHeld);
   const robot=control?.snapshot(),live=true;
   if(keyEvents.active){
     if(!robot||robot.connectionState!=='Listening'||robot.manualPhase!=='Normal'||robot.faulted&&!previousKeyFault||robot.program?.phase==='Fault'&&previousKeyPhase!=='Fault'||robot.busy&&robot.operation!=='Program')endKeyEvents();
     previousKeyFault=!!robot?.faulted;previousKeyPhase=robot?.program?.phase;
   }
   const busy=preparing||loadingProgram||robot?.busy;
-  run.disabled=!!busy||(live&&!robot?.canMove);stop.disabled=!(busy||(live&&robot?.connectionState==='Listening'));lesson.disabled=practice.disabled=!!busy;
+  run.disabled=spaceHeld||!!busy||(live&&!robot?.canMove);stop.disabled=!(busy||keyEvents.active||(live&&robot?.connectionState==='Listening'));lesson.disabled=practice.disabled=!!busy;
+  // Controller reports retain past runs. An explicitly rearmed key-only project
+  // must show its current listening state rather than an old Stopped/Fault phase.
+  const signal=programSignal({connectionState:robot?.connectionState,faulted:!!robot?.faulted&&!keyEvents.active&&robot.program?.phase!=='Running',
+    running:robot?.program?.phase==='Running'||robot?.home?.phase==='Running',keysActive:keyEvents.active,preparing,
+    stopped:stopRequested,released:!!robot&&robot.manualPhase!=='Normal'});
+  element('signal-tower').dataset.state=signal.state;
+  if(element('signal-label').textContent!==signal.label)element('signal-label').textContent=signal.label;
   element<HTMLSelectElement>('program-position').disabled=!!busy||!editor.listPositions().length;
   element<HTMLButtonElement>('add-position').disabled=!!busy||!editor.listPositions().length;
   element<HTMLButtonElement>('add-wait').disabled=!!busy;
@@ -93,7 +102,7 @@ function refresh(){
     if(live&&robot?.operation==='Saved position')activity=robot.message;
     if(!busy&&reviewMessage&&(!robot||robot.canMove))activity=reviewMessage;
   }
-  if(keyEvents.active&&!busy&&robot?.canMove)activity=`Listening for keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Stop ends keyboard events.`;
+  if(keyEvents.active&&!busy&&robot?.canMove)activity=`Listening for keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Space or Stop ends keyboard events.`;
   if(interfaceError)activity=interfaceError;
   if(status.textContent!==activity)status.textContent=activity;
   const keyControl=element('keyboard-control');
@@ -102,7 +111,7 @@ function refresh(){
   if(!hasKeyStacks&&!keyEvents.active)keyMessage='';
   keyControl.hidden=!keyEvents.active&&!keyMessage&&!hasKeyStacks;
   keyControl.dataset.active=String(keyEvents.active);
-  const keyText=keyEvents.active?`${busy?'Sequence running; key presses are ignored.':'Keyboard events active.'} Keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Click here for keyboard control. Stop ends listening.`:keyMessage||'Key events are off. Run program to start listening. Each event uses Home-first checks.';
+  const keyText=keyEvents.active?`${busy?'Sequence running; other event keys are ignored.':'Keyboard events active.'} Keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Click here for keyboard control. Space or Stop ends listening.`:keyMessage||'Key events are off. Run program to start listening. Space is reserved for Stop. Each event uses Home-first checks.';
   if(element('keyboard-event-status').textContent!==keyText)element('keyboard-event-status').textContent=keyText;
   document.querySelector<HTMLElement>('.workspace-status')!.dataset.fault=String(!!interfaceError||!!robot?.faulted);
   const holding=robot&&robot.manualPhase!=='Normal'?`${robot.manualPhase} · Support the arm. Use Positions to restore holding.`:'';
@@ -171,7 +180,7 @@ document.addEventListener('add-position-to-code',event=>{
   try{editor.addPosition((event as CustomEvent<string>).detail);interfaceError='';keyboardFields();refresh();}
   catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}
 });
-function cancel(stopRobot=true){endKeyEvents();session++;runner.cancel();preparing=loadingProgram=false;if(stopRobot)control?.stop();refresh();}
+function cancel(stopRobot=true){endKeyEvents();session++;runner.cancel();preparing=loadingProgram=false;if(stopRobot){stopRequested=true;control?.stop();}refresh();}
 function validateTargets(result:PreparedProgram){
   for(const step of result.steps){
     try{if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
@@ -184,10 +193,11 @@ function showPrepared(result:PreparedProgram){
   for(const variable of result.variables){const value=document.createElement('p');value.textContent=`${variable.name} = ${variable.value}`;element('variable-values').append(value);}
 }
 async function prepareProgram(execute:boolean){
-  if(preparing||loadingProgram||control?.snapshot().busy)return;
+  if(spaceHeld||preparing||loadingProgram||control?.snapshot().busy)return;
   const ownSession=++session,live=robotMode();
   endKeyEvents();
   try{
+    if(execute)stopRequested=false;
     interfaceError='';interfaceErrorBlock=null;reviewMessage='';plan=[];rows=[];element('instructions').replaceChildren();element('variable-values').replaceChildren();
     const project=copyProject(editor.compileProject()),instructions=project.instructions;preparing=true;plan=[];refresh();
     const handlers=new Map<string,{handler:KeyHandler;result:PreparedProgram}>();
@@ -247,13 +257,13 @@ programFile.onchange=async()=>{
     if(file.size>MAX_PROGRAM_FILE_BYTES)throw Error('Program file exceeds 256 KB.');
     const project=loadProjectFile(await file.text());if(token!==session)return;
     editor.loadProject(project);positionOptions();keyboardFields();plan=[];rows=[];element('instructions').replaceChildren();interfaceError='';
-    fileStatus.textContent='Program loaded for review. Included positions are available to its blocks; your saved-position library is unchanged. Nothing has run.';
+    fileStatus.textContent=project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Check, Run or Save. Its blocks and positions are preserved. Nothing has run.':'Program loaded for review. Included positions are available to its blocks; your saved-position library is unchanged. Nothing has run.';
   }catch(error){if(token===session)fileStatus.textContent=error instanceof Error?error.message:'Program could not be loaded. Existing blocks are unchanged.';}
   finally{if(token===session){loadingProgram=false;refresh();}}
 };
 element('robot-connect').onclick=()=>{
   try{
-    interfaceError='';
+    interfaceError='';stopRequested=false;
     if(!robotMode())return;
     const serial=(navigator as Navigator&{serial?:{requestPort():Promise<TeacherPort>}}).serial;
     if(!serial||!navigator.locks)throw Error('Robot mode needs Chrome or Edge with Web Serial on HTTPS or localhost.');
@@ -270,9 +280,17 @@ element('robot-diagnostics').onclick=()=>{
 element('keyboard-control').onclick=()=>element('keyboard-control').focus({preventScroll:true});
 window.addEventListener('keydown',event=>{
   if(!event.isTrusted)return;
-  if(event.target instanceof Element&&event.target.closest('#blockly-editor,#keyboard-fields,.blocklyWidgetDiv,.blocklyDropDownDiv'))beginEditing();
   const robot=control?.snapshot();
-  const key=keyEvents.keydown(event,{canMove:!!robot?.canMove,busy:preparing||loadingProgram||!!robot?.busy,
+  // A running sequence/listening session must stop even inside a field or menu.
+  // Idle text entry retains spaces; Space on a focused button cannot start motion.
+  const typing=event.target instanceof Element&&!!event.target.closest('input,textarea,select,[contenteditable],.blocklyWidgetDiv,.blocklyDropDownDiv');
+  if(isStopKey(event)&&(spaceHeld||preparing||loadingProgram||robot?.busy||keyEvents.active||robot?.connectionState==='Listening'&&!typing)){
+    event.preventDefault();event.stopImmediatePropagation();
+    if(!spaceHeld){spaceHeld=true;cancel();}
+    return;
+  }
+  if(event.target instanceof Element&&event.target.closest('#blockly-editor,#keyboard-fields,.blocklyWidgetDiv,.blocklyDropDownDiv'))beginEditing();
+  const key=keyEvents.keydown(event,{canMove:!spaceHeld&&!!robot?.canMove,busy:preparing||loadingProgram||!!robot?.busy,
     editing:isKeyboardEditing(event.target)||!!document.querySelector('dialog[open],.workspace-menu[open]'),visible:!document.hidden&&document.hasFocus()});
   if(!key)return;
   const binding=keyHandlers.get(key);if(!binding)return;
@@ -283,8 +301,13 @@ window.addEventListener('keydown',event=>{
     refresh();
   }catch(error){endKeyEvents();interfaceError=error instanceof Error?error.message:'Key event could not run.';interfaceErrorBlock=error instanceof ProgramError?error.blockId:binding.handler.blockId;refresh();}
 },true);
-window.addEventListener('keyup',event=>{if(event.isTrusted)keyEvents.keyup(event);},true);
+window.addEventListener('keyup',event=>{
+  if(!event.isTrusted)return;
+  if(isStopKey(event)&&spaceHeld){event.preventDefault();event.stopImmediatePropagation();spaceHeld=false;refresh();return;}
+  keyEvents.keyup(event);
+},true);
 window.addEventListener('blur',()=>{
+  spaceHeld=false;
   keyEvents.releaseAll();
   if(preparing&&editor.listStacks().some(stack=>stack.name!=='When Run clicked')){
     keyMessage='Keyboard preparation canceled when this window lost focus. Run program to listen again.';cancel(false);return;

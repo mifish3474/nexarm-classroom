@@ -1,6 +1,16 @@
 # NexArm Classroom development roadmap
 
-Updated 2026-10-27.
+Updated 2026-10-28.
+
+## Current safety usability step
+
+Dev.51 adds the signal tower and dedicated Space stop using the existing
+position-hold Stop. Space is retired as a programmable event; old hats load
+for explicit reassignment. Validate physical stopping on the existing motion
+profiles before advancing. Automatic stop-then-release remains a separate
+investigation; no release is introduced by Space/Stop in dev.51. Functions/My
+Blocks follow this safety work. Browser controls remain dependent on focus,
+responsiveness and USB; a physical cutoff is part of the classroom procedure.
 
 ## Current scope: joints and named positions on factory firmware
 

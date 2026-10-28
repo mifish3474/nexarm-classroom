@@ -64,7 +64,7 @@ test('approved Servo 3 comparison uses factory settings without changing normal 
 
 test('all twelve reusable jog controls work from live readings with no queued clicks or reload arming',async({page})=>{
   const errors:string[]=[],requests:string[]=[]; page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
-  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.50');
+  await robot(page); await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.51');
   await expect(page.locator('#teacher-joints .jog-controls button')).toHaveCount(12); expect(await writes(page)).toEqual([]);
   await connect(page); await expect(page.getByRole('button',{name:'Servo 1 plus 20'})).toBeEnabled(); await ready(page);
   for(let servo=1;servo<=6;servo++)for(const direction of ['plus','minus']) {

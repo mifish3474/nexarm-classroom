@@ -1,12 +1,12 @@
 import {copyInstructions,evaluateProgram,ProgramError} from './ProgramLanguage';
 import type {Instruction} from './ProgramLanguage';
-import {isEventKey,keyLabel} from './KeyboardEvents';
+import {isEventKey,keyLabel,SPACE_RESERVED_MESSAGE} from './KeyboardEvents';
 
 export type KeyHandler={blockId:string;key:string;body:Instruction[]};
 export type ProgramProject={instructions:Instruction[];keyEvents:KeyHandler[]};
 
 /** Validate a complete project before replacing the editor or enabling events. */
-export function copyProject(input:unknown):ProgramProject{
+export function copyProject(input:unknown,allowUnassigned=false):ProgramProject{
   if(!input||typeof input!=='object'||Array.isArray(input))throw Error('Choose a valid program project.');
   const project=input as Record<string,unknown>;
   const instructions=copyInstructions(project.instructions,true);
@@ -16,9 +16,12 @@ export function copyProject(input:unknown):ProgramProject{
     if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid keyboard event.');
     const event=value as Record<string,unknown>;
     if(typeof event.blockId!=='string'||!event.blockId||event.blockId.length>200)throw Error('Invalid keyboard event block reference.');
-    if(!isEventKey(event.key))throw new ProgramError('Choose Space, an arrow, a letter, or a number for the key event.',event.blockId);
-    if(keys.has(event.key))throw new ProgramError(`Use one When ${keyLabel(event.key)} pressed stack. Combine its blocks into one sequence.`,event.blockId);
-    keys.add(event.key);return {blockId:event.blockId,key:event.key,body:copyInstructions(event.body,true)};
+    const reserved=event.key==='space'||event.key==='unassigned';
+    if(reserved&&!allowUnassigned)throw new ProgramError(SPACE_RESERVED_MESSAGE,event.blockId);
+    if(!reserved&&!isEventKey(event.key))throw new ProgramError('Choose an arrow, a letter, or a number for the key event.',event.blockId);
+    const key=reserved?'unassigned':event.key as string;
+    if(key!=='unassigned'&&keys.has(key))throw new ProgramError(`Use one When ${keyLabel(key)} pressed stack. Combine its blocks into one sequence.`,event.blockId);
+    keys.add(key);return {blockId:event.blockId,key,body:copyInstructions(event.body,true)};
   });
   const result={instructions,keyEvents},ids=new Set<string>(),names=new Set<string>();let nodes=0;
   function visit(value:unknown){
