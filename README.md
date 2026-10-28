@@ -3,6 +3,11 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Open the app: https://nexarm.mrfish.app/**. The operator-approved public
+deployment builds the Blockly app from `main`; the old root prototype stays in
+source control. See [deployment and rollback](docs/DEPLOYMENT.md) and the
+[preserved dev.57 milestone](docs/MILESTONE_DEV57.md).
+
 **Dev.55: restore tested release pacing.** Stop/Space still use the fast hold,
 then release, but once again wait for three new steady reports after the hold
 write. The zero-gap dev.54 change failed on the arm despite successful USB
@@ -161,9 +166,10 @@ npm run test:browser
 
 Browser tests use an installed Google Chrome browser and serve the built `dist/`
 output. Run the build before browser tests. `npm run preview` serves that same
-output for manual review. No command deploys or modifies the existing prototype.
-Do not publish the repository root or substitute this preview for student release
-without the planned review.
+output for manual review. Pushing `main` now starts the checked GitHub Pages
+workflow, which publishes `dist/` at the public address above. It does not publish
+the repository root or modify the original prototype. Public hosting does not
+complete the student-release safety work on the roadmap.
 
 Project documents:
 
