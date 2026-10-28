@@ -1,4 +1,9 @@
-# Signal tower and Space stop: dev.51
+# Signal tower and Space stop: dev.52
+
+Dev.52 enables the operator-approved faster-stop test: **speed 600 / acceleration
+100** for Stop's measured-position hold. Ordinary motion still uses its previous
+settings. This is a stopping-response experiment, not a measured stopping-time
+guarantee. Servo holding is retained; no Release or Restore is sent.
 
 The coding page has a fixed industrial signal-tower graphic beside the program
 status. It works offline, has text labels, and stays visible above the code.
@@ -19,11 +24,21 @@ that a physical joint has stopped. Red says **Stop requested**, not “safe.”
 
 On the focused coding page, **Space** uses the same stop operation as the Stop
 button. It cancels preparation, Home, the current sequence, and further keyboard
-events. Where fresh readings and the USB writer permit it, the existing controller
-requests a hold at the latest measured positions. It sends no automatic Release
+events. Where fresh readings and the USB writer permit it, the controller
+requests a fast hold at the latest measured positions. It sends no automatic Release
 or Restore command. A joint already moving may not stop immediately; read the
 status message if a hold could not be sent. The physical power cutoff remains
 available as taught in the classroom safety lesson.
+
+If a USB write is already active, one priority stop request waits for that write
+to finish, then submits the hold immediately using the newest available readings.
+It bypasses the normal command interval. Repeated Stop presses do not duplicate
+the pending hold or restart the original movement. No new movement/Release/Restore
+can start while it waits. A failed write, the existing two-second write deadline,
+stale readings at transmission, disconnect, or a holding-state change prevents
+the pending hold from being replayed later. The page reports that condition.
+Disconnecting while waiting cancels the pending hold; use Space/Stop while staying
+connected for this hardware check.
 
 During a program or active keyboard session, Space takes priority even over text
 fields, Blockly fields, menus, and modifier combinations. At idle you can still
@@ -49,19 +64,30 @@ The app does not silently choose a replacement that might trigger movement.
 
 ## Hardware check
 
-1. Refresh the coding page and confirm **0.7.0-dev.51**. Save your current work.
+1. Refresh the coding page and confirm **0.7.0-dev.52**. Save your current work.
 2. Connect with the arm clear for the existing Home return. Start with a program
    containing only a several-second Wait. Run should show pulsing green,
    including during Home if needed. Press Space: the program should stop, the
    tower turn red, and holding remain enabled. No Release/Restore is needed.
 3. Release Space. Nothing should restart. Use Run deliberately for another trial.
-   Repeat with an existing, already-tested movement program and stop it partway
-   through. Verify its later actions do not execute and inspect physical stopping.
+   Repeat with an existing, already-tested movement program and stop it early
+   in a clear part of its path. Verify its later actions do not execute. Observe
+   whether stopping is quicker and whether there is a small backward correction
+   or a jerk as the measured-position hold takes over. End the check if motion
+   is unexpected; do not repeat an uncomfortable stopping response.
 4. For key events, Run an A-key stack. Amber means listening; an accepted A press
    turns it green until completion, then amber again. Space ends the session and
    turns it red. Pressing A afterward must do nothing until another Run.
+5. Export robot diagnostics after the stop, before closing the page. Under
+   `diagnostics.stopping`, each bounded record includes request/submission/write
+   completion times, held joints, the selected position readings and their age,
+   and up to two seconds of subsequent feedback (at most 40 samples). The regular
+   events log also records the time from Stop to hold submission. Stream write
+   completion is not an acknowledgment of physical stopping; these observations
+   help distinguish host delay from joint response, not certify a stopping time.
 
 Do not restrain or pinch-test a powered joint for this check. This update leaves
-motion speeds, acceleration, joint ranges, Home, firmware, and the controller's
-existing position-hold stop behavior unchanged. Automatic stop-then-release is
+ordinary movement speeds/acceleration, joint ranges, Home and firmware unchanged.
+Only the Stop hold uses the new 600/100 profile and priority submission.
+Automatic stop-then-release is
 the separate next investigation, subject to observation and approval.

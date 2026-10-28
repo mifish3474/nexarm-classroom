@@ -4,6 +4,11 @@ Updated 2026-10-28.
 
 ## Current safety usability step
 
+Dev.52 enables the operator-approved 600/100 fast hold and priority submission
+after an active USB write. Validate physical stop response, possible position
+correction and diagnostic timing on the arm before treating it as classroom
+behavior. Holding remains enabled; automatic release is still separate.
+
 Dev.51 adds the signal tower and dedicated Space stop using the existing
 position-hold Stop. Space is retired as a programmable event; old hats load
 for explicit reassignment. Validate physical stopping on the existing motion

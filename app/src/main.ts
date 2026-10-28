@@ -104,6 +104,7 @@ function refresh(){
   }
   if(keyEvents.active&&!busy&&robot?.canMove)activity=`Listening for keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Space or Stop ends keyboard events.`;
   if(interfaceError)activity=interfaceError;
+  if(stopRequested&&robot?.connectionState==='Listening')activity=robot.message;
   if(status.textContent!==activity)status.textContent=activity;
   const keyControl=element('keyboard-control');
   const hasKeyStacks=editor.listStacks().some(stack=>stack.name!=='When Run clicked');

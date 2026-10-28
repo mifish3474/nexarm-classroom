@@ -1,4 +1,8 @@
-# Programming development test: dev.51
+# Programming development test: dev.52
+
+Dev.52 enables the approved faster Stop hold at 600/100, with one priority hold
+after an active USB write. See the linked guide for hardware observation and
+request/write/feedback diagnostics. Normal movement profiles are unchanged.
 
 [Signal tower and Space stop](./SIGNAL_AND_STOP.md): green pulses during programs
 (including Home/waits), amber means listening, and red means Stop requested or

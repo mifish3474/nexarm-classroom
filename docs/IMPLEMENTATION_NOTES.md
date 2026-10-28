@@ -1,4 +1,39 @@
-# Classroom programming development preview 0.7.0-dev.51
+# Classroom programming development preview 0.7.0-dev.52
+
+## Operator-approved priority fast-stop test
+
+Stop now sends its measured-position hold at speed 600 / acceleration 100;
+ordinary motion settings are unchanged. Stop still cancels worker/event/program
+execution immediately and never requests torque-off or holding restoration.
+If a stream write is active, one coalesced pending stop owns priority after that
+write resolves. Route generations prevent the original completion callback from
+dispatching another target. The hold samples current readings when it is sent,
+not when Stop was first pressed, and bypasses ordinary command pacing.
+
+Pending Stop blocks Run/manual/holding actions. The request cannot outlive the
+original write's existing two-second deadline, and a failed write, expired wait,
+stale feedback at send time, connection teardown or manual holding interlock
+prevents a later hold replay. A failed/late stop write gates movement through the
+delivery-uncertain interlock even after another Stop invalidates route callbacks.
+No hold is sent after an interrupted Release/Restore. Connection closure cancels
+an unsent pending hold; it does not promise to deliver it after disconnect.
+
+The shared classroom/sliders controller reports up to 20 stop attempts with
+request/submission/completion times, fresh target readings and feedback age, and
+at most 40 post-stop feedback observations over two seconds. Readings and stream
+completion do not prove physical stopping, holding force or pinch protection.
+The classroom run-status area displays the live Stop result rather than masking
+it with the prior program's generic Stopped message. See SIGNAL_AND_STOP.md for
+the hardware test and diagnostic export procedure.
+
+Validation: build/type-check and 343 unit tests pass. All 53 classroom/setup
+browser scenarios pass across the regression and targeted assertion update;
+three additional offline/layout/read-only diagnostic checks pass. New coverage
+exercises immediate 600/100 holds, pending-writer ordering, newest readings,
+duplicate Stop, stale/expired/rejected writes, disconnect and Release races,
+repeated-Stop failure reporting, timing/feedback export, and no resumed blocks.
+Root index.html is unchanged. All USB/servo tests are mocked; physical stopping
+time and the sharper hold response require the operator's hardware observation.
 
 ## Signal tower and dedicated Space stop
 

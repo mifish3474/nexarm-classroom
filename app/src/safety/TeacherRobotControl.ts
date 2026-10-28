@@ -20,8 +20,11 @@ type Operation = 'Jog' | 'Home' | 'Saved position' | 'Servo 3 factory comparison
 type SliderTarget={servo:number;target:number;speed:number;acceleration:number};
 const LIVE_TARGET_DEADBAND=10;
 const PROGRAM_SPEED=600,PROGRAM_ACCELERATION=10;
+// Operator-approved fast-stop test. Ordinary motion profiles remain unchanged.
+const STOP_SPEED=600,STOP_ACCELERATION=100,STOP_WRITE_DEADLINE_MS=2000;
 const PROGRAM_HOME_TOLERANCE=40,PROGRAM_HOME_GRACE_MS=2000;
 type WriteDiagnostic={atMs:number;operation:Operation|null;bytes:number[];positions:number[]|null;finishedAtMs:number|null;outcome:'not-submitted'|'pending'|'stream-write-resolved'|'stream-write-rejected'};
+type StopDiagnostic={requestedAtMs:number;submittedAtMs:number|null;finishedAtMs:number|null;servos:number[];targets:number[]|null;feedbackAgeAtSendMs:number|null;outcome:'waiting-for-writer'|'submitted'|'stream-write-resolved'|'unavailable'|'canceled';message:string;feedback:{atMs:number;positions:number[]}[]};
 
 // Teacher-only direct controls. All jog, Home, and holding writes pass through
 // the same executor and exclusive USB lease. Live dragging retains only the
@@ -42,6 +45,9 @@ export class TeacherRobotControl {
   private writeInFlight = false;
   private writeUncertain=false;
   private pending: Promise<void> | null = null;
+  private pendingStop:{generation:number;deadlineMs:number;diagnostic:StopDiagnostic}|null=null;
+  private stops:StopDiagnostic[]=[];
+  private stopObservation:StopDiagnostic|null=null;
   private lastCommandAt = -Infinity;
   private generation = 0;
   private writeStartedAt=-Infinity;
@@ -77,7 +83,7 @@ export class TeacherRobotControl {
     const steps=interpret(instructions);
     // Validate the entire program before the first write, including later poses.
     for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
-    this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
+    this.stopObservation=null;this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
     this.program={steps,startup:this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:'Preparing Home-first program.'};
     this.advanceProgram();this.changed();
   }
@@ -155,6 +161,7 @@ export class TeacherRobotControl {
       if (state === 'Listening') {
         this.connectedAt = this.now(); this.message = this.options.directSession?'Connected. Waiting for fresh stable position feedback.':'Connected. Positions are read-only until you enable controls.';
       } else {
+        this.cancelStopHold('Connection ended before the stop hold could be submitted.');this.stopObservation=null;
         this.cancelProgram('Fault','Robot connection ended.');
         this.armed = false; this.liveTarget=null;this.lastLive=null; this.generation++;
         this.manual.interrupt('Connection ended.', this.positions ?? []);
@@ -169,6 +176,7 @@ export class TeacherRobotControl {
   connect(select: () => Promise<TeacherPort>) {
     if (this.connectionState !== 'Disconnected' || !this.visible()) return;
     this.manual = new ManualPositioning(this.storage);
+    this.cancelStopHold('A new connection cannot replay a prior stop.');this.stopObservation=null;
     this.readySamples=[];this.timedHoldServos=[];
     this.writeUncertain=false;
     this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = false; this.route = null; this.operation = null;this.program=null;
@@ -184,6 +192,7 @@ export class TeacherRobotControl {
     if (this.connectionState !== 'Listening') return 'Connect to the robot.';
     if (!this.visible()) return 'Keep this page visible.';
     if(this.writeUncertain)return 'USB command delivery is uncertain. Disconnect and reconnect before another command.';
+    if(this.pendingStop)return 'Stop requested. Waiting for the active USB write before sending the hold.';
     if (this.writeInFlight || this.manual.pending) return 'Waiting for the current write to finish.';
     if(this.program?.phase==='Running')return 'Program is running. Stop it before using manual controls.';
     if (this.route?.activeRun) return 'Movement is in progress. Other clicks are not queued.';
@@ -210,7 +219,7 @@ export class TeacherRobotControl {
       sliderServo:this.operation==='Slider'&&this.route?.phase==='Running'&&this.armed&&!this.manual.blocked&&this.visible()&&!this.writeInFlight&&this.now()-this.receivedAt<=500&&this.now()-this.lastCommandAt>=500?this.route.status().next?.servo:null,
       home: this.route?.status() ?? null, operation: this.operation,
       program:this.program?{phase:this.program.phase,startup:this.program.startup,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'&&this.program.startup==='Running blocks'?this.program.index-1:null}:null,
-      busy: this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
+      busy: !!this.pendingStop || this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
       manualPhase: this.options.directSession&&this.manual.phase==='Confirm holding'?'Restore settling':this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
       feedbackFresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.receivedAt<=500,
       canCapture:captureReason===null,captureReason,
@@ -272,6 +281,7 @@ export class TeacherRobotControl {
     this.liveTarget=null;this.lastLive=null;this.start(plan,'Saved position');
   }
   private startTimedPose(target:readonly number[],durationMs:number,operation:Operation){
+    this.stopObservation=null;
     const plan=timedPosePlan(this.positions!,target,durationMs);
     this.retain();this.faulted=false;this.liveTarget=null;this.lastLive=null;
     this.route=new TimedPoseMotion(this.positions!,this.now(),plan);this.operation=operation;
@@ -279,6 +289,7 @@ export class TeacherRobotControl {
     this.pump();this.changed();
   }
   private start(plan: ReturnType<typeof smoothPlan>, operation: Operation,previousPath?:CommandedPath|null) {
+    this.stopObservation=null;
     for(const step of plan.steps)assertJointTarget(step.servo,step.target);
     this.faulted=false;
     this.retain();
@@ -333,6 +344,7 @@ export class TeacherRobotControl {
 
   // Existing factory All Off/All On workflow, available without enabling motion.
   setHolding(enabled: boolean, supported: boolean) {
+    this.stopObservation=null;
     this.liveTarget=null;this.lastLive=null;
     const reason = this.idleReason();
     if (!supported || reason) throw new Error(reason ?? 'Support the arm and confirm clear pinch areas and cutoff access.');
@@ -399,6 +411,8 @@ export class TeacherRobotControl {
       if (!positions) continue;
 
       this.positions = positions; this.reportedPose=decodeReportedPose(frame); this.receivedAt = at;
+      const stop=this.stopObservation;
+      if(stop&&at-(stop.submittedAtMs??stop.requestedAtMs)<=2000&&stop.feedback.length<40)stop.feedback.push({atMs:at,positions:[...positions]});
       if (this.route?.phase === 'Running') {
         this.route.observe(positions, at);
         const phase = this.route.status().phase;
@@ -412,9 +426,10 @@ export class TeacherRobotControl {
   tick() {
     if (this.connectionState !== 'Listening') return;
     if (!this.visible()) { this.disconnect(); return; }
+    if(this.pendingStop){this.flushStopHold();if(this.pendingStop||this.writeUncertain){this.changed();return;}}
     if(this.program?.phase==='Running'&&this.now()-this.program.at>=60000){this.fault('Program reached its 60-second time limit. Edit it into a shorter sequence.');return;}
     if(this.now()-this.receivedAt>500)this.liveTarget=null;
-    if(this.writeInFlight && this.now()-this.writeStartedAt>=2000 && !this.faulted){this.writeUncertain=true;this.fault('USB write did not finish within two seconds. Delivery is uncertain.');return;}
+    if(this.writeInFlight && this.now()-this.writeStartedAt>=2000 && (!this.faulted||this.stopObservation?.outcome==='submitted')){this.writeUncertain=true;this.fault('USB write did not finish within two seconds. Delivery is uncertain.');return;}
     if (this.manual.pending && this.now() - this.manual.pendingSince >= 2000) {
       this.fault('Holding write deadline exceeded. Physical holding needs confirmation.'); return;
     }
@@ -435,6 +450,8 @@ export class TeacherRobotControl {
   }
   private fault(message: string) {
     this.readySamples=[];
+    this.cancelStopHold(message,'unavailable');
+    if(this.stopObservation?.outcome==='submitted'){this.stopObservation.outcome='unavailable';this.stopObservation.message=message;}
     this.recordEvent('fault',message);
     this.cancelProgram('Fault',message);
     const moving=this.route?.activeRun;
@@ -442,18 +459,76 @@ export class TeacherRobotControl {
     if (this.route?.activeRun) this.route.fail(message);
     this.manual.interrupt(message, this.positions ?? []);  this.message = message+(moving?' Future targets canceled. Use Stop or the physical cutoff to intervene in the current movement.':''); this.changed();
   }
+  private cancelStopHold(message:string,outcome:'unavailable'|'canceled'='canceled'){
+    if(!this.pendingStop)return;
+    this.pendingStop.diagnostic.outcome=outcome;this.pendingStop.diagnostic.message=message;
+    this.recordEvent('stop-hold-unavailable',message);this.pendingStop=null;
+  }
+  private flushStopHold(){
+    const request=this.pendingStop;if(!request)return;
+    if(request.generation!==this.generation||this.connectionState!=='Listening'||this.manual.blocked){
+      this.cancelStopHold('Stop hold canceled after a connection or holding-state change.');return;
+    }
+    if(this.writeUncertain||this.now()>=request.deadlineMs){
+      const message='Stop hold could not be delivered within the USB deadline. Delivery is uncertain; use the physical cutoff if needed. Disconnect and reconnect before another command.';
+      this.writeUncertain=true;this.fault(message);return;
+    }
+    if(this.writeInFlight)return;
+    if(!this.positions||this.now()-this.receivedAt>500){
+      const message='Future commands canceled. Could not send fresh hold targets; use the physical cutoff if needed.';
+      this.cancelStopHold(message,'unavailable');this.message=message;return;
+    }
+    const diagnostic=request.diagnostic,generation=this.generation;
+    // Sample at transmission time, not at the original Space press. Never replay
+    // a stale position target after waiting for the previous USB write.
+    diagnostic.submittedAtMs=this.now();diagnostic.targets=[...this.positions];diagnostic.feedbackAgeAtSendMs=this.now()-this.receivedAt;
+    diagnostic.outcome='submitted';diagnostic.message='Fast hold submitted at speed 600 / acceleration 100; physical stopping is unverified.';
+    this.pendingStop=null;
+    this.recordEvent('stop-hold-submitted',`Fast hold submitted ${this.now()-diagnostic.requestedAtMs} ms after Stop; feedback age ${diagnostic.feedbackAgeAtSendMs} ms.`);
+    this.write(encodeSpeedPositions(diagnostic.servos.map(servo=>({servo,target:this.positions![servo-1]!})),STOP_SPEED,STOP_ACCELERATION),()=>{
+      this.message='Fast hold targets sent (600 / 100). Verify the arm has stopped. Holding remains enabled; no program resumes automatically.';this.changed();
+    },true);
+    if(!this.writeInFlight){diagnostic.outcome='unavailable';diagnostic.message='Stop hold could not be submitted to the USB writer.';return;}
+    const pending=this.pending,port=this.port;
+    // Record stream completion independently of canceled route callbacks. A USB
+    // completion still does not acknowledge servo execution or physical stopping.
+    if(pending)void pending.then(()=>{
+      diagnostic.finishedAtMs=this.now();
+      if(this.now()-diagnostic.submittedAtMs!>=STOP_WRITE_DEADLINE_MS){diagnostic.outcome='unavailable';diagnostic.message='Hold write exceeded its deadline; physical effect is uncertain.';}
+      else if(diagnostic.outcome!=='unavailable'){diagnostic.outcome='stream-write-resolved';diagnostic.message='Hold stream write resolved; physical stopping is unverified.';}
+      if(this.now()-diagnostic.submittedAtMs!>=STOP_WRITE_DEADLINE_MS&&!this.writeUncertain&&this.port===port&&this.connectionState==='Listening'){
+        this.writeUncertain=true;this.fault('Stop hold write exceeded its deadline. Delivery is uncertain; use the physical cutoff if needed.');
+      }
+      if(generation===this.generation)this.changed();
+    },()=>{
+      diagnostic.finishedAtMs=this.now();diagnostic.outcome='unavailable';diagnostic.message='Hold stream write rejected; physical effect is uncertain.';
+      if(!this.writeUncertain&&this.port===port&&this.connectionState==='Listening'){this.writeUncertain=true;this.fault('Stop hold write failed. Delivery is uncertain; use the physical cutoff if needed.');}
+    });
+  }
   stop() {
     this.readySamples=[];
     this.recordEvent('stop','Stop requested. No torque-off command is requested.');
+    if(this.pendingStop){this.flushStopHold();this.changed();return;}
     this.cancelProgram('Stopped','Stopped. Edit your program and run again when ready.');
     this.liveTarget=null;this.lastLive=null;
     const moving=[...new Set([...this.timedHoldServos,...this.lastMovingServos])]; this.lastMovingServos=[];this.timedHoldServos=[];
     this.armed = false; this.generation++; this.route?.stop();
     this.manual.interrupt('Stopped by teacher.', this.positions ?? []);
     this.message = 'Stopped. Future commands canceled; connection remains open.';
-    if(moving.length && this.positions && this.now()-this.receivedAt<=500 && !this.writeInFlight && this.connectionState==='Listening') {
-      this.write(encodeSpeedPositions(moving.map(servo=>({servo,target:this.positions![servo-1]!})),MOTION_SPEED,MOTION_ACCELERATION),()=>{this.message='Hold targets sent at the latest measured positions. Verify the arm has stopped, then enable when ready.';this.changed();},true);
-    } else if(moving.length) this.message='Future commands canceled. Could not send fresh hold targets; use the physical cutoff if needed.';
+    if(moving.length&&this.connectionState==='Listening'&&!this.manual.blocked){
+      const diagnostic:StopDiagnostic={requestedAtMs:this.now(),submittedAtMs:null,finishedAtMs:null,servos:moving,targets:null,feedbackAgeAtSendMs:null,outcome:'waiting-for-writer',message:'Stop requested; priority hold waits for the active USB write.',feedback:[]};
+      this.stops=[...this.stops,diagnostic].slice(-20);this.stopObservation=diagnostic;
+      this.pendingStop={generation:this.generation,deadlineMs:Math.min(this.now()+STOP_WRITE_DEADLINE_MS,this.writeInFlight?this.writeStartedAt+STOP_WRITE_DEADLINE_MS:Infinity),diagnostic};
+      if(this.writeInFlight){
+        this.message='Stop requested. Waiting for the active USB write before sending the fast hold; use the physical cutoff if needed.';
+        const pending=this.pending;
+        if(pending)void pending.then(()=>{this.flushStopHold();this.changed();},()=>{
+          if(this.pendingStop?.diagnostic!==diagnostic)return;
+          this.writeUncertain=true;this.fault('USB write failed before the stop hold. Delivery is uncertain; use the physical cutoff if needed. Disconnect and reconnect.');
+        });
+      }
+      this.flushStopHold();
+    } else if(moving.length)this.message='Future commands canceled. Hold not sent because connection or servo holding is unavailable; use the physical cutoff if needed.';
     this.changed();
   }
   disconnect() { this.stop(); this.connection.disconnect(); }
@@ -461,6 +536,7 @@ export class TeacherRobotControl {
     return {format: 'nexarm-teacher-control-session', schemaVersion: 1, capturedAt: new Date().toISOString(),
       operatingRanges:{source:'Operator-provided factory-software ranges, adjusted during development; 2026-10-23',protectedStudentPolicy:false,joints:OPERATING_RANGES.map((range,i)=>({servo:i+1,...range}))},
       diagnostics:{clock:'page monotonic milliseconds',state:this.connectionState,message:this.message,feedbackAgeMs:Number.isFinite(this.receivedAt)?this.now()-this.receivedAt:null,
+        stopping:{speed:STOP_SPEED,acceleration:STOP_ACCELERATION,physicalStoppingVerified:false,pending:!!this.pendingStop,attempts:this.stops.map(stop=>({...stop,servos:[...stop.servos],targets:stop.targets?[...stop.targets]:null,feedback:stop.feedback.map(sample=>({...sample,positions:[...sample.positions]}))}))},
         writePending:this.writeInFlight,powerAndTorqueState:'not measured',
         writes:this.writes.map(entry=>({...entry,bytes:[...entry.bytes],positions:entry.positions?[...entry.positions]:null})),
         events:this.events.map(entry=>({...entry,positions:entry.positions?[...entry.positions]:null}))},

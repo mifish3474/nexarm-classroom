@@ -3,6 +3,13 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.52: faster-stop test.** Stop uses a dedicated 600/100 hold profile and
+waits for an active USB write instead of skipping its hold. It uses fresh readings
+when submitting, cancels pending movement, and never releases holding or resumes
+the program. Diagnostics include request/write timing and post-stop readings.
+Physical stopping time still needs hardware observation; see the
+[stop testing guide](docs/SIGNAL_AND_STOP.md).
+
 **Dev.51: signal tower and Space stop.** A fixed tower pulses green during
 programs, shows amber while listening for keys, and red after Stop or a fault.
 Space now uses Stop, retaining servo holding. It cancels preparation and events;

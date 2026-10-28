@@ -1,4 +1,4 @@
-# Keyboard events: dev.51
+# Keyboard events: dev.52
 
 Use **When [A] pressed** to run a block sequence from a key. The same event
 hat can contain a function call when My Blocks is implemented later. Functions
@@ -6,7 +6,7 @@ are not part of this update.
 
 ## Build and check without hardware
 
-1. Confirm **0.7.0-dev.51** and save any work you want to keep.
+1. Confirm **0.7.0-dev.52** and save any work you want to keep.
 2. Open **Events** and drag a When A pressed hat into the workspace, or use
    **Add block → Add key event block**. It is a separate stack beside When Run
    clicked, not a block inside that stack.

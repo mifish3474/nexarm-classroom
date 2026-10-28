@@ -7,8 +7,8 @@ import {encodeCoordinateTarget,encodeCoordinateCalculation,encodeSpeedPosition} 
 
 const flush = async () => { for (let i = 0; i < 35; i++) await Promise.resolve(); };
 const locks = {request: async (_name: string, _options: unknown, run: (lease: object) => Promise<void>) => run({})} as unknown as LockManager;
-function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: boolean; stored?: Map<string, string>;directSession?:boolean;homeBeforeProgram?:boolean} = {}) {
-  let time = 0, visible = true, reader!: ReadableStreamDefaultController<Uint8Array>, finish!: () => void;
+function fixture(options: {hang?: boolean; hangWrites?:number[]; reject?: boolean; storageFails?: boolean; stored?: Map<string, string>;directSession?:boolean;homeBeforeProgram?:boolean} = {}) {
+  let time = 0, visible = true, reader!: ReadableStreamDefaultController<Uint8Array>, finish!: () => void, fail!:()=>void;
   const stored = options.stored ?? new Map<string, string>(), writes: {at: number; bytes: number[]}[] = [];
   const storage = {getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => {
     if (options.storageFails) throw new Error('Storage failed'); stored.set(key, value);
@@ -18,7 +18,7 @@ function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: bool
     writable: new WritableStream<Uint8Array>({write(bytes) {
       writes.push({at: time, bytes: [...bytes]});
       if (options.reject) return Promise.reject(new Error('USB write failed'));
-      if (options.hang) return new Promise<void>(resolve => { finish = resolve; });
+      if (options.hang||options.hangWrites?.includes(writes.length)) return new Promise<void>((resolve,reject) => { finish = resolve;fail=()=>reject(new Error('USB write failed')); });
     }})};
   // Existing executor tests isolate block execution; Home-first has dedicated
   // coverage below and remains enabled by default in the production controller.
@@ -38,12 +38,67 @@ function fixture(options: {hang?: boolean; reject?: boolean; storageFails?: bool
     reader.enqueue(Uint8Array.from([255,255,...body,(~(weak?body.slice(0,3):body).reduce((a,b)=>a+b,0))&255]));await flush();
   };
   return {control, port, writes, stored, feed, window, ready, solution, time: () => time, setTime: (at: number) => { time = at; },
-    hide: () => { visible = false; }, finish: () => finish(),endStream:()=>reader.close()};
+    hide: () => { visible = false; }, finish: () => finish(),fail:()=>fail(),endStream:()=>reader.close()};
 }
 const targetOf = (bytes: number[]) => bytes[6]! + 256 * bytes[7]!;
 const dispatchPose=async(f:ReturnType<typeof fixture>,positions:readonly number[]=TEACHER_HOME)=>{
   for(let i=0;i<5;i++){await f.feed(f.time()+2,positions);f.control.tick();await flush();}
 };
+
+describe('priority fast Stop',()=>{
+ const program=[{kind:'move',blockId:'first',servo:1,target:2700},{kind:'move',blockId:'later',servo:2,target:2400}];
+ it('uses the approved 600/100 profile immediately without changing normal movement or releasing holding',async()=>{
+  const f=fixture({directSession:true});await f.ready();f.control.runProgram(program);await flush();
+  expect(f.writes[0]!.bytes[6]).toBe(10);expect(f.writes[0]!.bytes.slice(11,13)).toEqual([88,2]);
+  const actual=[...TEACHER_HOME];actual[0]=2090;await f.feed(1200,actual);f.control.stop();await flush();
+  expect(f.writes).toHaveLength(2);const hold=f.writes[1]!;expect(hold.at).toBe(1200);expect(hold.bytes[6]).toBe(100);expect(hold.bytes.slice(11,13)).toEqual([88,2]);expect(hold.bytes[7]!+256*hold.bytes[8]!).toBe(2090);
+  expect(f.writes.every(w=>w.bytes[4]!==61)).toBe(true);expect(f.control.report().diagnostics.stopping.attempts[0]).toMatchObject({requestedAtMs:1200,submittedAtMs:1200,finishedAtMs:1200,outcome:'stream-write-resolved',feedbackAgeAtSendMs:0});
+  await f.feed(1300,actual);await f.feed(1400,actual);expect(f.control.report().diagnostics.stopping.attempts[0]!.feedback).toHaveLength(2);f.control.tick();expect(f.writes).toHaveLength(2);f.control.disconnect();await flush();
+ });
+ it('waits for an active write, then sends one priority hold using the newest readings without a timer tick',async()=>{
+  const f=fixture({directSession:true,hangWrites:[1]});await f.ready();f.control.runProgram(program);await flush();
+  f.control.stop();f.control.stop();expect(f.control.snapshot().busy).toBe(true);expect(f.control.snapshot().canMove).toBe(false);expect(()=>f.control.moveJoint(2,2300)).toThrow('Stop requested');
+  const actual=[...TEACHER_HOME];actual[0]=2140;await f.feed(1300,actual);expect(f.writes).toHaveLength(1);f.finish();await flush();
+  expect(f.writes).toHaveLength(2);expect(f.writes[1]!.at).toBe(1300);expect(f.writes[1]!.bytes[7]!+256*f.writes[1]!.bytes[8]!).toBe(2140);expect(f.control.report().diagnostics.stopping.attempts).toHaveLength(1);
+  expect(f.control.report().diagnostics.stopping.attempts[0]).toMatchObject({requestedAtMs:1100,submittedAtMs:1300,feedbackAgeAtSendMs:0,outcome:'stream-write-resolved'});
+  await f.window(1400,actual);f.control.tick();expect(f.writes).toHaveLength(2);expect(f.control.snapshot().program?.phase).toBe('Stopped');f.control.disconnect();await flush();
+ });
+ it('aborts a queued hold if the latest feedback is stale and never replays it on later readings',async()=>{
+  const f=fixture({directSession:true,hangWrites:[1]});await f.ready();f.control.runProgram(program);await flush();f.control.stop();f.setTime(1800);f.finish();await flush();
+  expect(f.writes).toHaveLength(1);expect(f.control.snapshot().message).toContain('Could not send fresh hold');expect(f.control.report().diagnostics.stopping.attempts[0]!.outcome).toBe('unavailable');
+  await f.window(1900);f.control.tick();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it.each([false,true])('never sends a delayed hold after the original write deadline, with tick=%s',async tick=>{
+  const f=fixture({directSession:true,hangWrites:[1]});await f.ready();f.control.runProgram(program);await flush();await f.feed(1300);f.control.stop();
+  await f.feed(3100);if(tick)f.control.tick();f.finish();await flush();
+  expect(f.writes).toHaveLength(1);expect(f.control.snapshot().canMove).toBe(false);expect(f.control.report().diagnostics.stopping.attempts[0]!.outcome).toBe('unavailable');expect(f.control.snapshot().message).toContain('deadline');
+  await f.feed(3200);f.control.tick();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it('does not send a follow-up hold after the interrupted write rejects',async()=>{
+  const f=fixture({directSession:true,hangWrites:[1]});await f.ready();f.control.runProgram(program);await flush();f.control.stop();f.fail();await flush();
+  expect(f.writes).toHaveLength(1);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('Delivery is uncertain');expect(f.control.report().diagnostics.stopping.pending).toBe(false);
+  await f.window(1200);expect(f.control.snapshot().canMove).toBe(false);expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
+ });
+ it('cancels a queued hold on disconnect without writing after closure begins',async()=>{
+  const f=fixture({directSession:true,hangWrites:[1]});await f.ready();f.control.runProgram(program);await flush();f.control.stop();f.control.disconnect();await flush();f.finish();await flush();
+  expect(f.writes).toHaveLength(1);expect(f.port.close).toHaveBeenCalledOnce();expect(f.control.report().diagnostics.stopping.attempts[0]!.outcome).toBe('canceled');expect(f.control.report().diagnostics.stopping.pending).toBe(false);
+ });
+ it('never follows an in-flight Release with a position hold',async()=>{
+  const f=fixture({directSession:true,hangWrites:[7]});await f.ready();f.control.returnHome();await flush();await dispatchPose(f);
+  for(let at=1200;at<=2300;at+=100){await f.feed(at);f.control.tick();await flush();}
+  f.control.setHolding(false,true);await flush();expect(f.writes).toHaveLength(7);f.control.stop();f.finish();await flush();
+  expect(f.writes).toHaveLength(7);expect(f.control.snapshot().manualPhase).toBe('Recovery required');expect(f.control.report().diagnostics.stopping.pending).toBe(false);f.control.disconnect();await flush();
+ });
+ it('records a failed fast-hold write and blocks movement without pretending the arm stopped',async()=>{
+  const f=fixture({directSession:true,hangWrites:[2]});await f.ready();f.control.runProgram(program);await flush();f.control.stop();await flush();f.setTime(3100);f.control.tick();
+  expect(f.control.report().diagnostics.stopping.attempts[0]!.outcome).toBe('unavailable');expect(f.control.snapshot().canMove).toBe(false);f.finish();await flush();expect(f.writes).toHaveLength(2);expect(f.control.report().diagnostics.stopping.physicalStoppingVerified).toBe(false);f.control.disconnect();await flush();
+ });
+ it.each(['reject','resolve-late'])('a repeated Stop cannot hide a fast-hold write failure: %s',async result=>{
+  const f=fixture({directSession:true,hangWrites:[2]});await f.ready();f.control.runProgram(program);await flush();f.control.stop();await flush();f.control.stop();
+  if(result==='reject')f.fail();else{f.setTime(3100);f.finish();}await flush();
+  expect(f.control.snapshot().faulted).toBe(true);await f.window(3200);expect(f.control.snapshot().canMove).toBe(false);expect(f.writes).toHaveLength(2);expect(f.control.report().diagnostics.stopping.attempts[0]!.outcome).toBe('unavailable');f.control.disconnect();await flush();
+ });
+});
 
 describe('Home-first Run',()=>{
  const program=[{kind:'move',blockId:'first',servo:1,target:2130}];
@@ -377,7 +432,7 @@ describe('smooth teacher controls',()=>{
  const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program);await flush();f.setTime(61100);f.control.tick();
  expect(f.control.snapshot().program?.phase).toBe('Fault');expect(f.control.snapshot().message).toContain('60-second');f.control.disconnect();await flush();
  const g=fixture({hang:true});await g.ready();g.control.enable(true);g.control.runProgram(program);await flush();g.control.stop();g.finish();await flush();await g.feed(1700);g.control.tick();
- expect(g.writes).toHaveLength(1);expect(g.control.snapshot().program?.phase).toBe('Stopped');g.control.disconnect();await flush();
+ expect(g.writes).toHaveLength(2);expect(g.control.snapshot().program?.phase).toBe('Stopped');g.finish();await flush();g.control.disconnect();await flush();
  });
  it('allows rapid slider reversal within dispatched targets but not an overwritten pending target',async()=>{
  const f=fixture(),pose=[...TEACHER_HOME];pose[0]=2078;await f.ready(pose);f.control.enable(true);
@@ -427,7 +482,7 @@ describe('smooth teacher controls',()=>{
  const f=fixture();await f.ready();f.control.enable(true);f.control.liveJoint(3,2200);await flush();f.control.liveJoint(3,2250);
  f.setTime(1700);f.control.tick();await f.feed(1800);f.control.tick();await flush();expect(f.writes).toHaveLength(1);f.control.disconnect();await flush();
  const g=fixture({hang:true});await g.ready();g.control.enable(true);g.control.liveJoint(3,2200);await flush();g.control.liveJoint(3,2250);g.control.stop();g.finish();await flush();
- await g.feed(1700);g.control.tick();expect(g.writes).toHaveLength(1);expect(g.control.snapshot().armed).toBe(false);g.control.disconnect();await flush();
+ await g.feed(1700);g.control.tick();expect(g.writes).toHaveLength(2);expect(g.control.snapshot().armed).toBe(false);g.finish();await flush();g.control.disconnect();await flush();
  });
  it('coalesces live slider input at 100 ms and cancels pending targets on Stop',async()=>{
  const f=fixture(),pose=[...TEACHER_HOME];await f.ready();f.control.enable(true);
@@ -495,7 +550,7 @@ describe('smooth teacher controls',()=>{
  it('Stop sends a fresh hold target and never resumes Home automatically',async()=>{
  const f=fixture(),pose=TEACHER_HOME.map(n=>n+100);await f.ready(pose);f.control.enable(true);f.control.returnHome();await flush();f.control.stop();await flush();
  expect(f.writes).toHaveLength(2);const b=f.writes[1]!.bytes;expect(b[7]!+256*b[8]!).toBe(pose[1]);
- expect(b).toHaveLength(84);for(let offset=0;offset<b.length;offset+=14){const frame=b.slice(offset,offset+14);expect(frame[7]!+256*frame[8]!).toBe(pose[frame[2]!-1]);expect(frame.slice(11,13)).toEqual([100,0]);}
+ expect(b).toHaveLength(84);for(let offset=0;offset<b.length;offset+=14){const frame=b.slice(offset,offset+14);expect(frame[7]!+256*frame[8]!).toBe(pose[frame[2]!-1]);expect(frame.slice(11,13)).toEqual([88,2]);expect(frame[6]).toBe(100);}
  await f.window(1200,pose);f.control.tick();expect(f.writes).toHaveLength(2);expect(f.control.snapshot().armed).toBe(false);f.control.disconnect();await flush();
  });
  it('retains ownership during a hanging write and ignores a late completion',async()=>{
@@ -504,8 +559,8 @@ describe('smooth teacher controls',()=>{
  it('never resumes a Home batch after Stop interrupts a hanging write',async()=>{
  const f=fixture({hang:true});await f.ready(TEACHER_HOME.map(value=>value+100));f.control.enable(true);f.control.returnHome();await flush();
  expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes).toHaveLength(84);
- f.control.stop();expect(f.control.snapshot().armed).toBe(false);expect(f.control.snapshot().message).toContain('Could not send fresh hold targets');
- f.finish();await flush();await f.feed(1700);f.control.tick();await flush();expect(f.writes).toHaveLength(1);expect(f.control.snapshot().home?.phase).toBe('Stopped');
+ f.control.stop();expect(f.control.snapshot().armed).toBe(false);expect(f.control.snapshot().message).toContain('Waiting for the active USB write');
+ f.finish();await flush();await f.feed(1700);f.control.tick();await flush();expect(f.writes).toHaveLength(2);expect(f.control.snapshot().home?.phase).toBe('Stopped');f.finish();await flush();
  f.control.disconnect();await flush();
  });
  it('cancels an active route on prolonged feedback loss and never auto-retries',async()=>{

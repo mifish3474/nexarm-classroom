@@ -1,4 +1,11 @@
-# Robot setup control testing: 0.7.0-dev.36
+# Robot setup control testing: 0.7.0-dev.52
+
+Stop motion now shares the approved fast-hold profile (600/100) with the coding
+page. A pending Stop takes priority after the current USB write; it does not
+queue any ordinary movement. Sliders, jogs, Home and saved-pose movement settings
+remain as described below. See [Space and Stop testing](./SIGNAL_AND_STOP.md) for
+physical verification and stop-timing diagnostics. Space is a shortcut on the
+coding page only; use Stop motion on this setup page.
 
 Home now uses a timed pose frame with individual calculated speeds, capped at
 600 and acceleration 10. Its requested one-second duration is extended for

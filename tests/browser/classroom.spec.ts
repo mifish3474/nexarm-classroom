@@ -26,12 +26,12 @@ async function station(page:Page){
  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+100));
  await page.addInitScript(()=>{
   const home=[2050,2150,2100,2200,2000,1080],positions=[...home],targets=[...home],speeds=Array(6).fill(600);
-  const state={positions,targets,writes:[] as number[][],requests:0,paused:false,weak:false,reportedPose:[39,-1,399,184,8,-87],holding:true,j3Offset:0,ikTargets:null as number[]|null};Object.assign(window,{classroomRobot:state});
+  const state={positions,targets,writes:[] as number[][],requests:0,paused:false,weak:false,reportedPose:[39,-1,399,184,8,-87],holding:true,j3Offset:0,ikTargets:null as number[]|null,deferNextWrite:false,finishWrite:null as null|(()=>void)};Object.assign(window,{classroomRobot:state});
   Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>{state.requests++;let timer:ReturnType<typeof setInterval>,reader:ReadableStreamDefaultController<Uint8Array>;return {
    open:async()=>{},close:async()=>clearInterval(timer),readable:new ReadableStream<Uint8Array>({start(controller){reader=controller;timer=setInterval(()=>{
     if(state.paused)return;if(state.holding)positions.forEach((value,i)=>{const delta=targets[i]!-(i===2?state.j3Offset:0)-value;positions[i]=value+Math.sign(delta)*Math.min(Math.abs(delta),speeds[i]*.1);});
     const body=[255,26,11,...state.reportedPose.flatMap(value=>[value&255,(value>>8)&255]),...positions.flatMap(value=>[value&255,value>>8])];controller.enqueue(Uint8Array.from([255,255,...body,(~(state.weak?body.slice(0,3):body).reduce((a,b)=>a+b,0))&255]));
-   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;){const b=bytes.slice(offset,offset+bytes[offset+3]!+4);if(b[2]===255&&b[4]===7&&state.ikTargets){const body=[255,26,7,...b.slice(7,13),...b.slice(5,7),...b.slice(13,17),...state.ikTargets.flatMap(n=>[n&255,n>>8])];setTimeout(()=>reader.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255])),20);}else if(b[2]===255&&b[4]===61){state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);}else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){targets[b[2]!-1]=b[7]!+256*b[8]!;speeds[b[2]!-1]=b[11]!+256*b[12]!;}offset+=b.length;}}})
+   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;){const b=bytes.slice(offset,offset+bytes[offset+3]!+4);if(b[2]===255&&b[4]===7&&state.ikTargets){const body=[255,26,7,...b.slice(7,13),...b.slice(5,7),...b.slice(13,17),...state.ikTargets.flatMap(n=>[n&255,n>>8])];setTimeout(()=>reader.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255])),20);}else if(b[2]===255&&b[4]===61){state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);}else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){targets[b[2]!-1]=b[7]!+256*b[8]!;speeds[b[2]!-1]=b[11]!+256*b[12]!;}offset+=b.length;}if(state.deferNextWrite){state.deferNextWrite=false;return new Promise<void>(resolve=>state.finishWrite=resolve);}}})
   };}}});
  });
  await page.goto('/');
@@ -64,12 +64,25 @@ test('Space stops a running key sequence from a text field, retains holding and 
  await page.locator('#pose-name').focus();await page.keyboard.down('Space');await page.clock.runFor(100);
  await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');await expect(page.locator('#state')).toHaveText('Stopped');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
  const stopped=await writes(page);expect(stopped).toHaveLength(2);expect(stopped[1]![7]!+256*stopped[1]![8]!).toBeLessThan(2700);
+ expect(stopped[1]![6]).toBe(100);expect(stopped[1]!.slice(11,13)).toEqual([88,2]);
  expect(stopped.every(bytes=>bytes[4]!==61)).toBe(true);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{holding:boolean}}).classroomRobot.holding)).toBe(true);
  await expect(page.locator('#run')).toBeDisabled();await page.keyboard.down('Space');await page.clock.runFor(5000);expect(await writes(page)).toHaveLength(2);
  await page.keyboard.up('Space');await page.locator('#keyboard-control').click();await page.keyboard.press('a');await page.clock.runFor(1500);expect(await writes(page)).toHaveLength(2);await ready(page);
  await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','listening');
  await page.keyboard.press('Space');expect(await writes(page)).toHaveLength(2);
  await clickControl(page,'Disconnect robot');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','disconnected');
+});
+
+test('Space queues one fast hold behind an active USB write and exports timing and post-stop readings',async({page})=>{
+ await station(page);await connect(page);await loadKeys(page,[],[{kind:'move',blockId:'first',servo:1,target:2700},{kind:'move',blockId:'later',servo:2,target:2400}]);
+ await page.evaluate(()=>(window as unknown as {classroomRobot:{deferNextWrite:boolean}}).classroomRobot.deferNextWrite=true);
+ await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(100);
+ await page.keyboard.press('Space');await expect(page.locator('#run-status')).toContainText('Waiting for the active USB write');await expect(page.locator('#signal-tower')).toHaveAttribute('data-state','stopped');expect(await writes(page)).toHaveLength(1);
+ await page.clock.runFor(100);const latest=await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[];finishWrite:()=>void}}).classroomRobot;const latest=[...s.positions];s.finishWrite();return latest;});
+ await expect(page.locator('#run-status')).toContainText('Fast hold targets sent');const commands=await writes(page);expect(commands).toHaveLength(2);expect(commands[1]![6]).toBe(100);expect(commands[1]!.slice(11,13)).toEqual([88,2]);expect(commands[1]![7]!+256*commands[1]![8]!).toBe(latest[0]);
+ await page.clock.runFor(600);const downloaded=page.waitForEvent('download');await clickControl(page,'Export robot diagnostics');const report=JSON.parse(await readFile((await (await downloaded).path())!,'utf8'));
+ const stop=report.diagnostics.stopping.attempts[0];expect(stop.submittedAtMs-stop.requestedAtMs).toBe(100);expect(stop.outcome).toBe('stream-write-resolved');expect(stop.feedback.length).toBeGreaterThan(0);expect(report.diagnostics.stopping).toMatchObject({speed:600,acceleration:100,physicalStoppingVerified:false});
+ await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(2);await expect(page.locator('#state')).toHaveText('Stopped');await clickControl(page,'Disconnect robot');
 });
 
 test('Space stops Home and waits, and cannot activate a focused Run button on key release',async({page})=>{
@@ -428,7 +441,7 @@ test('Stop stays available after a program fault and sends a hold without resumi
  await expect(page.locator('#state')).toHaveText('Fault');await expect(page.getByRole('button',{name:'Stop',exact:true})).toBeEnabled();
  const beforeExport=(await writes(page)).length,download=page.waitForEvent('download');await clickControl(page,'Export robot diagnostics');
  expect((await download).suggestedFilename()).toBe('nexarm-robot-diagnostics.json');expect(await writes(page)).toHaveLength(beforeExport);
- await clickControl(page,'Stop');const commands=await writes(page);expect(commands).toHaveLength(2);expect(commands[1]!.slice(11,13)).toEqual([100,0]);
+ await clickControl(page,'Stop');const commands=await writes(page);expect(commands).toHaveLength(2);expect(commands[1]!.slice(11,13)).toEqual([88,2]);expect(commands[1]![6]).toBe(100);
  await page.clock.runFor(2000);expect(await writes(page)).toHaveLength(2);await clickControl(page,'Disconnect robot');
 });
 

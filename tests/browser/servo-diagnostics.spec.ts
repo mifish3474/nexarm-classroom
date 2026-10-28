@@ -27,7 +27,7 @@ const state=(page:Page)=>page.evaluate(()=>(window as unknown as {diagRobot:{wri
 
 test('read-only scan requires explicit Start, exports raw observations and sends only finite READ requests without storage or uploads',async({page})=>{
  const errors:string[]=[],requests:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
- await setup(page);await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.51');expect((await state(page)).requests).toBe(0);await expect(page.getByRole('checkbox')).toHaveCount(0);
+ await setup(page);await expect(page.locator('[data-app-version]')).toHaveText('Version 0.7.0-dev.52');expect((await state(page)).requests).toBe(0);await expect(page.getByRole('checkbox')).toHaveCount(0);
  await page.getByRole('button',{name:'Connect for diagnostics'}).click();await page.clock.runFor(200);expect((await state(page)).writes).toHaveLength(0);
  await page.getByRole('button',{name:'Read diagnostics',exact:true}).click();await page.clock.runFor(10000);await expect(page.locator('#diag-state')).toContainText('Complete');
  const robot=await state(page);expect(robot.writes).toHaveLength(49);expect(robot.unexpected).toHaveLength(0);await expect(page.locator('#diag-controller')).toContainText('ESP32 1.0.2; AT32 1.0.2');
