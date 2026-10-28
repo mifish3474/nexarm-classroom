@@ -1,4 +1,4 @@
-# Programming development test: dev.56
+# Programming development test: dev.58
 
 Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
 program variables and work from Run or key events. Earlier phase notes below are historical.
@@ -16,8 +16,8 @@ restored-sequence hardware check and timing diagnostics. Neither physical stoppi
 [Keyboard events](./KEYBOARD_EVENTS.md) adds separate When key pressed stacks.
 Run starts listening after checking every stack; Stop ends it. Add block's
 Add blocks to selector chooses the startup/key stack for quick-add actions.
-Each accepted key uses the existing Home-first program controller, with fresh
-variables and no concurrent/queued sequences. Files with key hats use format 3.
+Run checks Home once. Every accepted key uses current shared variables and
+continues from the current pose, with no concurrent or queued sequences. Files with key hats use format 3.
 
 Numeric variables, math and conditionals are now available. Use
 [Variables and logic](./VARIABLES_AND_LOGIC.md) to try the example with Check

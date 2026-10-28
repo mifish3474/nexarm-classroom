@@ -1,4 +1,4 @@
-import {copyInstructions,copyFunctions,validateCalls,evaluateProgram,ProgramError} from './ProgramLanguage';
+import {copyInstructions,copyFunctions,validateCalls,evaluateProgram,ProgramError,UninitializedVariableError} from './ProgramLanguage';
 import type {Instruction,FunctionDefinition} from './ProgramLanguage';
 import {isEventKey,keyLabel,SPACE_RESERVED_MESSAGE} from './KeyboardEvents';
 
@@ -45,7 +45,10 @@ export function copyProject(input:unknown,allowUnassigned=false):ProgramProject{
   }
   visit(result);if(names.size>32)throw Error('Use at most 32 variables across the project.');
   validateCalls([instructions,...keyEvents.map(handler=>handler.body)],functions);
-  if(instructions.length)evaluateProgram(instructions,{allowNoMotion:true,functions});
-  for(const handler of keyEvents)if(handler.body.length)evaluateProgram(handler.body,{allowNoMotion:true,functions});
+  const startup=evaluateProgram(instructions,{allowNoMotion:true,functions});
+  for(const handler of keyEvents)if(handler.body.length){
+    try{evaluateProgram(handler.body,{allowNoMotion:true,functions,variables:startup.variables});}
+    catch(error){if(!(error instanceof UninitializedVariableError))throw error;}
+  }
   return result;
 }

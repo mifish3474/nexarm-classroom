@@ -38,7 +38,7 @@ position's **Add to code** or **Add position block**.
 
 - Use up to 16 definitions, with unique names of 1–40 characters.
 - Functions share the existing numeric program variables. Set a variable before
-  reading it. Values reset on every Check, Run, or accepted key event. Parameters,
+  reading it. All stacks share these values during a Run session. A new Run resets them; key events continue from the current values. Check program is a separate offline preview. Parameters,
   local variables and return values are deferred.
 - Direct and indirect recursion are rejected; use Repeat instead. At most 12
   nested function calls are allowed. Missing functions and invalid definitions

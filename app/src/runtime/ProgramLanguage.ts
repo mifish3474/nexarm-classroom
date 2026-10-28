@@ -19,9 +19,13 @@ export type Instruction =
   | {kind:'if';blockId:string;branches:{condition:Condition;body:Instruction[]}[];elseBody:Instruction[]};
 export type FunctionDefinition={blockId:string;name:string;body:Instruction[]};
 export type PlannedStep=SimulationStep&{blockId:string};
-export type PreparedProgram={steps:PlannedStep[];variables:{name:string;value:number}[]};
+export type VariableValues={name:string;value:number}[];
+export type PreparedProgram={steps:PlannedStep[];variables:VariableValues};
 export class ProgramError extends Error {
   constructor(message:string,public readonly blockId:string|null=null){super(message);this.name='ProgramError';}
+}
+export class UninitializedVariableError extends ProgramError {
+  constructor(public readonly variable:string,public readonly changing=false,blockId:string|null=null){super(`Set variable "${variable}" before ${changing?'changing':'using'} it.`,blockId);this.name='UninitializedVariableError';}
 }
 export function variableName(value:unknown):string{
   if(typeof value!=='string'||!value.trim()||value!==value.trim()||value.length>40||/[\u0000-\u001f\u007f]/.test(value))throw Error('Use a variable name with 1–40 characters.');
@@ -30,6 +34,15 @@ export function variableName(value:unknown):string{
 function finite(value:number):number{
   if(!Number.isFinite(value)||Math.abs(value)>Number.MAX_SAFE_INTEGER)throw Error('A calculation is not a finite, usable number. Check its inputs.');
   return value;
+}
+export function copyVariableValues(input:unknown=[]):VariableValues{
+  if(!Array.isArray(input)||input.length>32)throw Error('Use at most 32 session variables.');
+  const names=new Set<string>();
+  return input.map(value=>{
+    const node=record(value),name=variableName(node.name),key=name.toLowerCase();
+    if(names.has(key)||typeof node.value!=='number')throw Error('Invalid or duplicate session variable.');
+    names.add(key);return {name,value:finite(node.value)};
+  });
 }
 function record(value:unknown):Record<string,unknown>{
   if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid program expression or instruction.');
@@ -113,15 +126,16 @@ export function copyInstructions(input:unknown,uniqueIds=false):Instruction[]{
 }
 
 /** Pure bounded preparation. No USB, timers, browser state, or persistent values. */
-export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;functions?:unknown}={}):PreparedProgram{
+export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;functions?:unknown;variables?:unknown}={}):PreparedProgram{
   const instructions=copyInstructions(input),functions=copyFunctions(options.functions),steps:PlannedStep[]=[],variables=new Map<string,number>(),labels=new Map<string,string>();let visits=0,durationMs=0;
   validateCalls([instructions],functions);
   const definitions=new Map(functions.map(fn=>[fn.name.toLowerCase(),fn]));
-  const variableKey=(name:string)=>{const key=name.toLowerCase();if(!labels.has(key))labels.set(key,name);return key;};
+  const variableKey=(name:string)=>{const key=name.toLowerCase();if(!labels.has(key))labels.set(key,name);if(labels.size>32)throw Error('Use at most 32 variables.');return key;};
+  for(const variable of copyVariableValues(options.variables))variables.set(variableKey(variable.name),variable.value);
   function budget(){if(++visits>10000)throw Error('Program exceeded its instruction budget. Try fewer calculations or repeats.');}
   function numeric(value:Numeric):number{
     budget();if(typeof value==='number')return value;
-    if(value.kind==='variable'){const key=variableKey(value.name);if(!variables.has(key))throw Error(`Set variable "${value.name}" before using it.`);return variables.get(key)!;}
+    if(value.kind==='variable'){const key=variableKey(value.name);if(!variables.has(key))throw new UninitializedVariableError(value.name);return variables.get(key)!;}
     if(value.kind==='round'){const n=numeric(value.value);return finite(value.op==='ROUND'?Math.round(n):value.op==='ROUNDUP'?Math.ceil(n):Math.floor(n));}
     const a=numeric(value.left),b=numeric(value.right);
     if(value.op==='DIVIDE'&&b===0)throw Error('Cannot divide by zero. Change the divisor.');
@@ -154,7 +168,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
           case 'call':walk(definitions.get(node.name.toLowerCase())!.body);break;
           case 'set':variables.set(variableKey(node.name),numeric(node.value));break;
           case 'change':{
-            const key=variableKey(node.name);if(!variables.has(key))throw Error(`Set variable "${node.name}" before changing it.`);
+            const key=variableKey(node.name);if(!variables.has(key))throw new UninitializedVariableError(node.name,true);
             variables.set(key,finite(variables.get(key)!+numeric(node.value)));break;
           }
           case 'if':{
@@ -173,7 +187,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
           case 'wait':push({kind:'wait',durationMs:duration(node.durationMs,0),blockId:node.blockId});break;
           case 'pose':push({...node,durationMs:duration(node.durationMs??1000,100)});break;
         }
-      }catch(error){if(error instanceof ProgramError)throw error;throw new ProgramError(error instanceof Error?error.message:'Program could not be prepared.',node.blockId);}
+      }catch(error){if(error instanceof UninitializedVariableError&&!error.blockId)throw new UninitializedVariableError(error.variable,error.changing,node.blockId);if(error instanceof ProgramError)throw error;throw new ProgramError(error instanceof Error?error.message:'Program could not be prepared.',node.blockId);}
     }
   }
   walk(instructions);

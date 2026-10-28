@@ -9,7 +9,7 @@ import {TimedPoseMotion,timedPosePlan} from './TimedPoseMotion';
 import { ManualPositioning } from './ManualPositioning';
 import { SmoothTeacherMotion, smoothPlan, MOTION_SPEED, MOTION_ACCELERATION, HOME_SPEED, absoluteJointPlan, absolutePosePlan } from './SmoothTeacherMotion';
 import type { CommandedPath } from './SmoothTeacherMotion';
-import {interpret} from '../runtime/instructions';
+import {evaluateProgram} from '../runtime/instructions';
 import type {PlannedStep} from '../runtime/instructions';
 
 import { TEACHER_HOME } from './TeacherControlPlan';
@@ -80,17 +80,28 @@ export class TeacherRobotControl {
   private liveTarget:SliderTarget|null=null;
   private lastLive:SliderTarget|null=null;
   private sliderInterval=500;
-  private program:{steps:PlannedStep[];startup:'Home pending'|'Returning Home'|'Running blocks';homeVerifyUntil:number|null;speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;waitUntil:number|null;motionIntervalMs:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
-  private cancelProgram(phase:'Stopped'|'Fault',message:string){if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
+  private program:{steps:PlannedStep[];keyboardSession:boolean;startup:'Home pending'|'Returning Home'|'Running blocks';homeVerifyUntil:number|null;speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;waitUntil:number|null;motionIntervalMs:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
+  cancelKeyboardSession(){if(this.program)this.program.keyboardSession=false;}
+  private cancelProgram(phase:'Stopped'|'Fault',message:string){this.cancelKeyboardSession();if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
   runProgram(instructions:unknown){
+    this.beginProgram(instructions,null);
+  }
+  startKeyboardProgram(instructions:unknown){this.beginProgram(instructions,'startup');}
+  runKeyboardEvent(instructions:unknown){
+    if(!this.program?.keyboardSession||this.program.phase!=='Completed'||this.operation!=='Program')throw Error('Run the keyboard program and wait for startup to finish before pressing an event key.');
+    this.beginProgram(instructions,'event');
+  }
+  private beginProgram(instructions:unknown,keyboard:'startup'|'event'|null){
     const reason=this.movementReason();if(reason)throw Error(reason);
     // Development testing only. The bounded language validates IDs and raw
     // encoding values; protected robot-specific limits are a student-release gate.
-    const steps=interpret(instructions);
+    const steps=evaluateProgram(instructions,{allowNoMotion:keyboard!==null}).steps;
     // Validate the entire program before the first write, including later poses.
     for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
     this.recovery=null;this.stopObservation=null;this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
-    this.program={steps,startup:this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:'Preparing Home-first program.'};
+    this.faulted=false;
+    this.program={steps,keyboardSession:keyboard!==null,startup:keyboard==='event'||keyboard===null&&this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:keyboard==='event'?'Running key event from the current pose.':'Preparing Home-first program.'};
+    this.recordEvent(keyboard==='event'?'keyboard-event':'program-start',keyboard==='event'?'Key event targets checked. Continuing from the current pose without returning Home.':'Starting a new Home-first program session.');
     this.advanceProgram();this.changed();
   }
   private advanceProgram(){
@@ -233,7 +244,7 @@ export class TeacherRobotControl {
       enableReason: this.enableReason(), canMove: reason === null&&!this.liveTarget,liveServo:this.liveServo(),
       sliderServo:this.operation==='Slider'&&this.route?.phase==='Running'&&this.armed&&!this.manual.blocked&&this.visible()&&!this.writeInFlight&&this.now()-this.receivedAt<=500&&this.now()-this.lastCommandAt>=500?this.route.status().next?.servo:null,
       home: this.route?.status() ?? null, operation: this.operation,
-      program:this.program?{phase:this.program.phase,startup:this.program.startup,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'&&this.program.startup==='Running blocks'?this.program.index-1:null}:null,
+      program:this.program?{phase:this.program.phase,keyboardSession:this.program.keyboardSession,startup:this.program.startup,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'&&this.program.startup==='Running blocks'?this.program.index-1:null}:null,
       busy: this.recoveryActive || this.stopReleaseActive || !!this.pendingStop || this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
       manualPhase: this.options.directSession&&this.manual.phase==='Confirm holding'?'Restore settling':this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
       feedbackFresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.receivedAt<=500,
@@ -296,6 +307,7 @@ export class TeacherRobotControl {
     this.liveTarget=null;this.lastLive=null;this.start(plan,'Saved position');
   }
   private startTimedPose(target:readonly number[],durationMs:number,operation:Operation){
+    if(operation!=='Program')this.cancelKeyboardSession();
     this.stopObservation=null;
     const plan=timedPosePlan(this.positions!,target,durationMs);
     this.retain();this.faulted=false;this.liveTarget=null;this.lastLive=null;
@@ -304,6 +316,7 @@ export class TeacherRobotControl {
     this.pump();this.changed();
   }
   private start(plan: ReturnType<typeof smoothPlan>, operation: Operation,previousPath?:CommandedPath|null) {
+    if(operation!=='Program')this.cancelKeyboardSession();
     this.stopObservation=null;
     for(const step of plan.steps)assertJointTarget(step.servo,step.target);
     this.faulted=false;
@@ -359,6 +372,7 @@ export class TeacherRobotControl {
 
   // Existing factory All Off/All On workflow, available without enabling motion.
   setHolding(enabled: boolean, supported: boolean) {
+    this.cancelKeyboardSession();
     this.stopObservation=null;
     this.liveTarget=null;this.lastLive=null;
     const reason = this.idleReason();
@@ -618,6 +632,7 @@ export class TeacherRobotControl {
   disconnect() { this.stop(); this.connection.disconnect(); }
   restoreAndHome(){
     if(!this.snapshot().canRestoreAndHome)throw Error('Wait for a connected, idle robot with fresh readings before Restore & Return Home.');
+    this.cancelKeyboardSession();
     assertPoseTargets(TEACHER_HOME,'Home');
     const requestedAtMs=this.now(),generation=this.generation,needsRestore=this.manual.phase!=='Normal';
     if(needsRestore){this.setHolding(true,true);if(this.generation!==generation||this.manual.phase!=='Restore pending')return;}

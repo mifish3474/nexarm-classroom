@@ -1,102 +1,82 @@
-# Keyboard events: dev.56
+# Keyboard events and shared variables: dev.58
 
-Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
-program variables and work from Run or key events. Earlier phase notes below are historical.
+All stacks and My Blocks share one set of numeric variables during a Run session.
+A new Run starts with fresh variables. Check program is an independent offline
+preview and never changes an active session or moves the robot.
 
-[Restore & Return Home](./HOME_RECOVERY.md) restores holding and deliberately moves Home.
-Use **Hold current position** when teaching a pose without returning Home. Neither resumes a program.
+## Increment a joint with A
 
-Use **When [A] pressed** to run a block sequence from a key. The same event
-hat can contain a function call when My Blocks is implemented later. Functions
-are not part of this update.
+Under **When Run clicked**:
 
-## Build and check without hardware
+1. Set **Joint1** to **2100**.
+2. Move joint **1** to the **Joint1** variable.
 
-1. Confirm **0.7.0-dev.56** and save any work you want to keep.
-2. Open **Events** and drag a When A pressed hat into the workspace, or use
-   **Add block → Add key event block**. It is a separate stack beside When Run
-   clicked, not a block inside that stack.
-3. Attach the actions you want beneath the key hat. For a first check, add Wait.
-   Quick-add buttons use **Add blocks to** in the Add block menu. Adding a key
-   hat selects that stack automatically. The position library's Add to code also
-   uses this selection. Dragging blocks can connect them directly instead.
-4. Choose a key from the hat's dropdown: an arrow, A–Z, or 0–9. Space is reserved
-   for Stop; see [Signal tower and Space stop](./SIGNAL_AND_STOP.md).
-5. Click **Check program**. It validates the startup and all nonempty key stacks
-   without USB or movement. Check results appear under Program steps and keyboard
-   editing. Check does not start listening.
+Under **When A pressed**:
 
-Keep the single When Run clicked hat. It may have no actions when you only want
-keyboard events. Other loose statements still need a hat. Use one stack per key,
-up to 16 keys, within the existing overall authored-block and variable limits.
-Duplicate key hats produce a correction message before activation. Empty key hats
-are saved but do not listen until code is attached.
+1. Set **Joint1** to **Joint1 + 50** (or use Change Joint1 by 50).
+2. Move joint **1** to **Joint1**.
+
+Connect, check the sweep, and click Run. The app checks Home once and completes
+startup before listening. After Keys active appears, press and release A. The
+successive requested targets are **2150, 2200, 2250**, within J1's operating range.
+Key events continue from the current pose; they do not return Home between presses.
+The variable is a program target, not a measured servo position.
+
+An event may set a variable that another event or function uses later. If it has
+not been set when read, that activation is rejected with a block-specific message.
+Set shared initial values under When Run clicked whenever possible.
+
+## Build and preview without hardware
+
+- Use Events or Add block to create a When key pressed stack. Add blocks to selects
+  Run, a key stack, or a My Block definition. Keep the single When Run clicked hat.
+- Use one stack per key, up to 16. Letters, numbers and arrows are supported.
+  Space is reserved for Stop. Empty key hats do not listen until code is attached.
+- Check program prepares startup with fresh variables and previews each first
+  event press from the startup results, independently of other events. These
+  previews do not advance shared values or enable listening.
+- All instructions, branches, call references and literal targets are checked.
+  A preview that needs a variable from another event says so. Actual state-dependent
+  calculations, budgets and targets are checked again before each activation.
+- Every accepted activation uses the same 100-step, 60-second and calculation
+  budgets, operating ranges and existing movement profiles.
 
 ## Use with the robot
 
-1. Connect and wait for fresh readings. Inspect clearance for Home and the full
-   sequences, including transitions between their destinations.
-2. Click **Run program**. The app checks all startup and key-stack destinations
-   before sending any movement. Actions beneath When Run clicked run first using
-   the existing Home-first behavior. If that stack is empty, starting keyboard
-   listening sends no movement.
-3. Wait for **Keyboard events active / Keys active**. The keyboard-control strip
-   receives focus automatically. Click it again if focus is on another control.
-4. Press and release the selected key. One press runs its entire stack using the
-   existing Home-first program path and motion settings. If already near Home,
-   the existing rule skips the redundant Home move. The event can use saved
-   positions, joints, Wait, Repeat, variables and conditions.
-5. Wait for completion before pressing another key. Holding a key does not repeat
-   it. Key presses while preparing, moving or unready are discarded; none are
-   queued to execute later. Release and press again when ready.
-6. **Space or Stop** cancels future keyboard triggers as well as the current sequence and
-   sends the fast hold, then requests release after fresh steady readings. Support the arm and use
-   Hold current position before Run. Run is then needed to listen again.
+1. Save your program, connect, wait for fresh feedback, and clear Home and the
+   complete intended movement sweep. Keep the physical cutoff accessible.
+2. Run initializes a new session, returns Home if needed, and runs startup blocks.
+   Even a key-only program checks Home before listening. Event keys are ignored
+   during startup, including a Home return.
+3. Wait for Keys active. The keyboard-control strip receives focus. Click it again
+   if focus is elsewhere, then press and release the desired key.
+4. That activation is prepared from the latest shared variables and fully validated
+   before movement. Other event presses during preparation/movement are discarded;
+   they are never queued. Held keys do not repeat. Only one stack runs at a time.
+5. Successful completion commits its final variables for every stack and My Block.
+   Calculation-only events also update shared values. A rejected preparation sends
+   no movement and keeps the prior values, so another key may correct the target.
+6. Space or Stop cancels the active sequence and keyboard session, sends the tested
+   fast hold, then requests release after fresh steady readings. Support the arm.
+   Recover with Restore & Return Home or Hold current position, then use Run to
+   initialize a new session. Nothing resumes automatically.
 
-Typing in names, numbers, dropdowns, Blockly, dialogs, or editable content does
-not trigger the arm. While connected, Space on buttons is reserved for Stop.
-During an active sequence or listening session, Space also stops from fields;
-ordinary text spaces work when idle. Holding and releasing Space never resumes
-a program. Other keys retain their ordinary editing behavior.
-Ctrl/Alt/Meta/Shift combinations and input-method composition do not trigger it.
-Only real browser keyboard events are accepted, not script-dispatched key events.
-Use the focused page; this is not a global computer shortcut or a background
-robot control. Only configured key identities are held temporarily in memory;
-there is no keyboard logging, upload, or persistence of listening state.
+## Cancellation, privacy and files
 
-## Stop, editing and recovery
+Editing, Check, replacing the program, changing position records, release/restore,
+manual motion, focus loss, disconnect and controller faults end the session. A late
+worker response cannot restart it. Lifecycle cancellation does not add a release
+request. Typing, modifiers, composition and synthetic keyboard events cannot
+activate a key stack. Space remains Stop during preparation, motion and listening.
+This is a focused-page control, not a global computer shortcut.
 
-- Editing blocks, numeric fields, Undo/Redo, changing position records, replacing
-  the program, or using Check ends listening. Run again after editing.
-- Release/restore and separate manual positioning end listening. Restore does
-  not reactivate keyboard events.
-- A program fault or disconnect ends listening. Recover using the existing
-  controls, then explicitly Run again; there is no automatic retry or Enable step.
-- Losing window focus stops keyboard listening. An active keyboard session's
-  running sequence is canceled with holding retained; focus loss does not add release. Pending keyboard
-  preparation is canceled before it can activate. Returning focus never resumes
-  events automatically. Hidden-page behavior still stops/disconnects as before.
-- Software Stop remains the existing software control; hardware capabilities,
-  joint ranges and physical classroom-release requirements are unchanged.
+Only program variables and configured key identities are held in page memory.
+There is no keyboard logging, account, upload or persistence of runtime state.
+Saved files retain initial assignments, events and used position snapshots, not
+current variable values or listening state. Existing formats 1-4 remain supported;
+My Blocks require format 4. Old Space hats remain editable but must be reassigned
+before Check/Run/Save. Invalid files preserve the current workspace.
 
-## Variable scope and files
-
-Each accepted key runs a fresh evaluation of its own stack. **Set variables inside
-that stack before using them.** Startup assignments are not shared with key
-handlers, and values do not accumulate between presses. This matches the current
-fresh-run model and allows every handler to be checked before activation.
-Displayed final values are preparation results, not live sensor measurements.
-Only one sequence runs at a time; parallel event scripts and shared event-state
-variables are not implemented.
-
-Programs with keyboard hats save in **format 3**, retaining startup blocks,
-key choices, handler code and all used position snapshots. Programs without hats
-continue to save as format 2. Old formats 1 and 2 still load. Loading or reconnecting
-never starts listening, restores holding or runs any stack. Listening/held-key
-state is never saved. Invalid files preserve the current workspace.
-Old Space hats load for editing as Choose key (Space is Stop), preserving their
-code and positions. Assign another key before Check, Run or Save; there is no
-automatic replacement binding.
-
-Factory firmware only. No new joint movement profile or firmware command is
-introduced. Functions/My Blocks remain the next language feature.
+Parallel execution, live sensor variables and function parameters are deferred.
+Factory firmware and Stop/release timing are unchanged. See [My Blocks](./MY_BLOCKS.md)
+and [Signal and Stop](./SIGNAL_AND_STOP.md).

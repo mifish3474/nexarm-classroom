@@ -1,5 +1,9 @@
 # NexArm Classroom development roadmap
 
+## Dev.58 shared programming state
+
+All stacks and My Blocks now share Run-session variables. Key activations recalculate from current state, check every target before writing, and continue from the current pose after one startup Home check. Stop and session interruptions discard state. Parallel execution and live sensors remain deferred. See [Keyboard events](./KEYBOARD_EVENTS.md).
+
 ## Dev.57 programming tools
 
 Project names and reusable no-parameter My Blocks are implemented. Functions work in Run and key-event stacks, share numeric variables, and preserve bounded preparation and existing motion control. Parameters, local scope and return values remain a future language phase. See [My Blocks](./MY_BLOCKS.md).

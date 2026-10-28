@@ -1,5 +1,8 @@
 # Variables, math and conditionals: dev.49
 
+Dev.58 shares variables across Run, all key stacks and My Blocks. A new Run
+resets state; accepted key events continue it. See [Keyboard events](./KEYBOARD_EVENTS.md).
+
 Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
 program variables and work from Run or key events. Earlier phase notes below are historical.
 

@@ -15,6 +15,8 @@ writes. Status now says Release sent, not confirmed release; the manual Release
 control permits an explicit All Off retry without restoring torque first.
 See [the recovery check](docs/SIGNAL_AND_STOP.md).
 
+**Dev.58: shared Run-session variables.** Run, all keyboard stacks and My Blocks share variable values. Each key press recalculates and validates its targets; Home runs once at startup. Busy presses are ignored, rejected preparations retain prior values, and Stop ends the session. See [the incrementing-joint example](docs/KEYBOARD_EVENTS.md).
+
 **Dev.57: project names and My Blocks.** Name a project above the code to choose its downloaded filename. Define reusable sequences in My Blocks and call them from Run, keyboard events, loops or other functions. Calls share existing variables and retain all expanded movement/time limits; recursion is rejected. See [the walkthrough](docs/MY_BLOCKS.md).
 
 **Dev.56: deliberate Home recovery.** Positions now offers **Restore & Return Home** and the secondary **Hold current position**. Recovery checks fresh steady readings before moving, uses the established Home profile, and checks readings near Home afterward. Stop/Space cancels recovery; no program resumes automatically. The tested Stop/release timing is unchanged. See [Home recovery and testing](docs/HOME_RECOVERY.md).

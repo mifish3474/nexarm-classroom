@@ -8,7 +8,8 @@ import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
 import {createTeachingPanel} from './poses/TeachingPanel';
 import {OPERATING_RANGES,assertPoseTargets,assertJointTarget} from './safety/OperatingRanges';
-import {ProgramError} from './runtime/ProgramLanguage';
+import {ProgramError,UninitializedVariableError,copyVariableValues} from './runtime/ProgramLanguage';
+import type {Instruction,FunctionDefinition,VariableValues} from './runtime/ProgramLanguage';
 import {saveProjectFile,loadProjectFile,MAX_PROGRAM_FILE_BYTES} from './runtime/ProgramFile';
 import {copyProject,projectName,projectFilename} from './runtime/ProgramProject';
 import type {KeyHandler} from './runtime/ProgramProject';
@@ -35,11 +36,14 @@ element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_R
 const editor=createEditor(element('blockly-editor'),()=>teaching.list());
 const projectTitle=element<HTMLInputElement>('project-name');
 const keyEvents=new KeyboardEvents();
-let keyHandlers=new Map<string,{handler:KeyHandler;result:PreparedProgram}>(),keyMessage='';
-let previousKeyFault=false,previousKeyPhase:string|undefined;
+type KeyPreview={handler:KeyHandler;result:PreparedProgram|null;deferred:string|null};
+let keyHandlers=new Map<string,KeyPreview>(),keyMessage='';
+let keySession:{functions:FunctionDefinition[];variables:VariableValues;pendingVariables:VariableValues|null;starting:boolean}|null=null;
+let eventPreparation=false;
 function endKeyEvents(message='Keyboard events stopped. Run program to listen again.'){
-  if(keyEvents.active)keyMessage=message;
-  keyEvents.stop();keyHandlers.clear();
+  if(keyEvents.active||keySession)keyMessage=message;
+  keyEvents.stop();keyHandlers.clear();keySession=null;control?.cancelKeyboardSession();
+  if(eventPreparation){eventPreparation=false;preparing=false;session++;runner.cancel();}
 }
 function positionOptions(){
   const select=element<HTMLSelectElement>('program-position'),previous=select.value;select.replaceChildren();
@@ -57,9 +61,12 @@ const cards=Array.from({length:6},(_,index)=>{
 function refresh(){
   teaching.refresh(true,preparing||loadingProgram||spaceHeld);
   const robot=control?.snapshot(),live=true;
-  if(keyEvents.active){
-    if(!robot||robot.connectionState!=='Listening'||robot.manualPhase!=='Normal'||robot.faulted&&!previousKeyFault||robot.program?.phase==='Fault'&&previousKeyPhase!=='Fault'||robot.busy&&robot.operation!=='Program')endKeyEvents();
-    previousKeyFault=!!robot?.faulted;previousKeyPhase=robot?.program?.phase;
+  if(keySession){
+    if(!robot||robot.connectionState!=='Listening'||robot.manualPhase!=='Normal'||!robot.program?.keyboardSession||robot.operation!=='Program'||['Fault','Stopped'].includes(robot.program.phase))endKeyEvents();
+    else if(robot.program.phase==='Completed'&&robot.canMove&&!preparing){
+      if(keySession.pendingVariables!==null){keySession.variables=copyVariableValues(keySession.pendingVariables);keySession.pendingVariables=null;}
+      if(keySession.starting){keySession.starting=false;keyEvents.start([...keyHandlers.keys()]);keyMessage='';element('keyboard-control').hidden=false;element('keyboard-control').focus({preventScroll:true});}
+    }
   }
   const busy=preparing||loadingProgram||robot?.busy;
   run.disabled=spaceHeld||!!busy||(live&&!robot?.canMove);stop.disabled=!(busy||keyEvents.active||(live&&robot?.connectionState==='Listening'));lesson.disabled=practice.disabled=!!busy;
@@ -75,6 +82,9 @@ function refresh(){
   element<HTMLButtonElement>('add-wait').disabled=!!busy;
   element<HTMLButtonElement>('add-joint').disabled=element<HTMLButtonElement>('add-repeat').disabled=!!busy;
   for(const id of ['add-if','add-set','add-change','add-key-event','logic-lesson','program-check'])element<HTMLButtonElement>(id).disabled=!!busy;
+  element<HTMLButtonElement>('add-function').disabled=!!busy;
+  element<HTMLButtonElement>('add-function-call').disabled=!!busy||!editor.listFunctions().length;
+  element<HTMLInputElement>('function-name').disabled=element<HTMLSelectElement>('function-call').disabled=!!busy;
   element<HTMLSelectElement>('program-stack').disabled=!!busy;
   element<HTMLButtonElement>('undo').disabled=!!busy||!editor.workspace.getUndoStack().length;
   element<HTMLButtonElement>('redo').disabled=!!busy||!editor.workspace.getRedoStack().length;
@@ -114,11 +124,11 @@ function refresh(){
   if(status.textContent!==activity)status.textContent=activity;
   const keyControl=element('keyboard-control');
   const hasKeyStacks=editor.listStacks().some(stack=>stack.kind==='key');
-  document.querySelector<HTMLElement>('.home-cue')!.textContent=hasKeyStacks?'Key sequences use Home-first checks.':'Run starts from Home.';
+  document.querySelector<HTMLElement>('.home-cue')!.textContent=hasKeyStacks?'Home once at Run; keys continue from there.':'Run starts from Home.';
   if(!hasKeyStacks&&!keyEvents.active)keyMessage='';
   keyControl.hidden=!keyEvents.active&&!keyMessage&&!hasKeyStacks;
   keyControl.dataset.active=String(keyEvents.active);
-  const keyText=keyEvents.active?`${busy?'Sequence running; other event keys are ignored.':'Keyboard events active.'} Keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Click here for keyboard control. Space or Stop ends listening.`:keyMessage||'Key events are off. Run program to start listening. Space is reserved for Stop. Each event uses Home-first checks.';
+  const keyText=keyEvents.active?`${busy?'Sequence running; other event keys are ignored.':'Keyboard events active. All stacks share session variables.'} Keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Click here for keyboard control. Space or Stop ends listening.`:keySession?.starting?'Starting keyboard program. Waiting for Home and startup blocks to finish; event keys are ignored.':keyMessage||'Key events are off. Run initializes shared variables and checks Home once. Space is reserved for Stop.';
   if(element('keyboard-event-status').textContent!==keyText)element('keyboard-event-status').textContent=keyText;
   document.querySelector<HTMLElement>('.workspace-status')!.dataset.fault=String(!!interfaceError||!!robot?.faulted);
   const holding=robot&&robot.manualPhase!=='Normal'?`${robot.manualPhase} · Support the arm. Use Positions to restore holding.`:'';
@@ -204,6 +214,16 @@ function validateTargets(result:PreparedProgram){
     catch(error){throw new ProgramError(error instanceof Error?error.message:'Invalid target.',step.blockId);}
   }
 }
+function validateLiteralTargets(nodes:Instruction[]){
+  for(const node of nodes){
+    try{
+      if(node.kind==='move'&&typeof node.target==='number')assertJointTarget(node.servo,node.target);
+      else if(node.kind==='pose')assertPoseTargets(node.positions,`Saved position "${node.name}"`);
+      else if(node.kind==='repeat')validateLiteralTargets(node.body);
+      else if(node.kind==='if'){node.branches.forEach(branch=>validateLiteralTargets(branch.body));validateLiteralTargets(node.elseBody);}
+    }catch(error){if(error instanceof ProgramError)throw error;throw new ProgramError(error instanceof Error?error.message:'Invalid target.',node.blockId);}
+  }
+}
 function showPrepared(result:PreparedProgram){
   plan=result.steps;element('instructions').replaceChildren();element('variable-values').replaceChildren();
   rows=plan.map(step=>{const row=document.createElement('li');row.textContent=step.kind==='pose'?`Move to ${step.name}: ${step.positions.join(', ')}`:step.kind==='wait'?`Wait ${step.durationMs/1000} seconds`:`Move robot joint ${step.servo} to ${step.target}`;element('instructions').append(row);return row;});
@@ -219,29 +239,37 @@ async function prepareProgram(execute:boolean){
     if(execute)stopRequested=false;
     interfaceError='';interfaceErrorBlock=null;reviewMessage='';plan=[];rows=[];element('instructions').replaceChildren();element('variable-values').replaceChildren();
     const project=copyProject(editor.compileProject()),instructions=project.instructions;preparing=true;plan=[];refresh();
-    const handlers=new Map<string,{handler:KeyHandler;result:PreparedProgram}>();
+    const handlers=new Map<string,KeyPreview>();
+    for(const nodes of [instructions,...project.keyEvents.map(handler=>handler.body),...(project.functions??[]).map(fn=>fn.body)])validateLiteralTargets(nodes);
+    const result=await runner.prepare(instructions,!execute||project.keyEvents.some(handler=>handler.body.length>0),project.functions);
+    if(ownSession!==session)return;
+    validateTargets(result);
     // Validate every enabled key stack before any startup Home/movement write.
     for(const handler of project.keyEvents){
       if(!handler.body.length)continue;
-      const result=await runner.prepare(handler.body,true,project.functions);if(ownSession!==session)return;
-      validateTargets(result);handlers.set(handler.key,{handler,result});
+      try{
+        const preview=await runner.prepare(handler.body,true,project.functions,result.variables);if(ownSession!==session)return;
+        validateTargets(preview);handlers.set(handler.key,{handler,result:preview,deferred:null});
+      }catch(error){
+        if(ownSession!==session)return;
+        if(!(error instanceof UninitializedVariableError))throw error;
+        handlers.set(handler.key,{handler,result:null,deferred:error.message});
+      }
     }
-    const result=await runner.prepare(instructions,!execute||handlers.size>0,project.functions);
     if(ownSession!==session||live!==robotMode())return;
     validateTargets(result);preparing=false;showPrepared(result);
     if(execute){
       if(!control||!control.snapshot().canMove)throw Error(control?.snapshot().reason??'Connect the robot first.');
-      if(result.steps.length)control.runProgram(executable(result));
-      if(result.steps.length&&control.snapshot().program?.phase==='Fault')throw new ProgramError(control.snapshot().program?.message??'Startup failed.');
       if(handlers.size){
-        keyHandlers=handlers;previousKeyFault=control.snapshot().faulted;previousKeyPhase=control.snapshot().program?.phase;keyEvents.start([...handlers.keys()]);
-        keyMessage='';element('keyboard-control').hidden=false;element('keyboard-control').focus({preventScroll:true});
-      }
+        keyHandlers=handlers;keySession={functions:project.functions??[],variables:[],pendingVariables:result.variables,starting:true};
+        control.startKeyboardProgram(executable(result));
+      }else if(result.steps.length)control.runProgram(executable(result));
+      if(control.snapshot().program?.phase==='Fault')throw new ProgramError(control.snapshot().program?.message??'Startup failed.');
     }
     else{
       for(const [key,binding] of handlers){
-        const row=document.createElement('li');row.textContent=`When ${keyLabel(key)} pressed: ${binding.result.steps.length} planned moves/waits (checked, not run).`;element('instructions').append(row);
-        for(const variable of binding.result.variables){const value=document.createElement('p');value.textContent=`${keyLabel(key)}: ${variable.name} = ${variable.value}`;element('variable-values').append(value);}
+        const row=document.createElement('li');row.textContent=binding.result?`When ${keyLabel(key)} pressed: ${binding.result.steps.length} planned moves/waits (first-press preview; checked again on each press).`:`When ${keyLabel(key)} pressed: ${binding.deferred} Another stack must set it first; checked on activation.`;element('instructions').append(row);
+        for(const variable of binding.result?.variables??[]){const value=document.createElement('p');value.textContent=`${keyLabel(key)} preview: ${variable.name} = ${variable.value}`;element('variable-values').append(value);}
       }
       reviewMessage=`Program checked: ${plan.length} planned moves/waits.${handlers.size?` ${handlers.size} keyboard event stacks also checked; Run starts listening.`:''} Nothing ran.${result.variables.length?' Final variable values are under Program steps and keyboard editing.':''}`;
     }
@@ -303,7 +331,7 @@ element('robot-diagnostics').onclick=()=>{
   const link=document.createElement('a');link.href=url;link.download='nexarm-robot-diagnostics.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 element('keyboard-control').onclick=()=>element('keyboard-control').focus({preventScroll:true});
-window.addEventListener('keydown',event=>{
+window.addEventListener('keydown',async event=>{
   if(!event.isTrusted)return;
   const robot=control?.snapshot();
   // A running sequence/listening session must stop even inside a field or menu.
@@ -318,13 +346,19 @@ window.addEventListener('keydown',event=>{
   const key=keyEvents.keydown(event,{canMove:!spaceHeld&&!!robot?.canMove,busy:preparing||loadingProgram||!!robot?.busy,
     editing:isKeyboardEditing(event.target)||!!document.querySelector('dialog[open],.workspace-menu[open]'),visible:!document.hidden&&document.hasFocus()});
   if(!key)return;
-  const binding=keyHandlers.get(key);if(!binding)return;
+  const activeSession=keySession,binding=keyHandlers.get(key);if(!binding||!activeSession)return;
+  const ownSession=++session;preparing=eventPreparation=true;refresh();
   try{
-    interfaceError='';interfaceErrorBlock=null;reviewMessage='';showPrepared(binding.result);
-    if(binding.result.steps.length)control!.runProgram(executable(binding.result));
-    if(binding.result.steps.length&&control!.snapshot().program?.phase==='Fault')endKeyEvents();
+    const result=await runner.prepare(binding.handler.body,true,activeSession.functions,activeSession.variables);
+    if(ownSession!==session||keySession!==activeSession||!keyEvents.active)return;
+    if(document.hidden||!document.hasFocus()){endKeyEvents('Keyboard preparation canceled after focus was lost. Run program to listen again.');refresh();return;}
+    validateTargets(result);
+    preparing=eventPreparation=false;
+    interfaceError='';interfaceErrorBlock=null;reviewMessage='';showPrepared(result);
+    activeSession.pendingVariables=result.variables;
+    control!.runKeyboardEvent(executable(result));
     refresh();
-  }catch(error){endKeyEvents();interfaceError=error instanceof Error?error.message:'Key event could not run.';interfaceErrorBlock=error instanceof ProgramError?error.blockId:binding.handler.blockId;refresh();}
+  }catch(error){if(ownSession!==session)return;preparing=eventPreparation=false;if(keySession===activeSession)activeSession.pendingVariables=null;interfaceError=(error instanceof Error?error.message:'Key event could not run.')+' Key rejected; no session variable changes were kept.';interfaceErrorBlock=error instanceof ProgramError?error.blockId:binding.handler.blockId;refresh();}
 },true);
 window.addEventListener('keyup',event=>{
   if(!event.isTrusted)return;
@@ -338,7 +372,7 @@ window.addEventListener('blur',()=>{
   if(preparing&&editor.listStacks().some(stack=>stack.kind==='key')){
     keyMessage='Keyboard preparation canceled when this window lost focus. Run program to listen again.';cancel(false);return;
   }
-  if(keyEvents.active){
+  if(keySession){
     endKeyEvents('Keyboard events stopped when this window lost focus. Run program to listen again.');
     if(control?.snapshot().program?.phase==='Running')cancel();else refresh();
   }

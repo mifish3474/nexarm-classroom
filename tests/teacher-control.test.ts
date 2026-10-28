@@ -45,6 +45,30 @@ const dispatchPose=async(f:ReturnType<typeof fixture>,positions:readonly number[
   for(let i=0;i<5;i++){await f.feed(f.time()+2,positions);f.control.tick();await flush();}
 };
 
+describe('Home-once keyboard control sessions',()=>{
+ it('requires explicit startup, continues from the current pose, and revokes continuation on Stop',async()=>{
+  const f=fixture({directSession:true,homeBeforeProgram:true});await f.ready();
+  expect(()=>f.control.runKeyboardEvent([{kind:'move',blockId:'m',servo:1,target:2150}])).toThrow('Run the keyboard program');
+  f.control.startKeyboardProgram([]);expect(f.control.snapshot().program).toMatchObject({phase:'Completed',keyboardSession:true});expect(f.writes).toHaveLength(0);
+  f.control.runKeyboardEvent([{kind:'move',blockId:'a',servo:1,target:2150}]);await flush();
+  const pose=[...TEACHER_HOME];pose[0]=2150;await f.window(1200,pose);f.control.tick();expect(f.control.snapshot().program?.phase).toBe('Completed');
+  f.control.runKeyboardEvent([{kind:'move',blockId:'b',servo:1,target:2200}]);await flush();
+  expect(f.writes).toHaveLength(2);expect(f.writes.map(w=>w.bytes[7]!+256*w.bytes[8]!)).toEqual([2150,2200]);
+  f.control.stop();expect(()=>f.control.runKeyboardEvent([])).toThrow('Run the keyboard program');f.control.disconnect();await flush();
+ });
+ it('homes key-only projects at startup and cannot activate an event during that return',async()=>{
+  const before=TEACHER_HOME.map(n=>n+100),f=fixture({directSession:true});await f.ready(before);f.control.startKeyboardProgram([]);await flush();
+  expect(f.control.snapshot().program).toMatchObject({phase:'Running',startup:'Returning Home'});expect(()=>f.control.runKeyboardEvent([])).toThrow('wait for startup');
+  await dispatchPose(f,before);await f.window(1500,TEACHER_HOME);f.control.tick();
+  expect(f.writes).toHaveLength(6);expect(f.control.snapshot().program).toMatchObject({phase:'Completed',keyboardSession:true});
+  f.control.runKeyboardEvent([]);expect(f.writes).toHaveLength(6);f.control.disconnect();await flush();
+ });
+ it('manual holding changes and explicit session cancellation invalidate the Home-once authorization',async()=>{
+  const f=fixture({directSession:true});await f.ready();f.control.startKeyboardProgram([]);f.control.cancelKeyboardSession();expect(()=>f.control.runKeyboardEvent([])).toThrow('Run the keyboard program');
+  f.control.startKeyboardProgram([]);f.control.setHolding(false,true);await flush();expect(()=>f.control.runKeyboardEvent([])).toThrow('Run the keyboard program');f.control.disconnect();await flush();
+ });
+});
+
 describe('Restore & Return Home recovery',()=>{
  const before=TEACHER_HOME.map(n=>n+100);
  const recoveryStorage=()=>new Map([[MANUAL_STATE_KEY,JSON.stringify({requiresHoldingVerification:true,events:[]})]]);

@@ -1,4 +1,16 @@
-# Classroom programming development preview 0.7.0-dev.57
+# Classroom programming development preview 0.7.0-dev.58
+
+## Shared state across all stacks; Home once per Run
+
+The operator approved shared variables and removing Home between key activations. Dev.58 seeds bounded worker evaluation with session variables and returns a copied final state. Startup begins fresh; My Blocks and all event stacks use the same case-insensitive values. State is committed only on successful sequence completion. Failed preparation leaves prior state intact, and no runtime state is accepted from program files or persisted.
+
+Run previews startup and known first-key destinations before movement. Full structural/call validation and literal operating limits apply across every stack/definition. Uninitialized event variables may be supplied by another stack later; previews explain that requirement instead of rejecting an otherwise editable project. Each actual press reevaluates its entire stack with the current state and rechecks calculations, budgets and targets before submission. Accepted presses are serialized; busy/repeated presses cannot queue or increment variables.
+
+The controller exposes explicit keyboard startup and continuation methods. Key-only projects still perform the established Home check. Continuation requires a completed, authorized keyboard program; Stop, manual motion/holding changes, disconnect, faults and session cancellation revoke it. A new Run always checks Home again. Pending workers are canceled and stale session results ignored on Stop, focus loss and other interruptions. Stop/release pacing, joint limits and ordinary motion profiles are unchanged.
+
+Local validation: build/type-check and all 391 unit tests pass. All 96 Chrome browser cases pass across the regression (95 passing) and the targeted correction distinguishing Stop hold writes from resumed movement (1 passing). Tests use mocked USB; no physical robot was commanded.
+
+See [Keyboard events](./KEYBOARD_EVENTS.md) for the exact Joint1=2100, A adds 50 example and lifecycle semantics.
 
 ## Project names and bounded My Blocks
 
