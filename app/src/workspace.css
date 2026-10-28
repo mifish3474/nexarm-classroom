@@ -33,3 +33,4 @@
 
 .workspace-page #project-name{min-width:80px;max-width:240px;flex:1;padding:4px 8px;font-size:.85rem;height:30px;margin:0}.workspace-page .code-heading{align-items:center;padding:4px 16px}.workspace-page #function-name{width:100%;margin-top:4px}
 @media(max-width:1280px){.code-heading>span{display:none}}
+@media(max-width:480px){.workspace-brand h1{font-size:1rem}.workspace-header{gap:6px}.edit-actions{gap:4px}}

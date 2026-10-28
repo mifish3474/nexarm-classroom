@@ -15,7 +15,7 @@ test('station opens directly into code without USB access, with project actions 
 test('code and Stop fit classroom screens; narrow layouts keep Stop reachable while scrolling',async({page})=>{
  for(const [width,height] of [[1366,768],[1280,720],[1024,768],[768,800],[390,844]]){
   await page.setViewportSize({width:width!,height:height!});await page.goto('/');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  const editor=await page.locator('#blockly-editor').boundingBox();expect(editor!.y).toBeLessThan(width!>850?180:270);expect(editor!.height).toBeGreaterThan(300);
+  const editor=await page.locator('#blockly-editor').boundingBox();expect(editor!.y,`Editor position at ${width}x${height}`).toBeLessThan(width!>850?180:270);expect(editor!.height).toBeGreaterThan(300);
   if(width!>850){expect(editor!.width).toBeGreaterThan(650);expect(await page.evaluate(()=>document.documentElement.scrollHeight)).toBeLessThanOrEqual(height!);}
   await page.locator('#teach-panel').evaluate(node=>node.scrollTop=node.scrollHeight);await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
   const stop=await page.locator('#stop').boundingBox();expect(stop!.y).toBeGreaterThanOrEqual(0);expect(stop!.y+stop!.height).toBeLessThanOrEqual(height!);
