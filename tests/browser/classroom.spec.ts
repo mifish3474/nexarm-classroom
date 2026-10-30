@@ -59,6 +59,27 @@ async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[])
 }
 const projectPose=(id:string,name:string)=>({id,name,positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-28T12:00:00.000Z'});
 
+test('Motion Home block saves without a named position and returns all joints together after a joint move',async({page})=>{
+ await station(page);await page.getByRole('treeitem',{name:'Motion',exact:true}).click();await expect(page.locator('.blocklyFlyout').getByText('move to Home',{exact:true})).toBeVisible();
+ await clickControl(page,'Add joint block');await clickControl(page,'Add Home block');
+ await expect(page.getByRole('region',{name:'Blocks workspace.',exact:true}).getByText('move to Home',{exact:true})).toHaveCount(1);
+ await clickControl(page,'Check program');await expect(page.locator('#run-status')).toContainText('2 planned moves/waits');expect(await writes(page)).toHaveLength(0);
+ const downloading=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await downloading).path())!,'utf8'),file=JSON.parse(text);
+ expect(file.instructions).toMatchObject([{kind:'move',servo:1,target:2128},{kind:'home'}]);expect(file.positions).toEqual([]);
+ await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'return-home.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
+ await expect(page.getByRole('region',{name:'Blocks workspace.',exact:true}).getByText('move to Home',{exact:true})).toHaveCount(1);await expect(page.locator('#saved-positions li')).toHaveCount(0);
+ await connect(page);await clickControl(page,'Run program');await page.clock.runFor(4000);
+ const commands=await writes(page);expect(commands).toHaveLength(7);expect(commands.map(b=>b[7]!+256*b[8]!)).toEqual([2128,2050,2150,2100,2200,2000,1080]);expect(commands.slice(1).map(b=>b[2])).toEqual([1,2,3,4,5,6]);expect(commands.slice(1).every(b=>b[6]===10&&b[11]!+256*b[12]!<=600)).toBe(true);
+ await expect(page.locator('#run')).toBeEnabled();await clickControl(page,'Disconnect robot');
+});
+
+test('Home in a key event uses the current pose and Space cancels it without resuming',async({page})=>{
+ await station(page);await loadKeys(page,[{blockId:'key',key:'h',body:[{kind:'home',blockId:'event-home'},{kind:'wait',blockId:'pause',durationMs:5000},{kind:'move',blockId:'later',servo:1,target:2130}]}]);await connect(page);await clickControl(page,'Run program');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','true');expect(await writes(page)).toHaveLength(0);
+ await moveReportedPose(page,400);await pressKey(page,'h');await page.clock.runFor(100);expect((await writes(page)).some(b=>b[2]===1&&b[7]!+256*b[8]===2050)).toBe(true);
+ await page.keyboard.press('Space');await page.clock.runFor(600);await expect(page.locator('#state')).toHaveText('Release sent');await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');const stopped=(await writes(page)).length;
+ await page.clock.runFor(8000);expect(await writes(page)).toHaveLength(stopped);await clickControl(page,'Disconnect robot');
+});
+
 test('inline comment blocks are editable, undoable and saved with code without adding robot commands',async({page})=>{
  await station(page);const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  await clickControl(page,'Add comment block');await page.clock.runFor(100);

@@ -1,4 +1,5 @@
 import type {SimulationStep} from '../simulation/RobotSimulator';
+import {TEACHER_HOME} from '../safety/TeacherControlPlan';
 
 export const XYZ_REMOVED_MESSAGE='XYZ coordinate blocks are no longer supported. Replace them with joint moves or saved joint positions.';
 export type Numeric = number
@@ -10,6 +11,7 @@ export type Condition = boolean
   | {kind:'logic';op:'AND'|'OR';left:Condition;right:Condition}
   | {kind:'not';value:Condition};
 export type Instruction =
+  | {kind:'home';blockId:string}
   | {kind:'comment';blockId:string;text:string}
   | {kind:'call';blockId:string;name:string}
   | {kind:'move';blockId:string;servo:number;target:Numeric}
@@ -96,6 +98,7 @@ export function copyInstructions(input:unknown,uniqueIds=false):Instruction[]{
         if(typeof node.blockId!=='string'||!node.blockId||node.blockId.length>200)throw Error('Program block references must be nonempty and valid.');
         blockId=node.blockId;if(uniqueIds&&ids.has(blockId))throw Error('Program block references must be unique and nonempty.');ids.add(blockId);
         switch(node.kind){
+          case 'home':return {kind:'home',blockId};
           case 'comment':{
             if(typeof node.text!=='string'||node.text.length>1000)throw Error('Comment text must be at most 1000 characters.');
             return {kind:'comment',blockId,text:node.text};
@@ -171,6 +174,9 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
         budget();
         switch(node.kind){
           case 'comment':break; // Documentation only: never enters the robot plan.
+          // Home uses the established simultaneous, speed-capped pose executor.
+          // Keep it independent of the project's named-position library.
+          case 'home':push({kind:'pose',blockId:node.blockId,positionId:'nexarm-home',name:'Home',positions:[...TEACHER_HOME],durationMs:1000});break;
           case 'call':walk(definitions.get(node.name.toLowerCase())!.body);break;
           case 'set':variables.set(variableKey(node.name),numeric(node.value));break;
           case 'change':{
@@ -197,7 +203,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
     }
   }
   walk(instructions);
-  if(!steps.length&&!options.allowNoMotion)throw new ProgramError('Add a joint move, saved position, or Wait on the selected program path. Use Check program for calculations only.');
+  if(!steps.length&&!options.allowNoMotion)throw new ProgramError('Add a joint move, move to Home, saved position, or Wait on the selected program path. Use Check program for calculations only.');
   return {steps,variables:[...variables].map(([name,value])=>({name:labels.get(name)!,value}))};
 }
 

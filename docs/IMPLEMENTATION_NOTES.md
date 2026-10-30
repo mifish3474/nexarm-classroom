@@ -1,4 +1,14 @@
-# Classroom programming development preview 0.7.0-dev.60
+# Classroom programming development preview 0.7.0-dev.61
+
+## Move to Home block
+
+Dev.61 adds `move to Home` to Motion and `Add Home block` to Add block. The no-input statement works in startup, key events, repeats, conditionals and My Blocks. Data-only files retain `{kind:'home',blockId}` independently of named positions; deleting or renaming a saved position named Home cannot change this block's destination. Imports cannot override its fixed targets or motion settings.
+
+Preparation expands Home into one ordinary simultaneous pose step using the shared `TEACHER_HOME` constant `[2050,2150,2100,2200,2000,1080]` and the existing 1000-ms requested frame. The existing executor extends frame time to respect its speed cap of 600 and acceleration 10. It uses the current timed-pose completion policy; it does not add the separate Restore & Return Home verification sequence, restore holding, bypass readiness/range checks, or change Home-first startup. Existing Stop/Space cancellation remains active. The Home block counts as one expanded movement and contributes to the existing time budget.
+
+Program format remains 5. Builds before dev.61 reject the unsupported Home kind. No changes to protocol or controller execution are required; tests use mocked USB, not a physical arm.
+
+Validation: build/type-check and all 405 unit tests pass. All 104 Chrome browser cases pass across the regression run (103 passing) and the corrected Home test (1 passing); the correction scopes the label to the program workspace instead of matching the hidden toolbox copy and normalizes Blockly's spaces. New coverage verifies the Motion toolbox, independent Home save/load, the full six-target sequence after a joint move, existing speed/acceleration settings, nested statements and My Blocks, fixed-target import handling, and Stop/Space during a key-event Home. No physical robot was commanded.
 
 ## Inline comment blocks
 

@@ -11,6 +11,10 @@ Dev.60 also saves inline comment blocks wherever they appear in the code, includ
 event stacks and My Blocks. They are plain text for readers and are skipped during
 execution. Use dev.60 or newer to load a program containing comment blocks.
 
+Dev.61 saves `move to Home` as a dedicated instruction, not a recorded position.
+Its fixed destination comes from the app's established Home definition, so it
+needs no saved-position entry. Use dev.61 or newer to load a file with Home blocks.
+
 ## Save and switch programs
 
 1. Name the project above the code, then choose **File → Save program**.

@@ -19,6 +19,8 @@ See [the recovery check](docs/SIGNAL_AND_STOP.md).
 
 **Dev.60: inline comment blocks.** Add comments from Control or Add block, type directly in the stack, and save them with the program. Notes work in loops, event stacks and My Blocks; they produce no robot commands. See [classroom programming](docs/CLASSROOM_PROGRAMMING.md).
 
+**Dev.61: move to Home.** Motion now includes a dedicated Home block for sequences, key events, loops and My Blocks. It uses the established simultaneous Home targets and movement profile, saves with the program, and needs no recorded position. See [classroom programming](docs/CLASSROOM_PROGRAMMING.md).
+
 **Dev.58: shared Run-session variables.** Run, all keyboard stacks and My Blocks share variable values. Each key press recalculates and validates its targets; Home runs once at startup. Busy presses are ignored, rejected preparations retain prior values, and Stop ends the session. See [the incrementing-joint example](docs/KEYBOARD_EVENTS.md).
 
 **Dev.57: project names and My Blocks.** Name a project above the code to choose its downloaded filename. Define reusable sequences in My Blocks and call them from Run, keyboard events, loops or other functions. Calls share existing variables and retain all expanded movement/time limits; recursion is rejected. See [the walkthrough](docs/MY_BLOCKS.md).

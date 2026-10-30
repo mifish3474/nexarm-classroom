@@ -1,4 +1,12 @@
-# Programming development test: dev.60
+# Programming development test: dev.61
+
+**Move to Home:** drag **move to Home** from Motion, or choose **Add block → Add
+Home block**. Place it wherever the arm should return to the established six-joint
+Home, including at the end of a sequence or in a My Block. It needs no recorded
+position and saves/loads with your code. All joints move together using the current
+Home profile (speed capped at 600, acceleration 10). Stop/Space still cancels it.
+The block uses normal timed-pose completion; the separate Restore & Return Home
+button remains the recovery action when holding is released.
 
 **Inline comments:** open **Control** and drag a **comment** block into your code,
 or use **Add block → Add comment block**. Select its text to edit it. Use comments
