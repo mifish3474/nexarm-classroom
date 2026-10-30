@@ -203,7 +203,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
     }
   }
   walk(instructions);
-  if(!steps.length&&!options.allowNoMotion)throw new ProgramError('Add a joint move, move to Home, saved position, or Wait on the selected program path. Use Check program for calculations only.');
+  if(!steps.length&&!options.allowNoMotion)throw new ProgramError('Add a joint move, move to Home, saved position, or Wait on the selected program path. Save the program to keep calculations without running the robot.');
   return {steps,variables:[...variables].map(([name,value])=>({name:labels.get(name)!,value}))};
 }
 

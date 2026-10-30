@@ -1,5 +1,6 @@
 import {expect,test} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
+import {dragBlock} from './toolbox';
 test('station opens directly into code without USB access, with project actions in File',async({page})=>{
  const errors:string[]=[],requests:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
  await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed without Connect');}}));
@@ -30,32 +31,23 @@ test('inspector tabs support keyboard navigation; menus close on Escape and pres
  await page.locator('#file-menu > summary').click();await page.keyboard.press('Tab');await page.keyboard.press('Escape');await expect(page.locator('#file-menu > summary')).toBeFocused();await expect(page.locator('#file-menu')).not.toHaveAttribute('open','');
 });
 
-test('adding and undoing blocks works without hardware, with a single empty starting block',async({page})=>{
- await page.goto('/');await page.getByText('Program steps and keyboard editing',{exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(0);
- await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add joint block',exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(2);
+test('toolbox replaces redundant controls and supports adding, undoing and saving blocks without USB',async({page})=>{
+ await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed during editing');}}));await page.goto('/');
+ await expect(page.locator('#add-block-menu, #program-check')).toHaveCount(0);
+ await dragBlock(page,'Motion','move joint');
+ await page.getByText('Program steps and keyboard editing',{exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(2);
  await page.getByRole('button',{name:'Undo edit',exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(0);
  await page.getByRole('button',{name:'Redo edit',exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(2);
+ const downloading=page.waitForEvent('download');await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Save program',exact:true}).click();const file=JSON.parse(await readFile((await (await downloading).path())!,'utf8'));expect(file.instructions).toMatchObject([{kind:'move',servo:1,target:2128}]);
 });
 
-test('students create a variable and append set, change and if/else blocks through the interface',async({page})=>{
- const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
- await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed during offline editing');}}));
- await page.goto('/');await page.getByRole('treeitem',{name:'Variables',exact:true}).click();
- await page.getByText('Create variable...',{exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByRole('textbox').fill('counter');await dialog.getByRole('button',{name:'OK',exact:true}).click();
- for(const name of ['Add set variable block','Add change variable block','Add if/else block','Add wait block']){
-  await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name,exact:true}).click();
- }
- await page.getByText('Program steps and keyboard editing',{exact:true}).click();
- const initial=page.getByRole('spinbutton',{name:/set value for counter/});await initial.fill('2');await initial.dispatchEvent('change');
- await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked: 1');await expect(page.locator('#variable-values')).toContainText('counter = 3');expect(errors).toEqual([]);
-});
-
-test('adding a keyboard hat selects its stack for quick-add blocks and saves it without USB',async({page})=>{
- await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed while building key events');}}));await page.goto('/');
- await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add key event block',exact:true}).click();
- await page.locator('#add-block-menu > summary').click();await expect(page.locator('#program-stack option:checked')).toHaveText('When A pressed');await page.getByRole('button',{name:'Add wait block',exact:true}).click();
- await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('Program checked: 0');await expect(page.locator('#run-status')).toContainText('1 keyboard event stacks');
- const download=page.waitForEvent('download');await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Save program',exact:true}).click();const data=JSON.parse(await readFile((await (await download).path())!,'utf8'));
- expect(data.instructions).toEqual([]);expect(data.keyEvents).toMatchObject([{key:'a',body:[{kind:'wait',durationMs:1000}]}]);
- await page.locator('#add-block-menu > summary').click();await page.getByRole('button',{name:'Add key event block',exact:true}).click();await page.getByRole('button',{name:'Check program',exact:true}).click();await expect(page.locator('#run-status')).toContainText('one When A');
+test('variables, conditions and My Blocks remain available directly in the toolbox',async({page})=>{
+ await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed during editing');}}));await page.goto('/');
+ await page.getByRole('treeitem',{name:'Variables',exact:true}).click();await page.getByText('Create variable...',{exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByRole('textbox').fill('counter');await dialog.getByRole('button',{name:'OK',exact:true}).click();
+ await dragBlock(page,'Variables','set');await dragBlock(page,'Variables','change');await dragBlock(page,'Control','if');
+ const workspace=page.getByRole('region',{name:'Blocks workspace.',exact:true});await expect(workspace.getByText('set',{exact:true})).toBeVisible();await expect(workspace.getByText('change',{exact:true})).toBeVisible();await expect(workspace.getByText('if',{exact:true})).toBeVisible();
+ await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'New empty program',exact:true}).click();
+ await dragBlock(page,'My Blocks','My Block',true);await expect(workspace.getByText('My Block',{exact:true})).toBeVisible();
+ await page.getByRole('treeitem',{name:'My Blocks',exact:true}).click();await expect(page.locator('.blocklyFlyout .procedures_callnoreturn').getByText('My Block',{exact:true})).toBeVisible();
+ const downloading=page.waitForEvent('download');await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Save program',exact:true}).click();const file=JSON.parse(await readFile((await (await downloading).path())!,'utf8'));expect(file.functions).toHaveLength(1);expect(file.functions[0].name).toBe('My Block');
 });

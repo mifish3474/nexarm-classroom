@@ -1,4 +1,4 @@
-# Project names and My Blocks: dev.57
+# Project names and My Blocks: dev.62
 
 Name your project in the box above the code. **File → Save program** downloads
 that name as a `.json` file. The name is stored inside the file and restored by
@@ -17,32 +17,29 @@ remain in effect.
 
 1. Start with **File → New empty program**. Give the project a name such as
    **Sorting challenge**.
-2. Open **Add block**, enter **Short pause** under **Name for new My Block**,
-   and click **Define My Block**. The **Add blocks to** selector now points to
-   that definition. Click **Add wait block** to put a wait inside it.
-3. Select **When Run clicked** under **Add blocks to**. Choose **Short pause**
-   under **My Block to call**, and click **Add My Block call** twice.
-4. Click **Check program**. Expect two planned waits. No connection is needed.
-5. Use **File → Save program**, start a new empty project, then Load the file.
-   The project name, definition, calls and the complete saved-position list return.
-6. To use a keyboard event, add a key-event block, choose a supported key, and
-   put a function call underneath it. Run explicitly starts listening. Space
-   remains reserved for Stop.
+2. Open **My Blocks** in the toolbox. Drag the definition into the workspace.
+   Select its default **My Block** name and enter **Short pause**.
+3. Drag a Wait block from Control into the definition's body.
+4. Reopen My Blocks and drag the **Short pause** call underneath When Run clicked,
+   then add a second call. The definition does not run on its own.
+5. Use **File ? Save program**, start a new empty program, then Load the file.
+   The project name, definition, calls and saved positions return.
+6. To run it, connect the robot, clear the Home route and choose Run. Run validates
+   the program before movement. A keyboard stack can also call the same function.
 
-You can also drag definition and call blocks from the **My Blocks** category.
-Edit the name on a definition to rename its callers. To add existing saved
-positions to a function, select its **Define …** stack before clicking a
-position's **Add to code** or **Add position block**.
+Renaming a definition updates its callers. Drag a saved-position block from Motion
+into a function and choose a recorded position in its dropdown. The Positions
+panel's Add to code shortcut appends to When Run clicked.
 
 ## Rules for this first version
 
 - Use up to 16 definitions, with unique names of 1–40 characters.
 - Functions share the existing numeric program variables. Set a variable before
-  reading it. All stacks share these values during a Run session. A new Run resets them; key events continue from the current values. Check program is a separate offline preview. Parameters,
+  reading it. All stacks share these values during a Run session. A new Run resets them; key events continue from the current values. Parameters,
   local variables and return values are deferred.
 - Direct and indirect recursion are rejected; use Repeat instead. At most 12
   nested function calls are allowed. Missing functions and invalid definitions
-  block checking/running, including references in unused branches.
+  block running, including references in unused branches.
 - The existing limits apply after calls and repeats expand: 100 movement/wait
   steps, 60 seconds of pose/wait time, plus bounded calculation work. Authored
   blocks, variables, file size and joint-target limits still apply.

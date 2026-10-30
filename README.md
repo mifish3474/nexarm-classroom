@@ -19,6 +19,8 @@ See [the recovery check](docs/SIGNAL_AND_STOP.md).
 
 **Dev.60: inline comment blocks.** Add comments from Control or Add block, type directly in the stack, and save them with the program. Notes work in loops, event stacks and My Blocks; they produce no robot commands. See [classroom programming](docs/CLASSROOM_PROGRAMMING.md).
 
+**Dev.62: simpler editing toolbar.** Create blocks directly from the Blockly toolbox. The separate Add block menu and Check program button are removed; Run retains all program validation before movement. My Blocks definitions start with an editable name.
+
 **Dev.61: move to Home.** Motion now includes a dedicated Home block for sequences, key events, loops and My Blocks. It uses the established simultaneous Home targets and movement profile, saves with the program, and needs no recorded position. See [classroom programming](docs/CLASSROOM_PROGRAMMING.md).
 
 **Dev.58: shared Run-session variables.** Run, all keyboard stacks and My Blocks share variable values. Each key press recalculates and validates its targets; Home runs once at startup. Busy presses are ignored, rejected preparations retain prior values, and Stop ends the session. See [the incrementing-joint example](docs/KEYBOARD_EVENTS.md).

@@ -1,8 +1,7 @@
-# Keyboard events and shared variables: dev.58
+# Keyboard events and shared variables: dev.62
 
 All stacks and My Blocks share one set of numeric variables during a Run session.
-A new Run starts with fresh variables. Check program is an independent offline
-preview and never changes an active session or moves the robot.
+A new Run starts with fresh variables. Run validates before movement.
 
 ## Increment a joint with A
 
@@ -26,18 +25,14 @@ An event may set a variable that another event or function uses later. If it has
 not been set when read, that activation is rejected with a block-specific message.
 Set shared initial values under When Run clicked whenever possible.
 
-## Build and preview without hardware
+## Build without hardware
 
-- Use Events or Add block to create a When key pressed stack. Add blocks to selects
-  Run, a key stack, or a My Block definition. Keep the single When Run clicked hat.
+- Drag a When key pressed block from Events, then drag statements beneath it.
+  Keep the single When Run clicked hat.
 - Use one stack per key, up to 16. Letters, numbers and arrows are supported.
   Space is reserved for Stop. Empty key hats do not listen until code is attached.
-- Check program prepares startup with fresh variables and previews each first
-  event press from the startup results, independently of other events. These
-  previews do not advance shared values or enable listening.
-- All instructions, branches, call references and literal targets are checked.
-  A preview that needs a variable from another event says so. Actual state-dependent
-  calculations, budgets and targets are checked again before each activation.
+- Run validates startup and each first-event preparation before movement. Variables
+  supplied by another event are checked when that event is actually activated.
 - Every accepted activation uses the same 100-step, 60-second and calculation
   budgets, operating ranges and existing movement profiles.
 
@@ -63,7 +58,7 @@ Set shared initial values under When Run clicked whenever possible.
 
 ## Cancellation, privacy and files
 
-Editing, Check, replacing the program, changing position records, release/restore,
+Editing, replacing the program, changing position records, release/restore,
 manual motion, focus loss, disconnect and controller faults end the session. A late
 worker response cannot restart it. Lifecycle cancellation does not add a release
 request. Typing, modifiers, composition and synthetic keyboard events cannot
@@ -74,7 +69,7 @@ Only program variables and configured key identities are held in page memory.
 There is no keyboard logging, account, upload or persistence of runtime state.
 Saved files retain initial assignments, events and all saved positions, not
 current variable values or listening state. New files use format 5; older formats 1-4 remain loadable. See [Program files](./PROJECT_FILES.md). Old Space hats remain editable but must be reassigned
-before Check/Run/Save. Invalid files preserve the current workspace.
+before Run/Save. Invalid files preserve the current workspace.
 
 Parallel execution, live sensor variables and function parameters are deferred.
 Factory firmware and Stop/release timing are unchanged. See [My Blocks](./MY_BLOCKS.md)

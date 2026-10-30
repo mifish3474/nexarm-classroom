@@ -1,15 +1,13 @@
-# Programming development test: dev.61
+# Programming development test: dev.62
 
-**Move to Home:** drag **move to Home** from Motion, or choose **Add block → Add
-Home block**. Place it wherever the arm should return to the established six-joint
+**Move to Home:** drag **move to Home** from Motion. Place it wherever the arm should return to the established six-joint
 Home, including at the end of a sequence or in a My Block. It needs no recorded
 position and saves/loads with your code. All joints move together using the current
 Home profile (speed capped at 600, acceleration 10). Stop/Space still cancels it.
 The block uses normal timed-pose completion; the separate Restore & Return Home
 button remains the recovery action when holding is released.
 
-**Inline comments:** open **Control** and drag a **comment** block into your code,
-or use **Add block → Add comment block**. Select its text to edit it. Use comments
+**Inline comments:** open **Control** and drag a **comment** block into your code. Select its text to edit it. Use comments
 to explain a step, a loop or a My Block. Notes stay visible in the stack and are
 saved/loaded with the program. The robot skips them; they add no motion or delay.
 Comments support up to 1000 characters each and can also be edited under Program
@@ -29,25 +27,23 @@ does not add release. See [Signal tower and Stop](./SIGNAL_AND_STOP.md) for the
 restored-sequence hardware check and timing diagnostics. Neither physical stopping nor release is verified by USB completion. Normal movement profiles are unchanged.
 
 [Keyboard events](./KEYBOARD_EVENTS.md) adds separate When key pressed stacks.
-Run starts listening after checking every stack; Stop ends it. Add block's
-Add blocks to selector chooses the startup/key stack for quick-add actions.
+Run starts listening after checking every stack; Stop ends it. Drag blocks into
+the desired startup, key-event or My Block stack.
 Run checks Home once. Every accepted key uses current shared variables and
 continues from the current pose, with no concurrent or queued sequences. New files use format 5 with the complete saved-position list.
 
 Numeric variables, math and conditionals are now available. Use
-[Variables and logic](./VARIABLES_AND_LOGIC.md) to try the example with Check
-program before connecting hardware. New format-5 files preserve expressions, branches and all saved positions. Older
+[Variables and logic](./VARIABLES_AND_LOGIC.md) to build the example. Run checks it before moving the robot. New format-5 files preserve expressions, branches and all saved positions. Older
 formats 1-4 still load.
-Variables reset every Check/Run; their displayed final values are prepared
+Variables reset every Run; their displayed final values are prepared
 results, not live sensors. Existing movement profiles and Home-first startup remain.
 
 The page opens into code, with Run/Stop in the persistent toolbar. File contains
 New empty program, Save/Load and examples. Robot/Positions tabs change the side
 panel without leaving the code. Positions contains release, live values/ranges,
-naming, recording and restore. Add to code inserts a position block without
-moving; expand Joint values & movement for the separate Move to position action.
-Add block provides keyboard-accessible append actions; Undo/Redo are in the
-toolbar. Programs start with only When Run clicked. There is no autosave yet.
+naming, recording and restore. Add to code appends a position block under When
+Run clicked without moving; expand Joint values & movement for the separate Move to position action.
+The Blockly toolbox supplies all blocks; Undo/Redo are in the toolbar. Programs start with only When Run clicked. There is no autosave yet.
 
 The user confirms Blockly motion is working after identifying the selected J3
 block. Diagnostic export remains available for unexpected behavior. To release,
@@ -61,7 +57,7 @@ setup requirement, student-editable limit panel, or per-program teacher approval
 Protected limits are a required [student-release roadmap item](./ROADMAP.md).
 The current build is for development hardware testing.
 
-1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.56**.
+1. Open `http://127.0.0.1:5173/` and confirm **0.7.0-dev.62**.
 2. Build or edit a program. Station robot is the default/only visible view.
    The simulator and virtual-arm frame are hidden for now. Editing needs no USB.
 3. In robot mode, click **Connect robot** and wait for Ready. Fresh stable

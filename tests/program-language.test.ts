@@ -14,7 +14,7 @@ describe('numeric variables and conditions',()=>{
     const input=[set('answer',arithmetic('ADD',20,22))];
     expect(evaluateProgram(input,{allowNoMotion:true})).toEqual({steps:[],variables:[{name:'answer',value:42}]});
     expect(loadProgramFile(saveProgramFile(input))).toEqual(input);
-    expect(()=>evaluateProgram(input)).toThrow('Check program');
+    expect(()=>evaluateProgram(input)).toThrow('Save the program');
   });
   it('evaluates assignments, changes and branch choices in loop order, then resets on the next preparation',()=>{
     const input:Instruction[]=[set('counter',0),set('cycles',3),{kind:'repeat',blockId:'repeat',count:variable('cycles'),body:[

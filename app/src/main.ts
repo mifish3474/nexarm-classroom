@@ -28,7 +28,7 @@ const practice=element<HTMLButtonElement>('practice-lesson');
 const status=element('run-status');
 let preparing=false,loadingProgram=false,session=0,control:TeacherRobotControl|null=null,interfaceError='';
 let spaceHeld=false,stopRequested=false;
-let interfaceErrorBlock:string|null=null,reviewMessage='';
+let interfaceErrorBlock:string|null=null;
 let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
 const robotMode=()=>true;
 const teaching=createTeachingPanel(()=>control);
@@ -45,12 +45,6 @@ function endKeyEvents(message='Keyboard events stopped. Run program to listen ag
   keyEvents.stop();keyHandlers.clear();keySession=null;control?.cancelKeyboardSession();
   if(eventPreparation){eventPreparation=false;preparing=false;session++;runner.cancel();}
 }
-function positionOptions(){
-  const select=element<HTMLSelectElement>('program-position'),previous=select.value;select.replaceChildren();
-  for(const pose of editor.listPositions()){const option=document.createElement('option');option.value=pose.id;option.textContent=pose.name;select.append(option);}
-  if(editor.listPositions().some(pose=>pose.id===previous))select.value=previous;
-}
-positionOptions();
 
 const cards=Array.from({length:6},(_,index)=>{
   const servo=index+1,card=document.createElement('section');card.className='joint-card';
@@ -77,15 +71,7 @@ function refresh(){
     stopped:stopRequested,released:!!robot&&robot.manualPhase!=='Normal'});
   element('signal-tower').dataset.state=signal.state;
   if(element('signal-label').textContent!==signal.label)element('signal-label').textContent=signal.label;
-  element<HTMLSelectElement>('program-position').disabled=!!busy||!editor.listPositions().length;
-  element<HTMLButtonElement>('add-position').disabled=!!busy||!editor.listPositions().length;
-  element<HTMLButtonElement>('add-wait').disabled=!!busy;
-  element<HTMLButtonElement>('add-joint').disabled=element<HTMLButtonElement>('add-repeat').disabled=!!busy;
-  for(const id of ['add-home','add-comment','add-if','add-set','add-change','add-key-event','logic-lesson','program-check'])element<HTMLButtonElement>(id).disabled=!!busy;
-  element<HTMLButtonElement>('add-function').disabled=!!busy;
-  element<HTMLButtonElement>('add-function-call').disabled=!!busy||!editor.listFunctions().length;
-  element<HTMLInputElement>('function-name').disabled=element<HTMLSelectElement>('function-call').disabled=!!busy;
-  element<HTMLSelectElement>('program-stack').disabled=!!busy;
+  element<HTMLButtonElement>('logic-lesson').disabled=!!busy;
   element<HTMLButtonElement>('undo').disabled=!!busy||!editor.workspace.getUndoStack().length;
   element<HTMLButtonElement>('redo').disabled=!!busy||!editor.workspace.getRedoStack().length;
   element<HTMLButtonElement>('new-program').disabled=!!busy;
@@ -112,10 +98,9 @@ function refresh(){
   let activity=preparing?'Checking your program…':loadingProgram?'Loading program for review…':robot?.program?.message??readiness;
   if(!preparing&&!loadingProgram){
     if(!busy&&robot&&!robot.canMove&&!robot.faulted)activity=readiness;
-    if(robot?.connectionState==='Disconnected'||!robot)activity='Connect the robot to run your program. You can edit or Check program without connecting.';
+    if(robot?.connectionState==='Disconnected'||!robot)activity='Connect the robot to run your program. You can edit without connecting.';
     if(robot&&robot.connectionState!=='Listening'&&robot.connectionState!=='Disconnected')activity=robot.message;
     if(live&&robot?.operation==='Saved position')activity=robot.message;
-    if(!busy&&reviewMessage&&(!robot||robot.canMove))activity=reviewMessage;
   }
   if(keyEvents.active&&!busy&&robot?.canMove)activity=`Listening for keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Space or Stop ends keyboard events.`;
   if(interfaceError)activity=interfaceError;
@@ -143,13 +128,6 @@ function refresh(){
   editor.highlight(interfaceError?interfaceErrorBlock:active?.blockId??null);rows.forEach((row,index)=>row.classList.toggle('active',!!active&&index===activeIndex));
 }
 function keyboardFields(){
-  const stackSelect=element<HTMLSelectElement>('program-stack');stackSelect.replaceChildren();
-  for(const stack of editor.listStacks()){const option=document.createElement('option');option.value=stack.id;option.textContent=stack.name;stackSelect.append(option);}
-  stackSelect.value=editor.appendTarget();
-  const calls=element<HTMLSelectElement>('function-call'),selectedCall=calls.value;calls.replaceChildren();
-  for(const fn of editor.listFunctions()){const option=document.createElement('option');option.value=fn.name;option.textContent=fn.name;calls.append(option);}
-  if(editor.listFunctions().some(fn=>fn.name===selectedCall))calls.value=selectedCall;
-  element<HTMLButtonElement>('add-function-call').disabled=!editor.listFunctions().length;
   const container=element('keyboard-fields');container.replaceChildren();
   const addNumber=(block:import('blockly/core').Block,field:string,labelText:string,min:number,max:number,step:string)=>{
     const label=document.createElement('label');label.textContent=labelText;
@@ -185,30 +163,19 @@ function keyboardFields(){
   });
 }
 
-keyboardFields();editor.workspace.addChangeListener(event=>{if(!event.isUiEvent&&!preparing&&!loadingProgram&&control?.snapshot().program?.phase!=='Running'){endKeyEvents('Keyboard events stopped after editing. Run program to listen again.');reviewMessage='';plan=[];rows=[];element('instructions').replaceChildren();element('variable-values').replaceChildren();keyboardFields();refresh();}});
-element<HTMLSelectElement>('program-stack').onchange=()=>editor.selectAppendTarget(element<HTMLSelectElement>('program-stack').value);
-document.addEventListener('named-positions-changed',()=>{endKeyEvents('Keyboard events stopped after position changes. Run program to listen again.');editor.refreshPositions();positionOptions();keyboardFields();refresh();});
+keyboardFields();editor.workspace.addChangeListener(event=>{if(!event.isUiEvent&&!preparing&&!loadingProgram&&control?.snapshot().program?.phase!=='Running'){endKeyEvents('Keyboard events stopped after editing. Run program to listen again.');plan=[];rows=[];element('instructions').replaceChildren();element('variable-values').replaceChildren();keyboardFields();refresh();}});
+document.addEventListener('named-positions-changed',()=>{endKeyEvents('Keyboard events stopped after position changes. Run program to listen again.');editor.refreshPositions();keyboardFields();refresh();});
 // Stop listening synchronously before an edit, rather than waiting for Blockly's
 // deferred change events. Selecting/typing in the editor cannot trigger a robot.
 function beginEditing(){if(keyEvents.active){endKeyEvents('Keyboard events stopped for editing. Run program to listen again.');refresh();}}
 element('blockly-editor').addEventListener('pointerdown',beginEditing,true);
 element('keyboard-fields').addEventListener('change',beginEditing,true);
-document.addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('#add-block-menu button,.edit-actions button'))beginEditing();},true);
-element('add-position').onclick=()=>{try{editor.addPosition(element<HTMLSelectElement>('program-position').value);keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}};
-element('add-wait').onclick=()=>{try{editor.addWait();keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}};
-element('add-function').onclick=()=>{
-  try{editor.addFunction(element<HTMLInputElement>('function-name').value);interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not define My Block.';}refresh();
-};
-element('add-function-call').onclick=()=>{
-  try{editor.addFunctionCall(element<HTMLSelectElement>('function-call').value);interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add My Block call.';}refresh();
-};
-for(const [id,add] of [['add-home',editor.addHome],['add-comment',editor.addComment],['add-joint',editor.addJoint],['add-repeat',editor.addRepeat],['add-if',editor.addIf],['add-set',editor.addSet],['add-change',editor.addChange],['add-key-event',editor.addKeyEvent]] as const)element(id).onclick=()=>{
-  try{add();interfaceError='';keyboardFields();}catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';}refresh();
-};
+document.addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('.edit-actions button'))beginEditing();},true);
 element('undo').onclick=()=>{editor.workspace.undo(false);keyboardFields();refresh();};
 element('redo').onclick=()=>{editor.workspace.undo(true);keyboardFields();refresh();};
 document.addEventListener('add-position-to-code',event=>{
   if(preparing||loadingProgram||control?.snapshot().busy)return;
+  beginEditing();
   try{editor.addPosition((event as CustomEvent<string>).detail);interfaceError='';keyboardFields();refresh();}
   catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}
 });
@@ -236,17 +203,17 @@ function showPrepared(result:PreparedProgram){
 }
 // The robot receives only the bounded, checked movement plan, never function definitions.
 const executable=(result:PreparedProgram)=>result.steps.map(step=>({...step,kind:step.kind??'move'}));
-async function prepareProgram(execute:boolean){
+async function prepareProgram(){
   if(spaceHeld||preparing||loadingProgram||control?.snapshot().busy)return;
   const ownSession=++session,live=robotMode();
   endKeyEvents();
   try{
-    if(execute)stopRequested=false;
-    interfaceError='';interfaceErrorBlock=null;reviewMessage='';plan=[];rows=[];element('instructions').replaceChildren();element('variable-values').replaceChildren();
+    stopRequested=false;
+    interfaceError='';interfaceErrorBlock=null;plan=[];rows=[];element('instructions').replaceChildren();element('variable-values').replaceChildren();
     const project=copyProject(editor.compileProject()),instructions=project.instructions;preparing=true;plan=[];refresh();
     const handlers=new Map<string,KeyPreview>();
     for(const nodes of [instructions,...project.keyEvents.map(handler=>handler.body),...(project.functions??[]).map(fn=>fn.body)])validateLiteralTargets(nodes);
-    const result=await runner.prepare(instructions,!execute||project.keyEvents.some(handler=>handler.body.length>0),project.functions);
+    const result=await runner.prepare(instructions,project.keyEvents.some(handler=>handler.body.length>0),project.functions);
     if(ownSession!==session)return;
     validateTargets(result);
     // Validate every enabled key stack before any startup Home/movement write.
@@ -263,38 +230,28 @@ async function prepareProgram(execute:boolean){
     }
     if(ownSession!==session||live!==robotMode())return;
     validateTargets(result);preparing=false;showPrepared(result);
-    if(execute){
-      if(!control||!control.snapshot().canMove)throw Error(control?.snapshot().reason??'Connect the robot first.');
-      if(handlers.size){
-        keyHandlers=handlers;keySession={functions:project.functions??[],variables:[],pendingVariables:result.variables,starting:true};
-        control.startKeyboardProgram(executable(result));
-      }else if(result.steps.length)control.runProgram(executable(result));
-      if(control.snapshot().program?.phase==='Fault')throw new ProgramError(control.snapshot().program?.message??'Startup failed.');
-    }
-    else{
-      for(const [key,binding] of handlers){
-        const row=document.createElement('li');row.textContent=binding.result?`When ${keyLabel(key)} pressed: ${binding.result.steps.length} planned moves/waits (first-press preview; checked again on each press).`:`When ${keyLabel(key)} pressed: ${binding.deferred} Another stack must set it first; checked on activation.`;element('instructions').append(row);
-        for(const variable of binding.result?.variables??[]){const value=document.createElement('p');value.textContent=`${keyLabel(key)} preview: ${variable.name} = ${variable.value}`;element('variable-values').append(value);}
-      }
-      reviewMessage=`Program checked: ${plan.length} planned moves/waits.${handlers.size?` ${handlers.size} keyboard event stacks also checked; Run starts listening.`:''} Nothing ran.${result.variables.length?' Final variable values are under Program steps and keyboard editing.':''}`;
-    }
+    if(!control||!control.snapshot().canMove)throw Error(control?.snapshot().reason??'Connect the robot first.');
+    if(handlers.size){
+      keyHandlers=handlers;keySession={functions:project.functions??[],variables:[],pendingVariables:result.variables,starting:true};
+      control.startKeyboardProgram(executable(result));
+    }else if(result.steps.length)control.runProgram(executable(result));
+    if(control.snapshot().program?.phase==='Fault')throw new ProgramError(control.snapshot().program?.message??'Startup failed.');
     refresh();
   }catch(error){if(ownSession!==session)return;endKeyEvents();preparing=false;interfaceError=error instanceof Error?error.message:'Program could not be checked.';interfaceErrorBlock=error instanceof ProgramError?error.blockId:null;refresh();}
 }
-run.onclick=()=>prepareProgram(true);
-element('program-check').onclick=()=>prepareProgram(false);
+run.onclick=()=>prepareProgram();
 
 stop.onclick=()=>cancel(true,true);
 element('teach-home').onclick=()=>{
-  cancel(false);stopRequested=false;interfaceError='';interfaceErrorBlock=null;reviewMessage='';
+  cancel(false);stopRequested=false;interfaceError='';interfaceErrorBlock=null;
   try{if(!control)throw Error('Connect the robot first.');control.restoreAndHome();}
   catch(error){interfaceError=error instanceof Error?error.message:'Home recovery could not start.';}
   refresh();
 };
 lesson.onclick=()=>{interfaceError='';cancel(false);editor.lesson();keyboardFields();refresh();};
 practice.onclick=()=>{interfaceError='';cancel(false);editor.teacherLesson();keyboardFields();refresh();};
-element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();positionOptions();keyboardFields();refresh();};
-element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();projectTitle.value='Untitled program';element('program-file-status').textContent='New empty program. Blocks and saved positions cleared.';positionOptions();keyboardFields();refresh();};
+element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();keyboardFields();refresh();};
+element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();projectTitle.value='Untitled program';element('program-file-status').textContent='New empty program. Blocks and saved positions cleared.';keyboardFields();refresh();};
 
 const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status');
 const fileBusy=()=>preparing||loadingProgram||!!control?.snapshot().busy;
@@ -314,7 +271,7 @@ programFile.onchange=async()=>{
   try{
     if(file.size>MAX_PROGRAM_FILE_BYTES)throw Error('Program file exceeds 256 KB.');
     const project=loadProjectFile(await file.text());if(token!==session)return;
-    editor.loadProject(project);projectTitle.value=project.name??(file.name.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');positionOptions();keyboardFields();plan=[];rows=[];element('instructions').replaceChildren();interfaceError='';
+    editor.loadProject(project);projectTitle.value=project.name??(file.name.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');keyboardFields();plan=[];rows=[];element('instructions').replaceChildren();interfaceError='';
     fileStatus.textContent=project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Check, Run or Save. Its blocks and positions are preserved. Nothing has run.':`Program loaded for review with ${teaching.list().length} saved positions. This program replaces the previous position list. Nothing has run.`;
   }catch(error){if(token===session)fileStatus.textContent=error instanceof Error?error.message:'Program could not be loaded. Existing blocks are unchanged.';}
   finally{if(token===session){loadingProgram=false;refresh();}}
@@ -359,7 +316,7 @@ window.addEventListener('keydown',async event=>{
     if(document.hidden||!document.hasFocus()){endKeyEvents('Keyboard preparation canceled after focus was lost. Run program to listen again.');refresh();return;}
     validateTargets(result);
     preparing=eventPreparation=false;
-    interfaceError='';interfaceErrorBlock=null;reviewMessage='';showPrepared(result);
+    interfaceError='';interfaceErrorBlock=null;showPrepared(result);
     activeSession.pendingVariables=result.variables;
     control!.runKeyboardEvent(executable(result));
     refresh();

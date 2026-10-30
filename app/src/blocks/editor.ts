@@ -70,7 +70,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
   });
   const definitions=()=>workspace.getTopBlocks(false).filter(block=>block.type==='procedures_defnoreturn');
   workspace.registerToolboxCategoryCallback('CLASSROOM_PROCEDURES',()=>[
-    {kind:'block',type:'procedures_defnoreturn'},
+    {kind:'block',type:'procedures_defnoreturn',fields:{NAME:'My Block'}},
     ...definitions().map(block=>({kind:'block',type:'procedures_callnoreturn',extraState:{name:String(block.getFieldValue('NAME'))}})),
   ]);
   new ResizeObserver(()=>Blockly.svgResize(workspace)).observe(container);

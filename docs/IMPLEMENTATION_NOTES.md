@@ -1,4 +1,12 @@
-# Classroom programming development preview 0.7.0-dev.61
+# Classroom programming development preview 0.7.0-dev.62
+
+## Simplified editing toolbar
+
+Dev.62 removes the Add block menu and standalone Check program button and their handlers. The Blockly toolbox remains the primary block-creation interface; My Blocks definitions receive an editable default name there. Positions retains Add to code for appending a recorded position under When Run clicked. Undo/Redo and numeric/comment keyboard editing remain.
+
+Run retains the complete structural, call-graph, literal/computed target, budget and key-event preflight before any Home or program write. The unused offline preview branch is removed, and UI help no longer points to the removed controls. No motion profile, operating range, holding or Stop sequence changes. Browser checks now use real toolbox drags, normal file fixtures, and Run rather than removed controls.
+
+Validation: build/type-check, all 405 unit tests and all 103 Chrome browser tests pass. Tests cover the absent controls, real toolbox dragging and undo/redo, native variable/conditional/My Block creation, saved-file compatibility, preflight failures before movement, Home, keyboard sessions and Stop/release. USB is mocked; no physical robot was commanded.
 
 ## Move to Home block
 
