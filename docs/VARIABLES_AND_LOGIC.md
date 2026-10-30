@@ -1,4 +1,4 @@
-# Variables, math and conditionals: dev.62
+# Variables, math and conditionals: dev.63
 
 Dev.58 shares variables across Run, all key stacks and My Blocks. A new Run
 resets state; accepted key events continue it. See [Keyboard events](./KEYBOARD_EVENTS.md).
@@ -6,7 +6,7 @@ resets state; accepted key events continue it. See [Keyboard events](./KEYBOARD_
 Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
 program variables and work from Run or key events. Earlier phase notes below are historical.
 
-Open the classroom page and confirm **0.7.0-dev.62**. The toolbox now has Motion,
+Open the classroom page and confirm **0.7.0-dev.63**. The toolbox now has Motion,
 Control, Math, Logic and Variables categories. Click a category to open its
 palette. New and loaded programs close the palette so the code stays visible.
 There is no new firmware, account, upload, or robot setup requirement.
@@ -14,12 +14,12 @@ There is no new firmware, account, upload, or robot setup requirement.
 ## Try the example
 
 1. Save any existing program you want to keep.
-2. Choose **File ? Load variables and logic example**. You can edit and save it
+2. Choose **File > Load variables and logic example**. You can edit and save it
    without a robot connection.
 3. To execute, connect, clear the Home route and click **Run program**. Run validates
    calculations and targets before movement, checks Home, then runs the blocks.
-4. Open **Program steps and keyboard editing**. The planned waits are 0.2, 0.2
-   and 0.4 seconds; calculated final values are counter = 3 and cycles = 3.
+4. The example waits 0.2, 0.2 and 0.4 seconds. Its calculations end with
+   counter = 3 and cycles = 3. Edit values directly on the blocks.
 5. Change the comparison from < 2 to < 1 and Run again. The waits become 0.2, 0.4
    and 0.4 seconds. A new Run starts with the initial assignments again.
 6. Save, start a new program and Load the file to restore the code and positions.
@@ -74,8 +74,7 @@ also stops on a bounded instruction budget.
 ## What Run does
 
 Run validates the program before robot movement. Calculations and branch decisions
-finish during preparation; displayed final values describe that preparation, not
-live sensors. Editing clears the previous results. Every accepted key event uses
+finish during preparation; program variables are not live sensor measurements. Every accepted key event uses
 current shared Run-session values; starting Run again resets them.
 
 Targets are checked against the operating ranges before the first movement. Run

@@ -1,4 +1,4 @@
-# Programming development test: dev.62
+# Programming development test: dev.63
 
 **Move to Home:** drag **move to Home** from Motion. Place it wherever the arm should return to the established six-joint
 Home, including at the end of a sequence or in a My Block. It needs no recorded
@@ -10,8 +10,7 @@ button remains the recovery action when holding is released.
 **Inline comments:** open **Control** and drag a **comment** block into your code. Select its text to edit it. Use comments
 to explain a step, a loop or a My Block. Notes stay visible in the stack and are
 saved/loaded with the program. The robot skips them; they add no motion or delay.
-Comments support up to 1000 characters each and can also be edited under Program
-steps and keyboard editing. Use this version or newer to open files with comments.
+Comments support up to 1000 characters each. Edit them directly on the block.
 
 Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
 program variables and work from Run or key events. Earlier phase notes below are historical.
@@ -35,8 +34,7 @@ continues from the current pose, with no concurrent or queued sequences. New fil
 Numeric variables, math and conditionals are now available. Use
 [Variables and logic](./VARIABLES_AND_LOGIC.md) to build the example. Run checks it before moving the robot. New format-5 files preserve expressions, branches and all saved positions. Older
 formats 1-4 still load.
-Variables reset every Run; their displayed final values are prepared
-results, not live sensors. Existing movement profiles and Home-first startup remain.
+Variables reset every Run and represent program values, not live sensors. Existing movement profiles and Home-first startup remain.
 
 The page opens into code, with Run/Stop in the persistent toolbar. File contains
 New empty program, Save/Load and examples. Robot/Positions tabs change the side

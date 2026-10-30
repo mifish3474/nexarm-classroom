@@ -21,3 +21,9 @@ export async function dragBlock(page:Page,category:string,label:string,hat=false
  // Flush Blockly's deferred change events even in mocked-clock station tests.
  if(mockedClock)await page.clock.runFor(100);
 }
+
+export async function editNumber(page:Page,blockType:string,value:string){
+ const field=page.getByRole('region',{name:'Blocks workspace.',exact:true}).locator(`.${blockType} .math_number .blocklyText`).first();
+ await field.dblclick();await page.locator('.blocklyHtmlInput').fill(value);await page.locator('.blocklyHtmlInput').press('Enter');
+ if(await page.evaluate(()=>'classroomRobot' in window))await page.clock.runFor(100);
+}

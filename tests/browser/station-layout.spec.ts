@@ -33,11 +33,11 @@ test('inspector tabs support keyboard navigation; menus close on Escape and pres
 
 test('toolbox replaces redundant controls and supports adding, undoing and saving blocks without USB',async({page})=>{
  await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed during editing');}}));await page.goto('/');
- await expect(page.locator('#add-block-menu, #program-check')).toHaveCount(0);
+ await expect(page.locator('#add-block-menu, #program-check, .workspace-keyboard, #keyboard-fields, #variable-values, #instructions')).toHaveCount(0);await expect(page.getByText('Program steps and keyboard editing',{exact:true})).toHaveCount(0);
  await dragBlock(page,'Motion','move joint');
- await page.getByText('Program steps and keyboard editing',{exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(2);
- await page.getByRole('button',{name:'Undo edit',exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(0);
- await page.getByRole('button',{name:'Redo edit',exact:true}).click();await expect(page.locator('#keyboard-fields input')).toHaveCount(2);
+ const moves=page.getByRole('region',{name:'Blocks workspace.',exact:true}).locator('.lesson_move');await expect(moves).toHaveCount(1);
+ await page.getByRole('button',{name:'Undo edit',exact:true}).click();await expect(moves).toHaveCount(0);
+ await page.getByRole('button',{name:'Redo edit',exact:true}).click();await expect(moves).toHaveCount(1);
  const downloading=page.waitForEvent('download');await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Save program',exact:true}).click();const file=JSON.parse(await readFile((await (await downloading).path())!,'utf8'));expect(file.instructions).toMatchObject([{kind:'move',servo:1,target:2128}]);
 });
 

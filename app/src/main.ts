@@ -29,7 +29,7 @@ const status=element('run-status');
 let preparing=false,loadingProgram=false,session=0,control:TeacherRobotControl|null=null,interfaceError='';
 let spaceHeld=false,stopRequested=false;
 let interfaceErrorBlock:string|null=null;
-let plan:PlannedStep[]=[],rows:HTMLLIElement[]=[];
+let plan:PlannedStep[]=[];
 const robotMode=()=>true;
 const teaching=createTeachingPanel(()=>control);
 element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join('; ')}. J6: 1024 = open. These are operator-provided development ranges; protected student policy comes later.`;
@@ -78,7 +78,7 @@ function refresh(){
   element<HTMLButtonElement>('program-save').disabled=!!busy;
   element<HTMLButtonElement>('program-load').disabled=!!busy;
   projectTitle.disabled=!!busy;
-  element('blockly-editor').inert=element('keyboard-fields').inert=!!busy;
+  element('blockly-editor').inert=!!busy;
   element('robot-controls').hidden=!live;element('mode-label').textContent=live?'Station robot':'Learn / Simulate';
   element<HTMLButtonElement>('robot-connect').disabled=!!robot&&!robot.canConnect;
   element<HTMLButtonElement>('robot-disconnect').disabled=!robot||['Disconnected','Closing'].includes(robot.connectionState);
@@ -125,58 +125,21 @@ function refresh(){
     card.target.textContent=command&&actual!==undefined?`Target ${command.target} · remaining ${command.target-actual}`:robot?.feedbackFresh?'Live reported position':'Last reported position';
   });
   const activeIndex=robot?.program?.activeStep,active=activeIndex===null||activeIndex===undefined?undefined:plan[activeIndex];
-  editor.highlight(interfaceError?interfaceErrorBlock:active?.blockId??null);rows.forEach((row,index)=>row.classList.toggle('active',!!active&&index===activeIndex));
+  editor.highlight(interfaceError?interfaceErrorBlock:active?.blockId??null);
 }
-function keyboardFields(){
-  const container=element('keyboard-fields');container.replaceChildren();
-  const addNumber=(block:import('blockly/core').Block,field:string,labelText:string,min:number,max:number,step:string)=>{
-    const label=document.createElement('label');label.textContent=labelText;
-    const input=document.createElement('input');input.type='number';input.step=step;input.min=String(min);input.max=String(max);input.value=String(block.getFieldValue(field));
-    input.onchange=()=>{if(input.validity.valid&&input.value!=='')block.setFieldValue(input.value,field);};label.append(input);container.append(label);
-  };
-  editor.workspace.getAllBlocks(true).forEach((block,index)=>{
-    const prefix=`Block ${index+1} · `;
-    if(block.type==='lesson_comment'){
-      const label=document.createElement('label');label.textContent=prefix+'comment';
-      const input=document.createElement('input');input.type='text';input.maxLength=1000;input.value=String(block.getFieldValue('TEXT'));
-      input.onchange=()=>block.setFieldValue(input.value,'TEXT');label.append(input);container.append(label);
-    }
-    if(block.type==='lesson_pose'){
-      const label=document.createElement('label');label.textContent=prefix+'saved position';
-      const select=document.createElement('select');select.setAttribute('aria-label',prefix+'saved position');
-      const options=editor.listPositions();for(const pose of options){const option=document.createElement('option');option.value=pose.id;option.textContent=pose.name;select.append(option);}
-      const current=String(block.getFieldValue('POSITION'));
-      if(!options.some(pose=>pose.id===current)){const missing=document.createElement('option');missing.value=current;missing.textContent='Choose a saved position';select.append(missing);}
-      select.value=current;select.onchange=()=>block.setFieldValue(select.value,'POSITION');label.append(select);container.append(label);
-    }
-    if(block.type==='lesson_move')addNumber(block,'SERVO',prefix+'joint',1,6,'1');
-    const fields=block.type==='lesson_move'?['TARGET']:block.type==='lesson_repeat'?['COUNT']:['lesson_wait','lesson_pose'].includes(block.type)?['SECONDS']:[];
-    for(const field of fields){
-      const child=block.getInputTargetBlock(field),label=field==='TARGET'?'target':field==='COUNT'?'repeat count':block.type==='lesson_pose'?'pose duration seconds':'wait seconds';
-      if(child?.type==='math_number')addNumber(child,'NUM',prefix+label,field==='TARGET'?0:field==='COUNT'?1:block.type==='lesson_pose'?0.1:0,field==='TARGET'?4095:field==='COUNT'?20:10,field==='SECONDS'?'.1':'1');
-      else{const note=document.createElement('p');note.className='note';note.textContent=prefix+label+' uses the connected calculation or variable.';container.append(note);}
-    }
-    if(block.type==='math_number'&&!['lesson_move','lesson_repeat','lesson_wait','lesson_pose'].includes(block.getParent()?.type??'')){
-      const parent=block.getParent(),variable=parent?.getField('VAR')?.getText();
-      addNumber(block,'NUM',prefix+(parent?.type==='variables_set'?`set value for ${variable}`:parent?.type==='math_change'?`change amount for ${variable}`:'number'),-Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER,'any');
-    }
-  });
-}
-
-keyboardFields();editor.workspace.addChangeListener(event=>{if(!event.isUiEvent&&!preparing&&!loadingProgram&&control?.snapshot().program?.phase!=='Running'){endKeyEvents('Keyboard events stopped after editing. Run program to listen again.');plan=[];rows=[];element('instructions').replaceChildren();element('variable-values').replaceChildren();keyboardFields();refresh();}});
-document.addEventListener('named-positions-changed',()=>{endKeyEvents('Keyboard events stopped after position changes. Run program to listen again.');editor.refreshPositions();keyboardFields();refresh();});
+editor.workspace.addChangeListener(event=>{if(!event.isUiEvent&&!preparing&&!loadingProgram&&control?.snapshot().program?.phase!=='Running'){endKeyEvents('Keyboard events stopped after editing. Run program to listen again.');plan=[];refresh();}});
+document.addEventListener('named-positions-changed',()=>{endKeyEvents('Keyboard events stopped after position changes. Run program to listen again.');editor.refreshPositions();refresh();});
 // Stop listening synchronously before an edit, rather than waiting for Blockly's
 // deferred change events. Selecting/typing in the editor cannot trigger a robot.
 function beginEditing(){if(keyEvents.active){endKeyEvents('Keyboard events stopped for editing. Run program to listen again.');refresh();}}
 element('blockly-editor').addEventListener('pointerdown',beginEditing,true);
-element('keyboard-fields').addEventListener('change',beginEditing,true);
 document.addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('.edit-actions button'))beginEditing();},true);
-element('undo').onclick=()=>{editor.workspace.undo(false);keyboardFields();refresh();};
-element('redo').onclick=()=>{editor.workspace.undo(true);keyboardFields();refresh();};
+element('undo').onclick=()=>{editor.workspace.undo(false);refresh();};
+element('redo').onclick=()=>{editor.workspace.undo(true);refresh();};
 document.addEventListener('add-position-to-code',event=>{
   if(preparing||loadingProgram||control?.snapshot().busy)return;
   beginEditing();
-  try{editor.addPosition((event as CustomEvent<string>).detail);interfaceError='';keyboardFields();refresh();}
+  try{editor.addPosition((event as CustomEvent<string>).detail);interfaceError='';refresh();}
   catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}
 });
 function cancel(stopRobot=true,releaseHolding=false){endKeyEvents();session++;runner.cancel();preparing=loadingProgram=false;if(stopRobot){stopRequested=true;if(releaseHolding)control?.stopThenRelease();else control?.stop();}refresh();}
@@ -196,11 +159,7 @@ function validateLiteralTargets(nodes:Instruction[]){
     }catch(error){if(error instanceof ProgramError)throw error;throw new ProgramError(error instanceof Error?error.message:'Invalid target.',node.blockId);}
   }
 }
-function showPrepared(result:PreparedProgram){
-  plan=result.steps;element('instructions').replaceChildren();element('variable-values').replaceChildren();
-  rows=plan.map(step=>{const row=document.createElement('li');row.textContent=step.kind==='pose'?`Move to ${step.name}: ${step.positions.join(', ')}`:step.kind==='wait'?`Wait ${step.durationMs/1000} seconds`:`Move robot joint ${step.servo} to ${step.target}`;element('instructions').append(row);return row;});
-  for(const variable of result.variables){const value=document.createElement('p');value.textContent=`${variable.name} = ${variable.value}`;element('variable-values').append(value);}
-}
+
 // The robot receives only the bounded, checked movement plan, never function definitions.
 const executable=(result:PreparedProgram)=>result.steps.map(step=>({...step,kind:step.kind??'move'}));
 async function prepareProgram(){
@@ -209,7 +168,7 @@ async function prepareProgram(){
   endKeyEvents();
   try{
     stopRequested=false;
-    interfaceError='';interfaceErrorBlock=null;plan=[];rows=[];element('instructions').replaceChildren();element('variable-values').replaceChildren();
+    interfaceError='';interfaceErrorBlock=null;plan=[];
     const project=copyProject(editor.compileProject()),instructions=project.instructions;preparing=true;plan=[];refresh();
     const handlers=new Map<string,KeyPreview>();
     for(const nodes of [instructions,...project.keyEvents.map(handler=>handler.body),...(project.functions??[]).map(fn=>fn.body)])validateLiteralTargets(nodes);
@@ -229,7 +188,7 @@ async function prepareProgram(){
       }
     }
     if(ownSession!==session||live!==robotMode())return;
-    validateTargets(result);preparing=false;showPrepared(result);
+    validateTargets(result);preparing=false;plan=result.steps;
     if(!control||!control.snapshot().canMove)throw Error(control?.snapshot().reason??'Connect the robot first.');
     if(handlers.size){
       keyHandlers=handlers;keySession={functions:project.functions??[],variables:[],pendingVariables:result.variables,starting:true};
@@ -248,10 +207,10 @@ element('teach-home').onclick=()=>{
   catch(error){interfaceError=error instanceof Error?error.message:'Home recovery could not start.';}
   refresh();
 };
-lesson.onclick=()=>{interfaceError='';cancel(false);editor.lesson();keyboardFields();refresh();};
-practice.onclick=()=>{interfaceError='';cancel(false);editor.teacherLesson();keyboardFields();refresh();};
-element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();keyboardFields();refresh();};
-element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();projectTitle.value='Untitled program';element('program-file-status').textContent='New empty program. Blocks and saved positions cleared.';keyboardFields();refresh();};
+lesson.onclick=()=>{interfaceError='';cancel(false);editor.lesson();refresh();};
+practice.onclick=()=>{interfaceError='';cancel(false);editor.teacherLesson();refresh();};
+element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();refresh();};
+element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();projectTitle.value='Untitled program';element('program-file-status').textContent='New empty program. Blocks and saved positions cleared.';refresh();};
 
 const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status');
 const fileBusy=()=>preparing||loadingProgram||!!control?.snapshot().busy;
@@ -271,8 +230,8 @@ programFile.onchange=async()=>{
   try{
     if(file.size>MAX_PROGRAM_FILE_BYTES)throw Error('Program file exceeds 256 KB.');
     const project=loadProjectFile(await file.text());if(token!==session)return;
-    editor.loadProject(project);projectTitle.value=project.name??(file.name.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');keyboardFields();plan=[];rows=[];element('instructions').replaceChildren();interfaceError='';
-    fileStatus.textContent=project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Check, Run or Save. Its blocks and positions are preserved. Nothing has run.':`Program loaded for review with ${teaching.list().length} saved positions. This program replaces the previous position list. Nothing has run.`;
+    editor.loadProject(project);projectTitle.value=project.name??(file.name.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');plan=[];interfaceError='';
+    fileStatus.textContent=project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Run or Save. Its blocks and positions are preserved. Nothing has run.':`Program loaded for review with ${teaching.list().length} saved positions. This program replaces the previous position list. Nothing has run.`;
   }catch(error){if(token===session)fileStatus.textContent=error instanceof Error?error.message:'Program could not be loaded. Existing blocks are unchanged.';}
   finally{if(token===session){loadingProgram=false;refresh();}}
 };
@@ -304,7 +263,7 @@ window.addEventListener('keydown',async event=>{
     if(!spaceHeld){spaceHeld=true;cancel(true,true);}
     return;
   }
-  if(event.target instanceof Element&&event.target.closest('#blockly-editor,#keyboard-fields,.blocklyWidgetDiv,.blocklyDropDownDiv'))beginEditing();
+  if(event.target instanceof Element&&event.target.closest('#blockly-editor,.blocklyWidgetDiv,.blocklyDropDownDiv'))beginEditing();
   const key=keyEvents.keydown(event,{canMove:!spaceHeld&&!!robot?.canMove,busy:preparing||loadingProgram||!!robot?.busy,
     editing:isKeyboardEditing(event.target)||!!document.querySelector('dialog[open],.workspace-menu[open]'),visible:!document.hidden&&document.hasFocus()});
   if(!key)return;
@@ -316,7 +275,7 @@ window.addEventListener('keydown',async event=>{
     if(document.hidden||!document.hasFocus()){endKeyEvents('Keyboard preparation canceled after focus was lost. Run program to listen again.');refresh();return;}
     validateTargets(result);
     preparing=eventPreparation=false;
-    interfaceError='';interfaceErrorBlock=null;showPrepared(result);
+    interfaceError='';interfaceErrorBlock=null;plan=result.steps;
     activeSession.pendingVariables=result.variables;
     control!.runKeyboardEvent(executable(result));
     refresh();

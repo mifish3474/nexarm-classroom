@@ -70,8 +70,7 @@ To connect positions in code:
 
 1. The page starts with an empty program. **File → New empty program** clears existing blocks and saved positions. Start a new project before teaching its positions, or Load an existing program file.
 2. Click **Add to code** beside a saved position to append it under When Run clicked. Alternatively, drag a saved-position block from Motion into any stack and choose its position in the dropdown.
-3. Each position block has an **over … seconds** field, default 1 second (0.1–10). The planner extends it if needed to keep speed at or below 600. The robot status and diagnostics show the effective duration. Click **Add wait block** for a one-second pause. Edit its seconds in Blockly
-   or under **Program steps and keyboard editing** (0–10 seconds).
+3. Each position block has an **over … seconds** field, default 1 second (0.1–10). The planner extends it if needed to keep speed at or below 600. The robot status and diagnostics show the effective duration. Drag a Wait block from Control for a pause, and edit its seconds directly in Blockly (0-10 seconds).
 4. Choose a second position and add another position block. For example:
    `Pickup → wait 1 second → Dropoff → wait 1 second → Pickup`.
 5. Drag blocks to change their order or place the sequence inside Repeat.

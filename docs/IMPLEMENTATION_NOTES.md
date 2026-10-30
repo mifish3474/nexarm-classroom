@@ -1,4 +1,12 @@
-# Classroom programming development preview 0.7.0-dev.62
+# Classroom programming development preview 0.7.0-dev.63
+
+## Remove duplicate program details
+
+Dev.63 removes the Program steps and keyboard editing dropdown, its numeric/comment/position form, calculated-value display, prepared-step list, associated CSS and rendering handlers. The prepared plan remains in memory for active-block highlighting. Error highlighting, status messages, runtime variables, Run preflight, Home, saved files, keyboard event sessions and Stop/release behavior are retained. Editing stays on Blockly fields and dropdowns.
+
+Browser regressions now edit numbers and saved-position choices directly in Blockly and assert that the removed section and controls are absent. Runtime variable semantics remain covered by unit tests and physical-command sequences through mocked USB.
+
+Validation: build/type-check and all 405 unit tests pass. All 103 browser cases pass across the full regression (101 passing) and the two corrected SVG repeat-field assertions (2 passing). Tests verify the section is absent, inline editing, file round-trips, target validation before movement, shared-variable command sequences, Home and Stop/release. No physical robot was commanded.
 
 ## Simplified editing toolbar
 
