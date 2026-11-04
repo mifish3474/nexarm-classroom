@@ -29,7 +29,7 @@ test('Load through the writable picker replaces the project and keeps saving to 
  const position={id:'pickup',name:'Pickup',positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-11-04T12:00:00.000Z'};
  const source=JSON.stringify({format:'nexarm-classroom-program',schemaVersion:5,name:'Loaded lesson',instructions:[{kind:'wait',blockId:'wait',durationMs:1000}],keyEvents:[],positions:[position]});
  await installWritableFile(page,source);await page.goto('/');await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Load program',exact:true}).click();
- await expect(page.locator('#program-file-status')).toContainText('Changes will save automatically to Arm lesson.json');await expect(page.locator('#project-name')).toHaveValue('Loaded lesson');
+ await expect(page.locator('#project-name')).toHaveValue('Loaded lesson');await expect(page.locator('#program-file-status')).toContainText('Arm lesson.json');
  await page.locator('#project-name').fill('Revised lesson');await page.locator('#saved-positions details > summary').click();await page.getByRole('button',{name:'Delete position Pickup',exact:true}).click();
  await expect(page.locator('#program-file-status')).toHaveText('Saved automatically to Arm lesson.json.',{timeout:5000});
  const saved=JSON.parse(await page.evaluate(()=>window.programFileMock.text));expect(saved.name).toBe('Revised lesson');expect(saved.positions).toEqual([]);
