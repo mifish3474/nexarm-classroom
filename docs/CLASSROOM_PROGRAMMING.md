@@ -1,4 +1,4 @@
-# Programming development test: dev.65
+# Programming development test: dev.66
 
 **Move to Home:** drag **move to Home** from Motion. Place it wherever the arm should return to the established six-joint
 Home, including at the end of a sequence or in a My Block. It needs no recorded
@@ -29,11 +29,12 @@ restored-sequence hardware check and timing diagnostics. Neither physical stoppi
 Run starts listening after checking every stack; Stop ends it. Drag blocks into
 the desired startup, key-event or My Block stack.
 Run checks Home once. Every accepted key uses current shared variables and
-continues from the current pose, with no concurrent or queued sequences. New files use format 5 with the complete saved-position list.
+continues from the current pose, with no concurrent or queued sequences. New files
+use format 6 with the complete Blockly workspace and saved-position list.
 
 Numeric variables, math and conditionals are now available. Use
-[Variables and logic](./VARIABLES_AND_LOGIC.md) to build the example. Run checks it before moving the robot. New format-5 files preserve expressions, branches and all saved positions. Older
-formats 1-4 still load.
+[Variables and logic](./VARIABLES_AND_LOGIC.md) to build the example. Run checks it before moving the robot. New format-6 files preserve the full draft workspace, expressions, branches and all saved positions. Older
+formats 1-5 still load.
 Variables reset every Run and represent program values, not live sensors. Existing movement profiles and Home-first startup remain.
 
 The page opens into code, with Run/Stop in the persistent toolbar. File contains
@@ -43,7 +44,8 @@ naming, recording and restore. Add to code appends a position block under When
 Run clicked without moving; expand Joint values & movement for the separate Move to position action.
 The Blockly toolbox supplies all blocks; Undo/Redo are in the toolbar. Programs
 start with only When Run clicked. Once Save program selects a writable file,
-valid later edits save automatically in Chrome or Edge.
+later edits save automatically in Chrome or Edge, including loose or unfinished
+blocks. A saved draft still must pass all Run checks before the robot can move.
 
 The user confirms Blockly motion is working after identifying the selected J3
 block. Diagnostic export remains available for unexpected behavior. To release,

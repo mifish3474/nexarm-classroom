@@ -1,4 +1,24 @@
-# Classroom programming development preview 0.7.0-dev.65
+# Classroom programming development preview 0.7.0-dev.66
+
+## Draft-capable program files
+
+Dev.66 separates saving from robot compilation. Program format 6 stores Blockly's
+complete data-only workspace, so disconnected stacks, incomplete expressions,
+disabled blocks and not-yet-assigned event blocks can be saved automatically and
+restored in their canvas positions. When a workspace is complete, the file also
+retains the validated format-5-style instruction snapshot for inspection and
+classroom file tooling. Formats 1-5 continue to load.
+
+Run still compiles the live workspace and enforces the existing topology,
+expression, target, budget and motion checks before any robot command. Loading is
+transactional, accepts only known Blockly blocks, requires one When Run clicked
+block, and retains the 100-block, 32-variable and 256 KB bounds. This changes no
+USB protocol, movement, Home, holding, Stop or release behavior.
+
+Validation: production build/type-check, all 407 unit tests and all 107 browser
+checks pass. The real browser workflow confirms a connected stack and a separate
+loose block survive automatic saving, New, and reopening. Browser robot checks
+use mocked USB; no physical robot was commanded.
 
 ## Filename synchronization and visible save state
 

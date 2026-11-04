@@ -5,7 +5,7 @@ import {copyNamedPositions} from '../poses/NamedPositions';
 import type {NamedPosition} from '../poses/NamedPositions';
 
 export type KeyHandler={blockId:string;key:string;body:Instruction[]};
-export type ProgramProject={instructions:Instruction[];keyEvents:KeyHandler[];functions?:FunctionDefinition[];name?:string;positions?:NamedPosition[]};
+export type ProgramProject={instructions:Instruction[];keyEvents:KeyHandler[];functions?:FunctionDefinition[];name?:string;positions?:NamedPosition[];workspace?:Record<string,unknown>};
 
 export function projectName(value:unknown):string{
   if(typeof value!=='string'||!value.trim()||value.trim().length>60||/[\u0000-\u001f\u007f]/.test(value))throw Error('Use a project name with 1–60 characters.');

@@ -38,6 +38,21 @@ test('Load through the writable picker replaces the project and keeps saving to 
  const saved=JSON.parse(await page.evaluate(()=>window.programFileMock.text));expect(saved.name).toBe('Revised lesson');expect(saved.positions).toEqual([]);
 });
 
+test('automatic saving preserves an unfinished loose stack and reloads it exactly',async({page})=>{
+ await installWritableFile(page);await page.goto('/');await dragBlock(page,'Motion','move joint');
+ await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Save program',exact:true}).click();
+ await dragBlock(page,'Control','wait',true);
+ await expect(page.locator('#program-file-status')).toHaveText('Saved automatically to Arm lesson.json.',{timeout:5000});
+ const draft=await page.evaluate(()=>JSON.parse(window.programFileMock.text));
+ expect(draft.schemaVersion).toBe(6);expect(draft.workspace).toBeTruthy();expect(draft.instructions).toEqual([]);
+ await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'New empty program',exact:true}).click();
+ const workspace=page.getByRole('region',{name:'Blocks workspace.',exact:true});
+ await expect(workspace.locator('.blocklyDraggable.lesson_wait')).toHaveCount(0);
+ await page.locator('#file-menu > summary').click();await page.getByRole('button',{name:'Load program',exact:true}).click();
+ await expect(workspace.locator('.blocklyDraggable.lesson_move')).toHaveCount(1);await expect(workspace.locator('.blocklyDraggable.lesson_wait')).toHaveCount(1);
+ await expect(page.locator('#file-save-state')).toHaveText('Saved');
+});
+
 test('unsupported browsers retain the download and upload fallback',async({page})=>{
  await page.addInitScript(()=>{Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true});Object.defineProperty(window,'showOpenFilePicker',{value:undefined,configurable:true});});
  await page.goto('/');await expect(page.getByRole('button',{name:'Save as new file',exact:true})).toBeHidden();await expect(page.getByRole('button',{name:'Download copy',exact:true})).toBeHidden();

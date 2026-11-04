@@ -25,6 +25,11 @@ See [the recovery check](docs/SIGNAL_AND_STOP.md).
 
 **Dev.65: filename and save feedback.** Choosing a program filename updates the project name above Blockly, and older files still named “Untitled program” adopt their actual filename when loaded. A visible pill beside the name reports Not saved, Saving, Saved, Loaded/Downloaded, or failure while the footer retains detailed messages.
 
+**Dev.66: unfinished workspaces save safely.** Program files now preserve the
+complete Blockly canvas, including loose stacks and partially assembled code.
+Students can close and reopen a draft without connecting every block first. Run
+still applies the full executable-program and robot-safety validation.
+
 **Dev.62: simpler editing toolbar.** Create blocks directly from the Blockly toolbox. The separate Add block menu and Check program button are removed; Run retains all program validation before movement. My Blocks definitions start with an editable name.
 
 **Dev.61: move to Home.** Motion now includes a dedicated Home block for sequences, key events, loops and My Blocks. It uses the established simultaneous Home targets and movement profile, saves with the program, and needs no recorded position. See [classroom programming](docs/CLASSROOM_PROGRAMMING.md).
@@ -158,7 +163,8 @@ The earlier mapping suite and Reference A return remain at `/mapping-tests.html`
 with their original approval history; see [the earlier scope](docs/JOINT_SUITE_AND_HOME.md).
 **Save program / Load program** use a user-selected local JSON file containing
 the blocks and all saved positions, including unused ones. Chrome and Edge update
-the active file automatically after valid edits; other browsers retain download/
+the active file automatically after edits, including unfinished Blockly drafts;
+other browsers retain download/
 upload fallback. Loading replaces the current position list and never connects,
 restores holding or runs automatically. Files contain program data only; no
 accounts or uploads are involved.

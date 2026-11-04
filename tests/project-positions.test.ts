@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {loadProjectFile,saveProjectFile} from '../app/src/runtime/ProgramFile';
+import {loadProjectFile,saveProjectFile,saveWorkspaceProjectFile} from '../app/src/runtime/ProgramFile';
 import {NamedPositions,NAMED_POSITIONS_KEY} from '../app/src/poses/NamedPositions';
 import {resolveProjectPositions} from '../app/src/runtime/ProjectPositions';
 import type {ProgramProject} from '../app/src/runtime/ProgramProject';
@@ -14,6 +14,16 @@ describe('program-owned positions',()=>{
   const project={instructions:[],keyEvents:[],positions:[position(),position('unused','Unused')],name:'Positions only'};
   const text=saveProjectFile(project);expect(JSON.parse(text).schemaVersion).toBe(5);expect(loadProjectFile(text)).toEqual(project);
   const loaded=loadProjectFile(text);loaded.positions![0]!.positions[0]=0;expect(project.positions[0]!.positions).toEqual(home);
+ });
+ it('round-trips a complete Blockly workspace even when its compiled snapshot is empty',()=>{
+  const workspace={blocks:{languageVersion:0,blocks:[{type:'lesson_start',id:'start',x:20,y:24},{type:'lesson_wait',id:'loose',x:420,y:180}]},variables:[{name:'counter',id:'variable'}]};
+  const text=saveWorkspaceProjectFile({name:'Draft lesson',instructions:[],keyEvents:[],positions:[position()],workspace});
+  const data=JSON.parse(text);expect(data.schemaVersion).toBe(6);expect(data.workspace).toEqual(workspace);
+  expect(loadProjectFile(text)).toEqual({name:'Draft lesson',instructions:[],keyEvents:[],positions:[position()],workspace});
+ });
+ it('requires a data-only Blockly workspace in draft-capable files',()=>{
+  expect(()=>saveWorkspaceProjectFile({instructions:[],keyEvents:[],positions:[]})).toThrow('workspace');
+  expect(()=>loadProjectFile(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:6,instructions:[],keyEvents:[],positions:[],workspace:[]}))).toThrow('workspace');
  });
  it('round-trips the same canonical positions across Run, keys, branches and functions',()=>{
   const project:ProgramProject={positions:[position()],instructions:[{kind:'if',blockId:'if',branches:[{condition:false,body:[pose('branch')]}],elseBody:[pose('run')]}],keyEvents:[{blockId:'key',key:'a',body:[pose('key-pose')]}],functions:[{blockId:'def',name:'Pickup function',body:[pose('function-pose')]}]};

@@ -1,9 +1,9 @@
-# Program files, automatic saving and saved positions: dev.65
+# Program files, automatic saving and saved positions: dev.66
 
 Saved positions belong to the current program. **Save program** includes every
 position's name and six joint measurements, even if no block uses that position.
 In Chrome or Edge, a user-selected JSON file is the working document. After the
-first Save, valid changes to code, project name, My Blocks and saved positions
+first Save, changes to code, project name, My Blocks and saved positions
 update that same file automatically after a short pause. The browser position
 cache remains a recovery aid, not a separate project library. There are no
 accounts or uploads. Shared-browser cache data remains visible to other users of
@@ -22,7 +22,7 @@ needs no saved-position entry. Use dev.61 or newer to load a file with Home bloc
 1. Name the project above the code, then choose **File → Save program**. Chrome
    or Edge asks for a filename and location the first time. The filename becomes
    the project name shown above the canvas, without `.json`. A status pill beside
-   it reports Saving and Saved; the footer provides details. Later valid edits update that file without
+   it reports Saving and Saved; the footer provides details. Later edits update that file without
    another click. **Save as new file** changes the active file; **Download copy**
    creates an independent backup that is not updated. The JSON contains the code,
    My Blocks, event stacks and complete saved-position list, including unused
@@ -43,9 +43,11 @@ needs no saved-position entry. Use dev.61 or newer to load a file with Home bloc
 Direct file access is browser-controlled. After closing or reopening the site,
 choose Load program again to reconnect the local file. If the browser does not
 support writable file pickers, Save program downloads a new copy and Load program
-uses ordinary upload selection. Temporary invalid Blockly arrangements are not
-written over the last valid file; reconnect the blocks and the next valid edit
-will save automatically.
+uses ordinary upload selection. Unfinished Blockly arrangements are saved too.
+Loose stacks, partially assembled expressions and unassigned event blocks remain
+in their canvas positions when the file is reopened. Saving a draft does not make
+it runnable: **Run program** still requires executable stack structure and applies
+all existing program and movement checks.
 
 Loading a supplied example also starts with that example's position list (empty
 for the current examples). Clearing or deleting a position used in code makes
@@ -58,14 +60,15 @@ The existing browser working copy is kept when upgrading/opening the app. Save
 your current program before choosing New or loading another file to include all
 of those positions in the new format.
 
-Newly saved programs use **format 5**. Files from formats 1-4 still load. Older
+Newly saved programs use **format 6**, which adds the complete Blockly workspace.
+Files from formats 1-5 still load. Older
 files contain only position snapshots used by their blocks, so those snapshots
 become the loaded program's visible position list. Unused positions omitted from
 an old file cannot be recovered from that file. Old snapshots without a capture
 timestamp use an epoch placeholder for unknown capture time; it is not a new
 measurement. If old snapshots share a name or ID but contain different targets,
 the importer gives them distinct names/IDs while preserving all six target values.
-Older app builds cannot open format 5.
+Older app builds cannot open format 6.
 
 Up to 32 positions may be stored per program. File size, measured-value validation,
 joint target checks and motion policy remain in effect. An endpoint does not

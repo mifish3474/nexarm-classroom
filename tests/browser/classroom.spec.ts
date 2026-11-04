@@ -210,7 +210,7 @@ test('students name files and reuse, rename and reload My Blocks without connect
  await loadProject(page,{name:'Sorting challenge',instructions:[{kind:'call',blockId:'one',name:'Pause'},{kind:'call',blockId:'two',name:'Pause'}],keyEvents:[],functions:[{blockId:'fn',name:'Pause',body:[{kind:'wait',blockId:'wait',durationMs:1000}]}]});
  await page.clock.runFor(100);await page.locator('.procedures_defnoreturn .blocklyText').filter({hasText:/^Pause$/}).dblclick();await page.locator('.blocklyHtmlInput').fill('Short pause');await page.locator('.blocklyHtmlInput').press('Enter');await page.clock.runFor(100);
  const downloading=page.waitForEvent('download');await clickControl(page,'Save program');const file=await downloading;expect(file.suggestedFilename()).toBe('Sorting challenge.json');
- const text=await readFile((await file.path())!,'utf8'),data=JSON.parse(text);expect(data.schemaVersion).toBe(5);expect(data.name).toBe('Sorting challenge');expect(data.functions).toHaveLength(1);expect(data.functions[0].name).toBe('Short pause');expect(data.instructions.map((node:{name:string})=>node.name)).toEqual(['Short pause','Short pause']);
+ const text=await readFile((await file.path())!,'utf8'),data=JSON.parse(text);expect(data.schemaVersion).toBe(6);expect(data.name).toBe('Sorting challenge');expect(data.functions).toHaveLength(1);expect(data.functions[0].name).toBe('Short pause');expect(data.instructions.map((node:{name:string})=>node.name)).toEqual(['Short pause','Short pause']);
  await clickControl(page,'New empty program');await expect(page.locator('#project-name')).toHaveValue('Untitled program');await page.locator('#program-file').setInputFiles({name:'renamed-download.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#project-name')).toHaveValue('Sorting challenge');
  expect(await writes(page)).toHaveLength(0);expect(errors).toEqual([]);
  await page.getByRole('treeitem',{name:'My Blocks',exact:true}).click();await expect(page.locator('.blocklyFlyout').getByText('Short pause',{exact:true})).toBeVisible();
@@ -400,7 +400,7 @@ test('every keyboard handler is checked before startup Home and duplicate key fi
 test('keyboard stacks and their position snapshots save/load without connecting or enabling events',async({page})=>{
  await station(page);const positions=[2130,2230,2180,2280,2080,1160];await loadKeys(page,[{blockId:'space',key:'a',body:[{kind:'pose',blockId:'pickup',positionId:'p',name:'Pickup',positions,durationMs:1000}]}]);
 
- const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(text)).toMatchObject({schemaVersion:5,keyEvents:[{key:'a',body:[{kind:'pose',name:'Pickup',positions}]}]});
+ const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');expect(JSON.parse(text)).toMatchObject({schemaVersion:6,keyEvents:[{key:'a',body:[{kind:'pose',name:'Pickup',positions}]}]});
  await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'reload.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
  await page.locator('#keyboard-control').click();await pressKey(page,'a');expect(await writes(page)).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(0);
  await expect(page.locator('#keyboard-control')).toHaveAttribute('data-active','false');
@@ -432,7 +432,7 @@ test('the variables example runs, resets values, and round-trips branches throug
 
  await clickControl(page,'Run program');await page.clock.runFor(1500);
  const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8'),file=JSON.parse(text);
- expect(file.schemaVersion).toBe(5);expect(file.instructions[2]).toMatchObject({kind:'repeat',count:{kind:'variable',name:'cycles'},body:[{kind:'if',elseBody:[{kind:'wait',durationMs:400}]},{kind:'change',name:'counter'}]});
+ expect(file.schemaVersion).toBe(6);expect(file.instructions[2]).toMatchObject({kind:'repeat',count:{kind:'variable',name:'cycles'},body:[{kind:'if',elseBody:[{kind:'wait',durationMs:400}]},{kind:'change',name:'counter'}]});
  await clickControl(page,'New empty program');await page.locator('#program-file').setInputFiles({name:'logic.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');
  await clickControl(page,'Run program');await page.clock.runFor(1500);
  expect(await writes(page)).toHaveLength(0);expect(await page.evaluate(()=>(window as unknown as {classroomRobot:{requests:number}}).classroomRobot.requests)).toBe(1);expect(errors).toEqual([]);await clickControl(page,'Disconnect robot');

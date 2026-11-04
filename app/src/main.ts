@@ -10,7 +10,7 @@ import {createTeachingPanel} from './poses/TeachingPanel';
 import {OPERATING_RANGES,assertPoseTargets,assertJointTarget} from './safety/OperatingRanges';
 import {ProgramError,UninitializedVariableError,copyVariableValues} from './runtime/ProgramLanguage';
 import type {Instruction,FunctionDefinition,VariableValues} from './runtime/ProgramLanguage';
-import {saveProjectFile,loadProjectFile,MAX_PROGRAM_FILE_BYTES} from './runtime/ProgramFile';
+import {saveWorkspaceProjectFile,loadProjectFile,MAX_PROGRAM_FILE_BYTES} from './runtime/ProgramFile';
 import {copyProject,projectName,projectFilename} from './runtime/ProgramProject';
 import type {KeyHandler} from './runtime/ProgramProject';
 import {chooseProgramFileToOpen,chooseProgramFileToSave,filePickerCanceled,writableProgramFilesSupported,writeProgramFile} from './runtime/WritableProgramFile';
@@ -51,7 +51,7 @@ function titleFromFilename(filename:string){
 }
 function programText(){
   const name=projectName(projectTitle.value);projectTitle.value=name;
-  return {name,text:saveProjectFile({...editor.compileProject(),name})};
+  return {name,text:saveWorkspaceProjectFile({...editor.fileProject(),name})};
 }
 function downloadProgramCopy(){
   const {name,text}=programText(),url=URL.createObjectURL(new Blob([text],{type:'application/json'})),link=document.createElement('a');
