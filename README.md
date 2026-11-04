@@ -23,6 +23,8 @@ See [the recovery check](docs/SIGNAL_AND_STOP.md).
 
 **Dev.64: disk-backed automatic saving.** In Chrome or Edge, Save program chooses a writable `.json` file once, and later valid code, project-name, function and saved-position changes update that same file automatically. Loading through the file picker also establishes the working file. Save as new file and Download copy remain explicit; unsupported browsers retain download/upload fallback. No account or upload is involved.
 
+**Dev.65: filename and save feedback.** Choosing a program filename updates the project name above Blockly, and older files still named “Untitled program” adopt their actual filename when loaded. A visible pill beside the name reports Not saved, Saving, Saved, Loaded/Downloaded, or failure while the footer retains detailed messages.
+
 **Dev.62: simpler editing toolbar.** Create blocks directly from the Blockly toolbox. The separate Add block menu and Check program button are removed; Run retains all program validation before movement. My Blocks definitions start with an editable name.
 
 **Dev.61: move to Home.** Motion now includes a dedicated Home block for sequences, key events, loops and My Blocks. It uses the established simultaneous Home targets and movement profile, saves with the program, and needs no recorded position. See [classroom programming](docs/CLASSROOM_PROGRAMMING.md).

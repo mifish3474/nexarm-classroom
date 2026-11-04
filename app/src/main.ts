@@ -37,12 +37,18 @@ const teaching=createTeachingPanel(()=>control);
 element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join('; ')}. J6: 1024 = open. These are operator-provided development ranges; protected student policy comes later.`;
 const editor=createEditor(element('blockly-editor'),()=>teaching.list(),positions=>teaching.replacePositions(positions));
 const projectTitle=element<HTMLInputElement>('project-name');
-const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status');
+const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status'),fileSaveState=element('file-save-state');
 const directFiles=writableProgramFilesSupported();
 let activeProgramFile:ProgramFileHandle|null=null,autosaveTimer:number|undefined,autosaveWriting=false,autosaveDirty=false,autosaveRevision=0;
 element<HTMLButtonElement>('program-save-as').hidden=!directFiles;
 element<HTMLButtonElement>('program-download').hidden=!directFiles;
 
+function showFileSaveState(text:string,state:'detached'|'saving'|'saved'|'error'){
+  fileSaveState.textContent=text;fileSaveState.dataset.state=state;
+}
+function titleFromFilename(filename:string){
+  return projectName(filename.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');
+}
 function programText(){
   const name=projectName(projectTitle.value);projectTitle.value=name;
   return {name,text:saveProjectFile({...editor.compileProject(),name})};
@@ -51,19 +57,21 @@ function downloadProgramCopy(){
   const {name,text}=programText(),url=URL.createObjectURL(new Blob([text],{type:'application/json'})),link=document.createElement('a');
   link.href=url;link.download=projectFilename(name);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   fileStatus.textContent=`Downloaded ${link.download}. This separate copy will not receive automatic updates.`;
+  if(!activeProgramFile)showFileSaveState('Downloaded','saved');
 }
-function detachProgramFile(){
+function detachProgramFile(showState=true){
   activeProgramFile=null;autosaveDirty=false;if(autosaveTimer!==undefined)clearTimeout(autosaveTimer);autosaveTimer=undefined;
+  if(showState)showFileSaveState('Not saved','detached');
 }
 async function flushProgramFile(manual=false){
   const handle=activeProgramFile;if(!handle)return;
   if(autosaveWriting){autosaveDirty=true;return;}
   if(autosaveTimer!==undefined)clearTimeout(autosaveTimer);autosaveTimer=undefined;autosaveWriting=true;autosaveDirty=false;
   try{
-    const {text}=programText();fileStatus.textContent=`Saving ${handle.name}…`;await writeProgramFile(handle,text);
-    if(activeProgramFile===handle)fileStatus.textContent=`Saved automatically to ${handle.name}.`;
+    const {text}=programText();showFileSaveState('Saving…','saving');fileStatus.textContent=`Saving ${handle.name}…`;await writeProgramFile(handle,text);
+    if(activeProgramFile===handle){showFileSaveState('Saved','saved');fileStatus.textContent=`Saved automatically to ${handle.name}.`;}
   }catch(error){
-    if(activeProgramFile===handle)fileStatus.textContent=`Changes not saved to ${handle.name}: ${error instanceof Error?error.message:'File write failed.'}`;
+    if(activeProgramFile===handle){showFileSaveState('Save failed','error');fileStatus.textContent=`Changes not saved to ${handle.name}: ${error instanceof Error?error.message:'File write failed.'}`;}
   }finally{
     autosaveWriting=false;
     if(activeProgramFile===handle&&autosaveDirty)queueProgramAutosave();
@@ -72,19 +80,25 @@ async function flushProgramFile(manual=false){
 }
 function queueProgramAutosave(){
   autosaveRevision++;
-  if(!activeProgramFile||loadingProgram)return;
+  if(!activeProgramFile){showFileSaveState('Not saved','detached');return;}
+  if(loadingProgram)return;
   autosaveDirty=true;if(autosaveTimer!==undefined)clearTimeout(autosaveTimer);
+  showFileSaveState('Saving…','saving');
   fileStatus.textContent=`Changes waiting to save to ${activeProgramFile.name}…`;
   autosaveTimer=window.setTimeout(()=>{autosaveTimer=undefined;void flushProgramFile();},800);
 }
 async function saveAsProgramFile(){
   if(!directFiles)return downloadProgramCopy();
   try{
-    const {name}=programText(),handle=await chooseProgramFileToSave(projectFilename(name)),revision=autosaveRevision,{text}=programText();
-    fileStatus.textContent=`Saving ${handle.name}…`;await writeProgramFile(handle,text);detachProgramFile();activeProgramFile=handle;
+    const {name}=programText(),handle=await chooseProgramFileToSave(projectFilename(name)),previousTitle=projectTitle.value;
+    projectTitle.value=titleFromFilename(handle.name);
+    let revision:number,text:string;
+    try{revision=autosaveRevision;text=programText().text;showFileSaveState('Saving…','saving');fileStatus.textContent=`Saving ${handle.name}…`;await writeProgramFile(handle,text);}
+    catch(error){projectTitle.value=previousTitle;throw error;}
+    detachProgramFile(false);activeProgramFile=handle;showFileSaveState('Saved','saved');
     fileStatus.textContent=`Saved to ${handle.name}. Future changes will save automatically.`;
     if(autosaveRevision!==revision)queueProgramAutosave();
-  }catch(error){if(!filePickerCanceled(error))fileStatus.textContent=error instanceof Error?error.message:'Program could not be saved.';}
+  }catch(error){if(!filePickerCanceled(error)){showFileSaveState('Save failed','error');fileStatus.textContent=error instanceof Error?error.message:'Program could not be saved.';}}
 }
 const keyEvents=new KeyboardEvents();
 type KeyPreview={handler:KeyHandler;result:PreparedProgram|null;deferred:string|null};
@@ -272,15 +286,15 @@ element('program-save').onclick=()=>{
   if(activeProgramFile)void flushProgramFile(true);else void saveAsProgramFile();
 };
 element('program-save-as').onclick=()=>{if(!fileBusy())void saveAsProgramFile();};
-element('program-download').onclick=()=>{if(!fileBusy())try{downloadProgramCopy();}catch(error){fileStatus.textContent=error instanceof Error?error.message:'Program copy could not be downloaded.';}};
+element('program-download').onclick=()=>{if(!fileBusy())try{downloadProgramCopy();}catch(error){if(!activeProgramFile)showFileSaveState('Download failed','error');fileStatus.textContent=error instanceof Error?error.message:'Program copy could not be downloaded.';}};
 async function loadSelectedProgram(file:File,handle:ProgramFileHandle|null){
   if(fileBusy()){fileStatus.textContent='Finish or Stop the current operation before loading a program.';return;}
   const token=++session;endKeyEvents();loadingProgram=true;runner.cancel();refresh();
   try{
     if(file.size>MAX_PROGRAM_FILE_BYTES)throw Error('Program file exceeds 256 KB.');
     const project=loadProjectFile(await file.text());if(token!==session)return;
-    editor.loadProject(project);projectTitle.value=project.name??(file.name.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');plan=[];interfaceError='';
-    detachProgramFile();activeProgramFile=handle;
+    editor.loadProject(project);projectTitle.value=project.name&&project.name.toLowerCase()!=='untitled program'?project.name:titleFromFilename(file.name);plan=[];interfaceError='';
+    detachProgramFile(false);activeProgramFile=handle;showFileSaveState(handle?'Saved':'Loaded',handle?'saved':'detached');
     const saved=handle?` Changes will save automatically to ${handle.name}.`:' Save program to choose a writable file and turn on automatic updates.';
     fileStatus.textContent=(project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Run or Save. Its blocks and positions are preserved. Nothing has run.':`Program loaded for review with ${teaching.list().length} saved positions. This program replaces the previous position list. Nothing has run.`)+saved;
   }catch(error){if(token===session)fileStatus.textContent=error instanceof Error?error.message:'Program could not be loaded. Existing blocks are unchanged.';}

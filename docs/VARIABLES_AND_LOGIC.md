@@ -1,4 +1,4 @@
-# Variables, math and conditionals: dev.64
+# Variables, math and conditionals: dev.65
 
 Dev.58 shares variables across Run, all key stacks and My Blocks. A new Run
 resets state; accepted key events continue it. See [Keyboard events](./KEYBOARD_EVENTS.md).
@@ -6,7 +6,7 @@ resets state; accepted key events continue it. See [Keyboard events](./KEYBOARD_
 Dev.57 adds [project names and reusable My Blocks](./MY_BLOCKS.md). Functions share
 program variables and work from Run or key events. Earlier phase notes below are historical.
 
-Open the classroom page and confirm **0.7.0-dev.64**. The toolbox now has Motion,
+Open the classroom page and confirm **0.7.0-dev.65**. The toolbox now has Motion,
 Control, Math, Logic and Variables categories. Click a category to open its
 palette. New and loaded programs close the palette so the code stays visible.
 There is no new firmware, account, upload, or robot setup requirement.

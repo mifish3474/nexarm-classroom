@@ -1,4 +1,4 @@
-# Program files, automatic saving and saved positions: dev.64
+# Program files, automatic saving and saved positions: dev.65
 
 Saved positions belong to the current program. **Save program** includes every
 position's name and six joint measurements, even if no block uses that position.
@@ -20,8 +20,9 @@ needs no saved-position entry. Use dev.61 or newer to load a file with Home bloc
 ## Save and switch programs
 
 1. Name the project above the code, then choose **File → Save program**. Chrome
-   or Edge asks for a filename and location the first time. The footer reports
-   when the file is saving or saved. Later valid edits update that file without
+   or Edge asks for a filename and location the first time. The filename becomes
+   the project name shown above the canvas, without `.json`. A status pill beside
+   it reports Saving and Saved; the footer provides details. Later valid edits update that file without
    another click. **Save as new file** changes the active file; **Download copy**
    creates an independent backup that is not updated. The JSON contains the code,
    My Blocks, event stacks and complete saved-position list, including unused

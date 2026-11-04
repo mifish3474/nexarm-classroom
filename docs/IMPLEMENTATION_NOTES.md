@@ -1,4 +1,24 @@
-# Classroom programming development preview 0.7.0-dev.64
+# Classroom programming development preview 0.7.0-dev.65
+
+## Filename synchronization and visible save state
+
+Dev.65 makes the selected filename authoritative when Save program or Save as
+new file establishes a writable file. Choosing `Arm lesson.json` changes the
+canvas project name to `Arm lesson` before serializing, so the visible name and
+stored format-5 name agree. Loading an older file whose stored name is still
+`Untitled program` also adopts its actual filename; meaningful stored project
+names remain unchanged.
+
+An always-visible status pill beside the project name reports Not saved,
+Saving…, Saved, Downloaded/Loaded, or a failure state. Editing an associated file
+shows Saving immediately and Saved after the debounced write completes. Detailed
+filename and error messages remain in the footer. New/examples detach the file
+and return the pill to Not saved. This changes no robot, motion, holding or Stop
+behavior.
+
+Validation: production build/type-check, all 405 unit tests and all 106 browser
+checks pass. The autosave/layout subset also passes 24/24 across three repeated
+parallel runs. Browser robot tests use mocked USB; no physical robot was commanded.
 
 ## Writable local program files
 
