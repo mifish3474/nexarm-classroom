@@ -1,11 +1,13 @@
-# Program files and saved positions: dev.59
+# Program files, automatic saving and saved positions: dev.64
 
 Saved positions belong to the current program. **Save program** includes every
 position's name and six joint measurements, even if no block uses that position.
-The browser retains a working copy to help with accidental reloads, but the
-downloaded program file is the portable copy to keep and move between computers.
-There are no accounts or uploads. Shared-browser working copies remain visible
-to other users of that browser profile.
+In Chrome or Edge, a user-selected JSON file is the working document. After the
+first Save, valid changes to code, project name, My Blocks and saved positions
+update that same file automatically after a short pause. The browser position
+cache remains a recovery aid, not a separate project library. There are no
+accounts or uploads. Shared-browser cache data remains visible to other users of
+that browser profile.
 
 Dev.60 also saves inline comment blocks wherever they appear in the code, including
 event stacks and My Blocks. They are plain text for readers and are skipped during
@@ -17,20 +19,32 @@ needs no saved-position entry. Use dev.61 or newer to load a file with Home bloc
 
 ## Save and switch programs
 
-1. Name the project above the code, then choose **File → Save program**.
-   The downloaded JSON contains the code, My Blocks, event stacks and complete
-   saved-position list, including unused positions. Initial assignments are
-   saved; live variable values, USB connections and holding state are not.
+1. Name the project above the code, then choose **File → Save program**. Chrome
+   or Edge asks for a filename and location the first time. The footer reports
+   when the file is saving or saved. Later valid edits update that file without
+   another click. **Save as new file** changes the active file; **Download copy**
+   creates an independent backup that is not updated. The JSON contains the code,
+   My Blocks, event stacks and complete saved-position list, including unused
+   positions. Initial assignments are saved; live variable values, USB
+   connections and holding state are not.
 2. **New empty program** clears blocks, functions, variables and all saved
    positions, including the browser's position working copy. Save first if you
    want to keep them. New does not send robot movement or change servo holding.
 3. **Load program** replaces the code and position list with the file's contents.
+   In Chrome or Edge, the chosen file becomes the active automatically saved file.
    It does not merge another program's positions. Loaded positions appear in
    Positions and in block dropdowns; Add to code, Delete and Move to position
    work as usual. Loading itself never connects or moves the robot.
 4. An invalid file leaves the existing program, project name and positions intact.
    A failed browser-cache write leaves the loaded positions usable in memory and
    displays Memory only; save the program before closing or reloading.
+
+Direct file access is browser-controlled. After closing or reopening the site,
+choose Load program again to reconnect the local file. If the browser does not
+support writable file pickers, Save program downloads a new copy and Load program
+uses ordinary upload selection. Temporary invalid Blockly arrangements are not
+written over the last valid file; reconnect the blocks and the next valid edit
+will save automatically.
 
 Loading a supplied example also starts with that example's position list (empty
 for the current examples). Clearing or deleting a position used in code makes
@@ -43,7 +57,7 @@ The existing browser working copy is kept when upgrading/opening the app. Save
 your current program before choosing New or loading another file to include all
 of those positions in the new format.
 
-New program downloads use **format 5**. Files from formats 1-4 still load. Older
+Newly saved programs use **format 5**. Files from formats 1-4 still load. Older
 files contain only position snapshots used by their blocks, so those snapshots
 become the loaded program's visible position list. Unused positions omitted from
 an old file cannot be recovered from that file. Old snapshots without a capture

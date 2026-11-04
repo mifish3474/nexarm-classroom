@@ -1,6 +1,10 @@
 import {expect,test} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import {dragBlock} from './toolbox';
+test.beforeEach(async({page})=>page.addInitScript(()=>{
+ Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true});
+ Object.defineProperty(window,'showOpenFilePicker',{value:undefined,configurable:true});
+}));
 test('station opens directly into code without USB access, with project actions in File',async({page})=>{
  const errors:string[]=[],requests:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>requests.push(request.url()));
  await page.addInitScript(()=>Object.defineProperty(navigator,'serial',{get(){throw Error('USB accessed without Connect');}}));

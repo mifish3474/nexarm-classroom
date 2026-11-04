@@ -1,4 +1,4 @@
-# Programming development test: dev.63
+# Programming development test: dev.64
 
 **Move to Home:** drag **move to Home** from Motion. Place it wherever the arm should return to the established six-joint
 Home, including at the end of a sequence or in a My Block. It needs no recorded
@@ -41,7 +41,9 @@ New empty program, Save/Load and examples. Robot/Positions tabs change the side
 panel without leaving the code. Positions contains release, live values/ranges,
 naming, recording and restore. Add to code appends a position block under When
 Run clicked without moving; expand Joint values & movement for the separate Move to position action.
-The Blockly toolbox supplies all blocks; Undo/Redo are in the toolbar. Programs start with only When Run clicked. There is no autosave yet.
+The Blockly toolbox supplies all blocks; Undo/Redo are in the toolbar. Programs
+start with only When Run clicked. Once Save program selects a writable file,
+valid later edits save automatically in Chrome or Edge.
 
 The user confirms Blockly motion is working after identifying the selected J3
 block. Diagnostic export remains available for unexpected behavior. To release,
@@ -88,10 +90,14 @@ The current build is for development hardware testing.
    reconnects or resumes a program. Connect and Run/Stop stay in the toolbar;
    Release and Restore stay together in Positions.
 
-Use **Save program** to download a local `nexarm-program.json` file. It includes
-the blocks and every saved position, including unused ones. **Load program**
-replaces code and the position list for review without connecting or moving. Only Run executes. Invalid files preserve existing blocks;
-files cannot import servo settings or executable code. There is no autosave yet.
+In Chrome or Edge, the first **Save program** opens a file picker. Choose a name
+and location once; later valid changes to blocks, project name, My Blocks and
+saved positions update that same local file automatically. **Save as new file**
+changes the working file, and **Download copy** creates a separate backup that is
+not updated. **Load program** makes the selected file the working file and replaces
+code and positions for review without connecting or moving. If direct file access
+is unavailable, Save/Load retain their download/upload behavior. Only Run executes.
+Invalid files preserve existing blocks; files cannot import servo settings or executable code.
 Programs use joint moves and saved six-joint positions, connected with Wait and
 Repeat. XYZ blocks have been removed. Older files containing XYZ are rejected
 with an explanation and leave the current workspace intact; rebuild those moves

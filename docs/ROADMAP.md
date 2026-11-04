@@ -1,8 +1,17 @@
 # NexArm Classroom development roadmap
 
+## Dev.64 writable program files
+
+Chrome and Edge now use an explicitly selected local program file as the working
+document. Valid block, name, function and saved-position edits are debounced and
+written to that same file; invalid temporary Blockly arrangements leave the last
+valid file unchanged. Save as new file, Download copy and upload/download fallback
+remain available. No cloud storage, accounts or uploads are introduced. File
+permission is browser-controlled and may need to be selected again after reopening.
+
 ## Dev.59 portable projects
 
-Program format 5 owns all named positions, including unused records. New clears blocks/positions and Load replaces the project list; formats 1-4 recover only embedded positions. Browser storage remains a working copy, with no full-program autosave yet. See [Program files](./PROJECT_FILES.md).
+Program format 5 owns all named positions, including unused records. New clears blocks/positions and Load replaces the project list; formats 1-4 recover only embedded positions. Browser position storage remains a recovery working copy. See [Program files](./PROJECT_FILES.md).
 
 ## Dev.58 shared programming state
 

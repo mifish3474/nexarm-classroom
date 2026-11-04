@@ -14,10 +14,10 @@
       <details id="file-menu" class="workspace-menu">
         <summary>File <span aria-hidden="true">▾</span></summary>
         <div class="menu-content">
-          <button id="new-program" class="secondary">New empty program</button><button id="program-save" class="secondary">Save program</button><button id="program-load" class="secondary">Load program</button>
+          <button id="new-program" class="secondary">New empty program</button><button id="program-save" class="secondary">Save program</button><button id="program-save-as" class="secondary">Save as new file</button><button id="program-download" class="secondary">Download copy</button><button id="program-load" class="secondary">Load program</button>
           <div class="menu-label">Examples</div><button id="practice-lesson" class="secondary">Load short practice program</button><button id="lesson" class="secondary">Reload lesson</button>
           <button id="logic-lesson" class="secondary">Load variables and logic example</button>
-          <p class="note">Save before starting or loading another program. Files include every saved position, even unused ones. New clears blocks and positions; Load replaces both. Loading never moves the robot.</p>
+          <p class="note">In Chrome or Edge, the first Save asks where to create the file; later code, name, function and position changes update that same file automatically. Download copy creates a separate backup. New clears blocks and positions; Load replaces both. Loading never moves the robot.</p>
         </div>
       </details>
       <div class="edit-actions" aria-label="Editing controls"><button id="undo" class="secondary" aria-label="Undo edit" title="Undo edit">↶</button><button id="redo" class="secondary" aria-label="Redo edit" title="Redo edit">↷</button></div>
@@ -63,7 +63,7 @@
         </section></section>
       </aside>
     </div>
-    <footer class="workspace-footer"><span>No accounts or uploads · Save your program before closing.</span><p id="program-file-status" role="status"></p><span id="holding-summary"></span></footer>
+    <footer class="workspace-footer"><span>No accounts or uploads · Program files stay on this computer.</span><p id="program-file-status" role="status">Save program once to turn on automatic file updates.</p><span id="holding-summary"></span></footer>
   </main>
   <script type="module" src="/src/main.ts"></script>
 </body>

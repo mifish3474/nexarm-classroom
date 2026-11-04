@@ -49,9 +49,10 @@ steps. There is no consumed-attempt lockout. Reload never restores holding or
 clears the pending verification automatically. Deleting saved poses does not
 change servo holding or bypass recovery.
 
-Saved positions belong to the current program, with a browser working copy that
+Saved positions belong to the current program, with a browser recovery copy that
 may be visible to others using the same profile. Save program includes every
-position, even unused ones. New clears them; Load replaces the list. Up to 32
+position, even unused ones, and Chrome/Edge automatically update the selected
+program file after later position changes. New clears them; Load replaces the list. Up to 32
 positions are retained, with names of at most 40 characters. If browser saving
 fails, the message says Memory only; save the program before closing or reloading.
 Position files & tools also offers a separate positions-only export. Individual
@@ -93,7 +94,9 @@ To connect positions in code:
 A missing/deleted position blocks Run until its block selects a valid position.
 Each run copies its targets; editing or deleting records cannot change an active
 run. Programs are limited to 100 expanded steps (including waits) and 60 seconds.
-Code is lost on reload unless saved; the browser retains a working position copy. Save program includes the complete project and all positions.
+Save program selects the complete project file, including all positions. Chrome
+and Edge update that file after later valid changes; after reopening the site,
+use Load program to reconnect it. Other browsers retain download/upload behavior.
 
 Playback connects endpoints; it does not reproduce the path used while moving
 the arm by hand. A recorded endpoint does not establish a collision-free route.

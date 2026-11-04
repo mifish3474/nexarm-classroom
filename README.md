@@ -21,6 +21,8 @@ See [the recovery check](docs/SIGNAL_AND_STOP.md).
 
 **Dev.63: focused Blockly workspace.** The Program steps and keyboard editing section is removed. Edit values directly on blocks; active/error block highlighting and Run validation remain.
 
+**Dev.64: disk-backed automatic saving.** In Chrome or Edge, Save program chooses a writable `.json` file once, and later valid code, project-name, function and saved-position changes update that same file automatically. Loading through the file picker also establishes the working file. Save as new file and Download copy remain explicit; unsupported browsers retain download/upload fallback. No account or upload is involved.
+
 **Dev.62: simpler editing toolbar.** Create blocks directly from the Blockly toolbox. The separate Add block menu and Check program button are removed; Run retains all program validation before movement. My Blocks definitions start with an editable name.
 
 **Dev.61: move to Home.** Motion now includes a dedicated Home block for sequences, key events, loops and My Blocks. It uses the established simultaneous Home targets and movement profile, saves with the program, and needs no recorded position. See [classroom programming](docs/CLASSROOM_PROGRAMMING.md).
@@ -152,10 +154,12 @@ Manual release/restore retains the durable interrupted-setup record across reloa
 an unfinished release requires an explicit Restore, with no confirmation button.
 The earlier mapping suite and Reference A return remain at `/mapping-tests.html`,
 with their original approval history; see [the earlier scope](docs/JOINT_SUITE_AND_HOME.md).
-**Save program / Load program** download and reload a local JSON file with the
-blocks and all saved positions, including unused ones. Loading replaces the
-current position list and never connects, restores holding or runs automatically.
-Files contain program data only; no accounts or uploads are involved.
+**Save program / Load program** use a user-selected local JSON file containing
+the blocks and all saved positions, including unused ones. Chrome and Edge update
+the active file automatically after valid edits; other browsers retain download/
+upload fallback. Loading replaces the current position list and never connects,
+restores holding or runs automatically. Files contain program data only; no
+accounts or uploads are involved.
 
 Use Node.js 24 or newer. From the repository folder:
 

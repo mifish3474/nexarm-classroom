@@ -13,6 +13,8 @@ import type {Instruction,FunctionDefinition,VariableValues} from './runtime/Prog
 import {saveProjectFile,loadProjectFile,MAX_PROGRAM_FILE_BYTES} from './runtime/ProgramFile';
 import {copyProject,projectName,projectFilename} from './runtime/ProgramProject';
 import type {KeyHandler} from './runtime/ProgramProject';
+import {chooseProgramFileToOpen,chooseProgramFileToSave,filePickerCanceled,writableProgramFilesSupported,writeProgramFile} from './runtime/WritableProgramFile';
+import type {ProgramFileHandle} from './runtime/WritableProgramFile';
 import {KeyboardEvents,isKeyboardEditing,keyLabel,isStopKey} from './runtime/KeyboardEvents';
 import {programSignal} from './ProgramSignal';
 
@@ -35,6 +37,55 @@ const teaching=createTeachingPanel(()=>control);
 element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join('; ')}. J6: 1024 = open. These are operator-provided development ranges; protected student policy comes later.`;
 const editor=createEditor(element('blockly-editor'),()=>teaching.list(),positions=>teaching.replacePositions(positions));
 const projectTitle=element<HTMLInputElement>('project-name');
+const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status');
+const directFiles=writableProgramFilesSupported();
+let activeProgramFile:ProgramFileHandle|null=null,autosaveTimer:number|undefined,autosaveWriting=false,autosaveDirty=false,autosaveRevision=0;
+element<HTMLButtonElement>('program-save-as').hidden=!directFiles;
+element<HTMLButtonElement>('program-download').hidden=!directFiles;
+
+function programText(){
+  const name=projectName(projectTitle.value);projectTitle.value=name;
+  return {name,text:saveProjectFile({...editor.compileProject(),name})};
+}
+function downloadProgramCopy(){
+  const {name,text}=programText(),url=URL.createObjectURL(new Blob([text],{type:'application/json'})),link=document.createElement('a');
+  link.href=url;link.download=projectFilename(name);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  fileStatus.textContent=`Downloaded ${link.download}. This separate copy will not receive automatic updates.`;
+}
+function detachProgramFile(){
+  activeProgramFile=null;autosaveDirty=false;if(autosaveTimer!==undefined)clearTimeout(autosaveTimer);autosaveTimer=undefined;
+}
+async function flushProgramFile(manual=false){
+  const handle=activeProgramFile;if(!handle)return;
+  if(autosaveWriting){autosaveDirty=true;return;}
+  if(autosaveTimer!==undefined)clearTimeout(autosaveTimer);autosaveTimer=undefined;autosaveWriting=true;autosaveDirty=false;
+  try{
+    const {text}=programText();fileStatus.textContent=`Saving ${handle.name}…`;await writeProgramFile(handle,text);
+    if(activeProgramFile===handle)fileStatus.textContent=`Saved automatically to ${handle.name}.`;
+  }catch(error){
+    if(activeProgramFile===handle)fileStatus.textContent=`Changes not saved to ${handle.name}: ${error instanceof Error?error.message:'File write failed.'}`;
+  }finally{
+    autosaveWriting=false;
+    if(activeProgramFile===handle&&autosaveDirty)queueProgramAutosave();
+    else if(manual)refresh();
+  }
+}
+function queueProgramAutosave(){
+  autosaveRevision++;
+  if(!activeProgramFile||loadingProgram)return;
+  autosaveDirty=true;if(autosaveTimer!==undefined)clearTimeout(autosaveTimer);
+  fileStatus.textContent=`Changes waiting to save to ${activeProgramFile.name}…`;
+  autosaveTimer=window.setTimeout(()=>{autosaveTimer=undefined;void flushProgramFile();},800);
+}
+async function saveAsProgramFile(){
+  if(!directFiles)return downloadProgramCopy();
+  try{
+    const {name}=programText(),handle=await chooseProgramFileToSave(projectFilename(name)),revision=autosaveRevision,{text}=programText();
+    fileStatus.textContent=`Saving ${handle.name}…`;await writeProgramFile(handle,text);detachProgramFile();activeProgramFile=handle;
+    fileStatus.textContent=`Saved to ${handle.name}. Future changes will save automatically.`;
+    if(autosaveRevision!==revision)queueProgramAutosave();
+  }catch(error){if(!filePickerCanceled(error))fileStatus.textContent=error instanceof Error?error.message:'Program could not be saved.';}
+}
 const keyEvents=new KeyboardEvents();
 type KeyPreview={handler:KeyHandler;result:PreparedProgram|null;deferred:string|null};
 let keyHandlers=new Map<string,KeyPreview>(),keyMessage='';
@@ -76,6 +127,8 @@ function refresh(){
   element<HTMLButtonElement>('redo').disabled=!!busy||!editor.workspace.getRedoStack().length;
   element<HTMLButtonElement>('new-program').disabled=!!busy;
   element<HTMLButtonElement>('program-save').disabled=!!busy;
+  element<HTMLButtonElement>('program-save-as').disabled=!!busy;
+  element<HTMLButtonElement>('program-download').disabled=!!busy;
   element<HTMLButtonElement>('program-load').disabled=!!busy;
   projectTitle.disabled=!!busy;
   element('blockly-editor').inert=!!busy;
@@ -127,8 +180,9 @@ function refresh(){
   const activeIndex=robot?.program?.activeStep,active=activeIndex===null||activeIndex===undefined?undefined:plan[activeIndex];
   editor.highlight(interfaceError?interfaceErrorBlock:active?.blockId??null);
 }
-editor.workspace.addChangeListener(event=>{if(!event.isUiEvent&&!preparing&&!loadingProgram&&control?.snapshot().program?.phase!=='Running'){endKeyEvents('Keyboard events stopped after editing. Run program to listen again.');plan=[];refresh();}});
-document.addEventListener('named-positions-changed',()=>{endKeyEvents('Keyboard events stopped after position changes. Run program to listen again.');editor.refreshPositions();refresh();});
+editor.workspace.addChangeListener(event=>{if(!event.isUiEvent&&!preparing&&!loadingProgram&&control?.snapshot().program?.phase!=='Running'){endKeyEvents('Keyboard events stopped after editing. Run program to listen again.');plan=[];queueProgramAutosave();refresh();}});
+document.addEventListener('named-positions-changed',()=>{endKeyEvents('Keyboard events stopped after position changes. Run program to listen again.');editor.refreshPositions();queueProgramAutosave();refresh();});
+projectTitle.addEventListener('input',()=>{beginEditing();queueProgramAutosave();});
 // Stop listening synchronously before an edit, rather than waiting for Blockly's
 // deferred change events. Selecting/typing in the editor cannot trigger a robot.
 function beginEditing(){if(keyEvents.active){endKeyEvents('Keyboard events stopped for editing. Run program to listen again.');refresh();}}
@@ -207,33 +261,39 @@ element('teach-home').onclick=()=>{
   catch(error){interfaceError=error instanceof Error?error.message:'Home recovery could not start.';}
   refresh();
 };
-lesson.onclick=()=>{interfaceError='';cancel(false);editor.lesson();refresh();};
-practice.onclick=()=>{interfaceError='';cancel(false);editor.teacherLesson();refresh();};
-element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);editor.logicLesson();refresh();};
-element('new-program').onclick=()=>{interfaceError='';cancel(false);editor.newProgram();projectTitle.value='Untitled program';element('program-file-status').textContent='New empty program. Blocks and saved positions cleared.';refresh();};
+lesson.onclick=()=>{interfaceError='';cancel(false);detachProgramFile();editor.lesson();fileStatus.textContent='Lesson loaded. Save program to choose a file and turn on automatic updates.';refresh();};
+practice.onclick=()=>{interfaceError='';cancel(false);detachProgramFile();editor.teacherLesson();fileStatus.textContent='Practice program loaded. Save program to choose a file and turn on automatic updates.';refresh();};
+element('logic-lesson').onclick=()=>{interfaceError='';cancel(false);detachProgramFile();editor.logicLesson();fileStatus.textContent='Logic example loaded. Save program to choose a file and turn on automatic updates.';refresh();};
+element('new-program').onclick=()=>{interfaceError='';cancel(false);detachProgramFile();editor.newProgram();projectTitle.value='Untitled program';fileStatus.textContent='New empty program. Blocks and saved positions cleared. Save program to choose its file.';refresh();};
 
-const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status');
 const fileBusy=()=>preparing||loadingProgram||!!control?.snapshot().busy;
 element('program-save').onclick=()=>{
   if(fileBusy())return;
-  try{
-    const name=projectName(projectTitle.value),text=saveProjectFile({...editor.compileProject(),name}),url=URL.createObjectURL(new Blob([text],{type:'application/json'})),link=document.createElement('a');
-    projectTitle.value=name;link.href=url;link.download=projectFilename(name);link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    fileStatus.textContent=`Program file saved as ${link.download}. It includes My Blocks and all ${teaching.list().length} saved positions, including unused ones.`;
-  }catch(error){fileStatus.textContent=error instanceof Error?error.message:'Program could not be saved.';}
+  if(activeProgramFile)void flushProgramFile(true);else void saveAsProgramFile();
 };
-element('program-load').onclick=()=>{if(!fileBusy()){endKeyEvents();programFile.click();refresh();}};
-programFile.onchange=async()=>{
-  const file=programFile.files?.[0];programFile.value='';if(!file)return;
+element('program-save-as').onclick=()=>{if(!fileBusy())void saveAsProgramFile();};
+element('program-download').onclick=()=>{if(!fileBusy())try{downloadProgramCopy();}catch(error){fileStatus.textContent=error instanceof Error?error.message:'Program copy could not be downloaded.';}};
+async function loadSelectedProgram(file:File,handle:ProgramFileHandle|null){
   if(fileBusy()){fileStatus.textContent='Finish or Stop the current operation before loading a program.';return;}
   const token=++session;endKeyEvents();loadingProgram=true;runner.cancel();refresh();
   try{
     if(file.size>MAX_PROGRAM_FILE_BYTES)throw Error('Program file exceeds 256 KB.');
     const project=loadProjectFile(await file.text());if(token!==session)return;
     editor.loadProject(project);projectTitle.value=project.name??(file.name.replace(/\.json$/i,'').slice(0,60).trim()||'Untitled program');plan=[];interfaceError='';
-    fileStatus.textContent=project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Run or Save. Its blocks and positions are preserved. Nothing has run.':`Program loaded for review with ${teaching.list().length} saved positions. This program replaces the previous position list. Nothing has run.`;
+    detachProgramFile();activeProgramFile=handle;
+    const saved=handle?` Changes will save automatically to ${handle.name}.`:' Save program to choose a writable file and turn on automatic updates.';
+    fileStatus.textContent=(project.keyEvents.some(event=>event.key==='unassigned')?'Program loaded for review. Space is reserved for Stop. Choose another key in each "Choose key" event before Run or Save. Its blocks and positions are preserved. Nothing has run.':`Program loaded for review with ${teaching.list().length} saved positions. This program replaces the previous position list. Nothing has run.`)+saved;
   }catch(error){if(token===session)fileStatus.textContent=error instanceof Error?error.message:'Program could not be loaded. Existing blocks are unchanged.';}
   finally{if(token===session){loadingProgram=false;refresh();}}
+}
+element('program-load').onclick=()=>{
+  if(fileBusy())return;
+  if(!directFiles){endKeyEvents();programFile.click();refresh();return;}
+  const picking=chooseProgramFileToOpen();endKeyEvents();loadingProgram=true;refresh();
+  void picking.then(async handle=>{loadingProgram=false;await loadSelectedProgram(await handle.getFile(),handle);}).catch(error=>{loadingProgram=false;if(!filePickerCanceled(error))fileStatus.textContent=error instanceof Error?error.message:'Program could not be opened.';refresh();});
+};
+programFile.onchange=async()=>{
+  const file=programFile.files?.[0];programFile.value='';if(file)await loadSelectedProgram(file,null);
 };
 element('robot-connect').onclick=()=>{
   try{

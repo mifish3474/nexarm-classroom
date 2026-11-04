@@ -1,4 +1,29 @@
-# Classroom programming development preview 0.7.0-dev.63
+# Classroom programming development preview 0.7.0-dev.64
+
+## Writable local program files
+
+Dev.64 uses the Chromium File System Access API when both save and open pickers
+are available. The first Save program obtains a user-selected writable JSON file;
+Load program obtains a readable/writable handle to the selected file. Valid
+non-UI Blockly changes, project-name input and named-position changes debounce for
+800 ms, serialize through the existing bounded format-5 project validator and
+replace the same file. Writes are serialized; an edit arriving during a write
+queues another save. Temporary invalid Blockly structures leave the last valid
+disk copy unchanged and display the validation reason.
+
+Save as new file explicitly changes the active handle. Download copy creates an
+unassociated backup. New and supplied examples detach the previous handle so they
+cannot overwrite another project. Failed/invalid loads preserve the current
+workspace and file association. Browsers without both picker APIs retain the old
+download/upload controls. Handles are kept only for the open page; after reopening,
+Load program reconnects the file. No account, upload, robot command, motion policy
+or holding behavior is added.
+
+Validation: the production build/type-check, all 405 unit tests and all 106 Chrome
+browser checks pass. New browser coverage exercises first Save, automatic block,
+name and saved-position updates, writable Load and the unsupported-browser
+download/upload fallback. Existing browser regressions keep USB mocked; no
+physical robot was commanded.
 
 ## Remove duplicate program details
 
@@ -704,14 +729,14 @@ later work, but its panel, virtual-arm frame and main-page simulation tests are
 removed. Readings/diagnostics are in an expandable panel. Release/Restore retain
 the established durable release record and automatic fresh-feedback readiness.
 
-Save program downloads data-only JSON (format nexarm-classroom-program, schema 1,
+That earlier station version downloaded data-only JSON (format nexarm-classroom-program, schema 1,
 max 256 KB). It preserves instruction structure and embeds named-pose snapshots.
 Load validates the entire file and bounded interpreter first, builds blocks in a
 temporary workspace, then replaces the visible workspace; failures preserve old
 blocks. Imported pose snapshots remain in memory for file blocks; they do not
 overwrite the saved-position library. Loading never connects, restores holding
-or runs. It accepts no code, station policy or device settings. There is no
-autosave; explicitly save before reload. No identities or uploads are added.
+or runs. It accepts no code, station policy or device settings. That version did
+not autosave. No identities or uploads were added.
 
 Validation: TypeScript/Vite build, full unit suite and all 45 Chrome browser
 checks pass with mocked serial ports. New regressions cover both ends of every

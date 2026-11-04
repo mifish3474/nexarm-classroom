@@ -1,10 +1,12 @@
-# Project names and My Blocks: dev.62
+# Project names and My Blocks: dev.64
 
-Name your project in the box above the code. **File → Save program** downloads
-that name as a `.json` file. The name is stored inside the file and restored by
-Load program. Older files still open; their filename supplies the initial name.
-Loading and renaming never connect or move the robot. Save before closing;
-there is no autosave or account. Use a task or team label, without student names.
+Name your project in the box above the code. **File → Save program** asks where
+to create its `.json` file in Chrome or Edge. After that, valid name, block,
+function and position changes update the same file automatically. The name is
+stored inside the file and restored by Load program. Older files still open;
+their filename supplies the initial name. Loading and renaming never connect or
+move the robot. There is no account or upload. Use a task or team label, without
+student names.
 
 My Blocks are reusable named sequences, also called functions or procedures.
 For example, define **Pick up** once, then call it from Run or a keyboard event.
@@ -22,7 +24,7 @@ remain in effect.
 3. Drag a Wait block from Control into the definition's body.
 4. Reopen My Blocks and drag the **Short pause** call underneath When Run clicked,
    then add a second call. The definition does not run on its own.
-5. Use **File ? Save program**, start a new empty program, then Load the file.
+5. Use **File → Save program**, start a new empty program, then Load the file.
    The project name, definition, calls and saved positions return.
 6. To run it, connect the robot, clear the Home route and choose Run. Run validates
    the program before movement. A keyboard stack can also call the same function.

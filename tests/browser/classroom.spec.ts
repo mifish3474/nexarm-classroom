@@ -3,6 +3,10 @@ import type {Page} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import {dragBlock,editNumber} from './toolbox';
 
+test.beforeEach(async({page})=>page.addInitScript(()=>{
+ Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true});
+ Object.defineProperty(window,'showOpenFilePicker',{value:undefined,configurable:true});
+}));
 
 async function openDetails(page:Page,selector:string){
  const details=page.locator(selector);if(!await details.evaluate(node=>(node as HTMLDetailsElement).open))await details.locator(':scope > summary').click();
