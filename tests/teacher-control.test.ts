@@ -319,12 +319,19 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
- it('preflights a direct XYZ route before moving and verifies final coordinate feedback',async()=>{
+ it('preflights XYZ and executes the final solution as one factory-style timed joint pose',async()=>{
    const f=fixture({directSession:true});await f.ready();const target={x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300};
    f.control.moveToCoordinates(target);await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[4]).toBe(7);
-   await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);f.setTime(1120);f.control.tick();await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[4]).toBe(8);
-   await f.feed(1420,TEACHER_HOME,false,[15,0,0,0,0,0]);f.control.tick();await f.feed(1520,TEACHER_HOME,false,[15,0,0,0,0,0]);
-   expect(f.control.snapshot().coordinate).toBeNull();expect(f.control.snapshot().message).toContain('XYZ target reached');f.control.disconnect();await flush();
+   await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);f.setTime(1120);f.control.tick();await flush();await dispatchPose(f);
+   expect(f.writes).toHaveLength(7);expect(f.writes.slice(1).every(write=>write.bytes[4]===3)).toBe(true);
+   await f.feed(1430,TEACHER_HOME,false,[15,0,0,0,0,0]);f.control.tick();
+   expect(f.control.snapshot().coordinate).toBeNull();expect(f.control.snapshot().message).toContain('inside reporting tolerances');f.control.disconnect();await flush();
+ });
+ it('reports coordinate endpoint error without faulting or retrying after frame time',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();
+   await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);f.setTime(1120);f.control.tick();await flush();await dispatchPose(f);
+   await f.feed(1430,TEACHER_HOME,false,[0,0,0,0,0,0]);f.control.tick();
+   expect(f.control.snapshot()).toMatchObject({faulted:false,coordinate:null});expect(f.control.snapshot().message).toContain('Movement complete');expect(f.writes).toHaveLength(7);f.control.disconnect();await flush();
  });
  it('rejects an XYZ calculation outside a joint operating range before command 8',async()=>{
    const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();
@@ -335,11 +342,11 @@ describe('smooth teacher controls',()=>{
    const f=fixture({directSession:true}),outside=[...TEACHER_HOME];outside[3]=3001;await f.ready(outside);
    expect(()=>f.control.jogCoordinate('z',5)).toThrow('Current pose for XYZ movement: J4 target 3001');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
  });
- it('calculates every waypoint before sending the first coordinate movement',async()=>{
+ it('calculates every waypoint before sending the first coordinated joint target',async()=>{
    const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:30,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:600});await flush();
    expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);
    f.setTime(1150);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7]);await f.solution(TEACHER_HOME,[30,0,0,0,0,0]);
-   expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7]);f.setTime(1170);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7,8]);f.control.disconnect();await flush();
+   expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7]);f.setTime(1170);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7,3]);expect(f.writes[2]!.bytes[2]).toBe(1);f.control.disconnect();await flush();
  });
  it('cancels a direct XYZ preflight after feedback becomes stale and never sends movement later',async()=>{
    const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);

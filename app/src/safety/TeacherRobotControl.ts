@@ -2,7 +2,7 @@ import { PassiveConnection } from '../serial/PassiveConnection';
 import type { ReadOnlyPort } from '../serial/PassiveConnection';
 import { FrameParser, decodePositions, decodeReportedPose } from '../protocol/FrameParser';
 import type {Frame,ReportedPose} from '../protocol/FrameParser';
-import { encodeCoordinateCalculation,encodeCoordinateTarget,encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
+import { encodeCoordinateCalculation,encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
 import {inspectCoordinateSolution} from '../protocol/CoordinateSolution';
 import {validateCoordinateTarget} from '../protocol/CoordinateTarget';
 import type {CoordinateTarget} from '../protocol/CoordinateTarget';
@@ -30,7 +30,7 @@ type WriteDiagnostic={atMs:number;operation:Operation|null;bytes:number[];positi
 type StopDiagnostic={requestedAtMs:number;submittedAtMs:number|null;finishedAtMs:number|null;servos:number[];targets:number[]|null;feedbackAgeAtSendMs:number|null;outcome:'waiting-for-writer'|'submitted'|'stream-write-resolved'|'unavailable'|'canceled';message:string;feedback:{atMs:number;positions:number[]}[]};
 type StopRelease={generation:number;requestedAtMs:number;hold:StopDiagnostic;phase:'Stopping'|'Waiting for steady readings'|'Release pending'|'Release sent'|'Canceled'|'Fault';deadlineMs:number|null;samples:{atMs:number;positions:number[]}[];releaseSubmittedAtMs:number|null;releaseFinishedAtMs:number|null;message:string};
 type HomeRecovery={generation:number;requestedAtMs:number;phase:'Restoring holding'|'Returning Home'|'Checking Home'|'Ready at Home'|'Canceled'|'Fault';readyAfterMs:number|null;deadlineMs:number|null;message:string};
-type CoordinateTask={generation:number;target:CoordinateTarget;waypoints:CoordinateTarget[];solutions:number[][];phase:'Calculating'|'Moving'|'Checking arrival';checkIndex:number;pending:CoordinateTarget|null;pendingAt:number|null;moveIndex:number;moveAfter:number;feedbackAfter:number;arrivalDeadline:number;operation:'XYZ'|'Program'};
+type CoordinateTask={generation:number;target:CoordinateTarget;waypoints:CoordinateTarget[];solutions:number[][];phase:'Calculating'|'Moving';checkIndex:number;pending:CoordinateTarget|null;pendingAt:number|null;operation:'XYZ'|'Program'};
 
 // Teacher-only direct controls. All jog, Home, and holding writes pass through
 // the same executor and exclusive USB lease. Live dragging retains only the
@@ -261,7 +261,7 @@ export class TeacherRobotControl {
       enableReason: this.enableReason(), canMove: reason === null&&!this.liveTarget,liveServo:this.liveServo(),
       sliderServo:this.operation==='Slider'&&this.route?.phase==='Running'&&this.armed&&!this.manual.blocked&&this.visible()&&!this.writeInFlight&&this.now()-this.receivedAt<=500&&this.now()-this.lastCommandAt>=500?this.route.status().next?.servo:null,
       home: this.route?.status() ?? null, operation: this.operation,
-      coordinate:this.coordinate?{phase:this.coordinate.phase,waypoint:Math.max(this.coordinate.checkIndex,this.coordinate.moveIndex),total:this.coordinate.waypoints.length,target:{...this.coordinate.target}}:null,
+      coordinate:this.coordinate?{phase:this.coordinate.phase,waypoint:this.coordinate.checkIndex,total:this.coordinate.waypoints.length,target:{...this.coordinate.target}}:null,
       program:this.program?{phase:this.program.phase,keyboardSession:this.program.keyboardSession,startup:this.program.startup,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'&&this.program.startup==='Running blocks'?this.program.index-1:null}:null,
       busy: this.recoveryActive || this.stopReleaseActive || !!this.pendingStop || this.writeInFlight || !!this.route?.activeRun || !!this.coordinate || this.manual.pending || this.program?.phase==='Running',
       manualPhase: this.options.directSession&&this.manual.phase==='Confirm holding'?'Restore settling':this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
@@ -346,7 +346,7 @@ export class TeacherRobotControl {
     if(operation!=='Program')this.cancelKeyboardSession();
     const waypoints=coordinateWaypoints(this.reportedPose,input);
     this.stopObservation=null;this.retain();this.route=null;this.liveTarget=null;this.lastLive=null;this.faulted=false;this.operation=operation;
-    this.coordinate={generation:this.generation,target:waypoints.at(-1)!,waypoints,solutions:[],phase:'Calculating',checkIndex:0,pending:null,pendingAt:null,moveIndex:0,moveAfter:this.now(),feedbackAfter:-Infinity,arrivalDeadline:Infinity,operation};
+    this.coordinate={generation:this.generation,target:waypoints.at(-1)!,waypoints,solutions:[],phase:'Calculating',checkIndex:0,pending:null,pendingAt:null,operation};
     this.message=`Checking ${waypoints.length} XYZ waypoint${waypoints.length===1?'':'s'} before any movement.`;
     this.recordEvent('xyz-preflight',this.message);this.progressCoordinate();this.changed();
   }
@@ -367,25 +367,22 @@ export class TeacherRobotControl {
     if(task.generation!==this.generation||!this.armed||this.connectionState!=='Listening'||!this.visible()||this.now()-this.receivedAt>1500){this.fault('XYZ route canceled because the robot session or fresh feedback changed.');return;}
     if(task.phase==='Calculating'){
       if(task.pending){if(this.now()-(task.pendingAt??this.now())>=2000)this.fault(`No calculation-only reply for XYZ waypoint ${task.checkIndex+1} within two seconds. No movement sent.`);return;}
-      if(task.checkIndex>=task.waypoints.length){task.phase='Moving';task.moveAfter=this.now();this.message=`All ${task.waypoints.length} XYZ waypoints passed joint limits and continuity checks. Starting movement.`;this.recordEvent('xyz-move',this.message);}
+      if(task.checkIndex>=task.waypoints.length){
+        const finalSolution=task.solutions.at(-1);if(!finalSolution){this.fault('XYZ preflight supplied no final joint solution. No movement sent.');return;}
+        const plan=timedPosePlan(this.positions!,finalSolution,task.target.durationMs);
+        task.phase='Moving';this.route=new TimedPoseMotion(this.positions!,this.now(),plan);this.route.start(this.positions!,this.now());
+        this.message=`All ${task.waypoints.length} XYZ checks passed. Moving all six joints together over ${plan.durationMs/1000} seconds.`;
+        this.recordEvent('xyz-move',this.message);this.pump();
+      }
       else if(!this.writeInFlight&&this.now()-this.lastCommandAt>=50){
         const target=task.waypoints[task.checkIndex]!;task.pending=target;task.pendingAt=this.now();
         this.write(encodeCoordinateCalculation(target),()=>this.progressCoordinate(),false,50,true);
       }
       return;
     }
-    if(task.phase==='Moving'){
-      if(this.now()<task.moveAfter||this.writeInFlight||this.now()-this.lastCommandAt<20)return;
-      if(task.moveIndex>=task.waypoints.length){task.phase='Checking arrival';task.feedbackAfter=this.receivedAt;task.arrivalDeadline=this.now()+2000;this.message='XYZ route frame time elapsed. Checking fresh coordinate feedback.';return;}
-      const target=task.waypoints[task.moveIndex]!;this.lastMovingServos=[1,2,3,4,5,6];for(let id=1;id<=6;id++)if(!this.timedHoldServos.includes(id))this.timedHoldServos.push(id);
-      this.write(encodeCoordinateTarget(target),()=>{task.moveIndex++;task.moveAfter=this.now()+target.durationMs;this.message=`Moving through XYZ waypoint ${task.moveIndex} of ${task.waypoints.length}.`;},false,20,true);
-      return;
-    }
-    if(this.receivedAt<=task.feedbackAfter||!this.reportedPose){if(this.now()>=task.arrivalDeadline)this.fault('XYZ route ended without fresh coordinate feedback.');return;}
-    const issues=coordinateArrivalIssues(this.reportedPose,task.target);
-    if(issues.length&&this.now()<task.arrivalDeadline){this.message='XYZ frame elapsed; waiting for the final coordinate reading to settle.';return;}
-    if(issues.length){this.fault(`XYZ target did not settle: ${issues.join('; ')}.`);return;}
-    this.coordinate=null;this.lastMovingServos=[];this.message='XYZ target reached within coordinate reporting tolerances.';this.recordEvent('xyz-complete',this.message);this.advanceProgram();
+    // Movement is supervised by TimedPoseMotion. It deliberately advances on
+    // elapsed frame time like factory action-group playback instead of forcing
+    // the arm to stop and settle at every Cartesian sample.
   }
   private startTimedPose(target:readonly number[],durationMs:number,operation:Operation){
     if(operation!=='Program')this.cancelKeyboardSession();
@@ -416,7 +413,7 @@ export class TeacherRobotControl {
       this.fault('Movement stopped: connection, visibility, or fresh feedback changed.'); return;
     }
     if(route instanceof TimedPoseMotion){
-      if(this.writeInFlight)return;
+      if(this.writeInFlight||this.now()-this.lastCommandAt<2)return;
       const step=route.next(this.now());if(route.status().phase==='Fault'){this.fault(route.message);return;}
       if(step){if(!this.lastMovingServos.includes(step.servo))this.lastMovingServos.push(step.servo);if(!this.timedHoldServos.includes(step.servo))this.timedHoldServos.push(step.servo);const generation=this.generation;
         this.write(encodeSpeedPosition(step.servo,step.target,step.speed,step.acceleration),()=>{route.written(this.now());this.checkRoute();setTimeout(()=>{if(this.route===route&&this.generation===generation)this.pump();},2);},false,2);
@@ -441,7 +438,13 @@ export class TeacherRobotControl {
     if (this.route?.phase === 'Complete') {
       if(this.route instanceof TimedPoseMotion){
         // Elapsed time does not prove a joint stopped. Preserve Stop's hold set.
-        this.message=`${this.operation==='Home'?'Home':this.operation==='Saved position'?'Saved position':'Program pose'} frame time elapsed. Check live readings; exact arrival is not verified.`;
+        if(this.coordinate?.phase==='Moving'){
+          const task=this.coordinate,issues=this.reportedPose?coordinateArrivalIssues(this.reportedPose,task.target):['no fresh final coordinate reading'];
+          this.coordinate=null;this.message=issues.length
+            ?`XYZ frame time elapsed. ${task.operation==='Program'?'Program continuing':'Movement complete'}; final reading differs from the request: ${issues.join('; ')}.`
+            :'XYZ frame time elapsed with the final reading inside reporting tolerances.';
+          this.recordEvent('xyz-complete',this.message);this.advanceProgram();
+        }else this.message=`${this.operation==='Home'?'Home':this.operation==='Saved position'?'Saved position':'Program pose'} frame time elapsed. Check live readings; exact arrival is not verified.`;
         this.changed();return;
       }
       this.lastMovingServos=[];

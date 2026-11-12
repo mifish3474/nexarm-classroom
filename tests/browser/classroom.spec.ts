@@ -36,12 +36,30 @@ async function station(page:Page){
  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+100));
  await page.addInitScript(()=>{
   const home=[2050,2150,2100,2200,2000,1080],positions=[...home],targets=[...home],speeds=Array(6).fill(600);
-  const state={positions,targets,writes:[] as number[][],requests:0,paused:false,weak:false,reportedPose:[39,-1,399,184,8,-87],holding:true,j3Offset:0,ikTargets:null as number[]|null,minimumReleaseGapMs:0,lastPositionWriteAt:-Infinity,ignoredEarlyReleases:0,ignoreReleaseWrites:0,deferNextWrite:false,finishWrite:null as null|(()=>void)};Object.assign(window,{classroomRobot:state});
+  const state={positions,targets,writes:[] as number[][],requests:0,paused:false,weak:false,reportedPose:[39,-1,399,184,8,-87],pendingCoordinate:null as number[]|null,coordinateJointWrites:0,holding:true,j3Offset:0,ikTargets:null as number[]|null,minimumReleaseGapMs:0,lastPositionWriteAt:-Infinity,ignoredEarlyReleases:0,ignoreReleaseWrites:0,deferNextWrite:false,finishWrite:null as null|(()=>void)};Object.assign(window,{classroomRobot:state});
   Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>{state.requests++;let timer:ReturnType<typeof setInterval>,reader:ReadableStreamDefaultController<Uint8Array>;return {
    open:async()=>{},close:async()=>clearInterval(timer),readable:new ReadableStream<Uint8Array>({start(controller){reader=controller;timer=setInterval(()=>{
     if(state.paused)return;if(state.holding)positions.forEach((value,i)=>{const delta=targets[i]!-(i===2?state.j3Offset:0)-value;positions[i]=value+Math.sign(delta)*Math.min(Math.abs(delta),speeds[i]*.1);});
     const body=[255,26,11,...state.reportedPose.flatMap(value=>[value&255,(value>>8)&255]),...positions.flatMap(value=>[value&255,value>>8])];controller.enqueue(Uint8Array.from([255,255,...body,(~(state.weak?body.slice(0,3):body).reduce((a,b)=>a+b,0))&255]));
-   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;){const b=bytes.slice(offset,offset+bytes[offset+3]!+4);if(b[2]===255&&b[4]===7&&state.ikTargets){const body=[255,26,7,...b.slice(7,13),...b.slice(5,7),...b.slice(13,17),...state.ikTargets.flatMap(n=>[n&255,n>>8])];setTimeout(()=>reader.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255])),20);}else if(b[2]===255&&b[4]===8){const word=(i:number)=>{const value=b[i]!+256*b[i+1]!;return value>=32768?value-65536:value;};state.reportedPose=[word(7),word(9),word(11),word(5),word(13),word(15)];if(state.ikTargets)state.ikTargets.forEach((value,i)=>targets[i]=value);}else if(b[2]===255&&b[4]===61){if(b[5]===0&&(state.ignoreReleaseWrites>0||performance.now()-state.lastPositionWriteAt<state.minimumReleaseGapMs)){if(state.ignoreReleaseWrites>0)state.ignoreReleaseWrites--;state.ignoredEarlyReleases++;}else state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);}else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){state.lastPositionWriteAt=performance.now();targets[b[2]!-1]=b[7]!+256*b[8]!;speeds[b[2]!-1]=b[11]!+256*b[12]!;}offset+=b.length;}if(state.deferNextWrite){state.deferNextWrite=false;return new Promise<void>(resolve=>state.finishWrite=resolve);}}})
+   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){
+    state.writes.push([...bytes]);
+    for(let offset=0;offset<bytes.length;){
+     const b=bytes.slice(offset,offset+bytes[offset+3]!+4),word=(i:number)=>{const value=b[i]!+256*b[i+1]!;return value>=32768?value-65536:value;};
+     if(b[2]===255&&b[4]===7&&state.ikTargets){
+      state.pendingCoordinate=[word(7),word(9),word(11),word(5),word(13),word(15)];state.coordinateJointWrites=0;
+      const body=[255,26,7,...b.slice(7,13),...b.slice(5,7),...b.slice(13,17),...state.ikTargets.flatMap(n=>[n&255,n>>8])];
+      setTimeout(()=>reader.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255])),20);
+     }else if(b[2]===255&&b[4]===61){
+      if(b[5]===0&&(state.ignoreReleaseWrites>0||performance.now()-state.lastPositionWriteAt<state.minimumReleaseGapMs)){if(state.ignoreReleaseWrites>0)state.ignoreReleaseWrites--;state.ignoredEarlyReleases++;}
+      else state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);
+     }else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){
+      state.lastPositionWriteAt=performance.now();targets[b[2]!-1]=b[7]!+256*b[8]!;speeds[b[2]!-1]=b[11]!+256*b[12]!;
+      if(state.pendingCoordinate&&++state.coordinateJointWrites===6){state.reportedPose=[...state.pendingCoordinate];state.pendingCoordinate=null;}
+     }
+     offset+=b.length;
+    }
+    if(state.deferNextWrite){state.deferNextWrite=false;return new Promise<void>(resolve=>state.finishWrite=resolve);}
+   }})
   };}}});
  });
  await page.goto('/');
@@ -533,16 +551,16 @@ test('XYZ blocks load without movement and run only after a calculation-only joi
  const xyz={kind:'coordinates',blockId:'xyz',x:54,y:-1,z:399,pitch:18.4,roll:8,claw:-87,durationMs:300};
  await page.locator('#program-file').setInputFiles({name:'xyz.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[xyz]}))});
  await expect(page.getByRole('region',{name:'Blocks workspace.',exact:true}).locator('.lesson_coordinates')).toHaveCount(1);expect(await writes(page)).toHaveLength(0);
- await clickControl(page,'Run program');await page.clock.runFor(1000);await expect(page.locator('#state')).toHaveText('Completed');expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,8]);
+ await clickControl(page,'Run program');await page.clock.runFor(1000);await expect(page.locator('#state')).toHaveText('Completed');expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3]);
  await expect(page.locator('#joints .joint-card strong').first()).toHaveText('54');await clickControl(page,'Disconnect robot');
 });
 test('axis jog and relative-axis blocks use the same calculation-first XYZ route',async({page})=>{
  await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{ikTargets:number[]}}).classroomRobot.ikTargets=[2050,2150,2100,2200,2000,1080]);
  await page.getByRole('tab',{name:'Positions',exact:true}).click();await page.locator('[data-axis="x"][data-direction="1"]').click();await page.clock.runFor(1000);
- expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,8]);await expect(page.locator('#teach-readings [data-coordinate="x"] input')).toHaveValue('44');
+ expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3]);await expect(page.locator('#teach-readings [data-coordinate="x"] input')).toHaveValue('44');
  const delta={kind:'coordinateDelta',blockId:'delta',axis:'z',amount:5,durationMs:500};
  await page.locator('#program-file').setInputFiles({name:'jog.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[delta]}))});await clickControl(page,'Run program');await page.clock.runFor(1200);
- expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,8,7,8]);await expect(page.locator('#teach-readings [data-coordinate="z"] input')).toHaveValue('404');await clickControl(page,'Disconnect robot');
+ expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3,7,3,3,3,3,3,3]);await expect(page.locator('#teach-readings [data-coordinate="z"] input')).toHaveValue('404');await clickControl(page,'Disconnect robot');
 });
 
 test('editing a joint-only program does not connect USB and the simulator stays hidden',async({page})=>{
