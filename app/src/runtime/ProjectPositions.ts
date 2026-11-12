@@ -17,7 +17,7 @@ export function resolveProjectPositions(input:ProgramProject,allowUnassigned=fal
       else if(node.kind==='pose'){
         if(explicit){
           const pose=positions.find(p=>p.id===node.positionId);
-          if(!pose||pose.name!==node.name||pose.positions.some((n,i)=>n!==node.positions[i]))throw new ProgramError(`Position "${node.name}" does not match this program's saved positions. The file was not loaded.`,node.blockId);
+          if(!pose||pose.kind==='coordinates'||pose.name!==node.name||pose.positions.some((n,i)=>n!==node.positions[i]))throw new ProgramError(`Position "${node.name}" does not match this program's saved positions. The file was not loaded.`,node.blockId);
           continue;
         }
         const signature=JSON.stringify([node.positionId,node.name,node.positions]);let pose=imported.get(signature);

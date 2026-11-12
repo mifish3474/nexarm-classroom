@@ -1,7 +1,7 @@
-import type {SimulationStep} from '../simulation/RobotSimulator';
 import {TEACHER_HOME} from '../safety/TeacherControlPlan';
+import {validateCoordinateTarget} from '../protocol/CoordinateTarget';
+import type {CoordinateTarget} from '../protocol/CoordinateTarget';
 
-export const XYZ_REMOVED_MESSAGE='XYZ coordinate blocks are no longer supported. Replace them with joint moves or saved joint positions.';
 export type Numeric = number
   | {kind:'variable';name:string}
   | {kind:'arithmetic';op:'ADD'|'MINUS'|'MULTIPLY'|'DIVIDE'|'POWER';left:Numeric;right:Numeric}
@@ -16,12 +16,19 @@ export type Instruction =
   | {kind:'call';blockId:string;name:string}
   | {kind:'move';blockId:string;servo:number;target:Numeric}
   | {kind:'pose';blockId:string;positionId:string;name:string;positions:number[];durationMs?:Numeric}
+  | ({kind:'coordinates';blockId:string;x:Numeric;y:Numeric;z:Numeric;pitch:Numeric;roll:Numeric;claw:Numeric;durationMs:Numeric})
+  | {kind:'coordinateDelta';blockId:string;axis:'x'|'y'|'z';amount:Numeric;durationMs:Numeric}
   | {kind:'wait';blockId:string;durationMs:Numeric}
   | {kind:'repeat';blockId:string;count:Numeric;body:Instruction[]}
   | {kind:'set'|'change';blockId:string;name:string;value:Numeric}
   | {kind:'if';blockId:string;branches:{condition:Condition;body:Instruction[]}[];elseBody:Instruction[]};
 export type FunctionDefinition={blockId:string;name:string;body:Instruction[]};
-export type PlannedStep=SimulationStep&{blockId:string};
+export type PlannedStep=
+  | {kind?:'move';servo:1|2|3|4|5|6;target:number;blockId:string}
+  | {kind:'pose';positionId:string;name:string;positions:readonly number[];durationMs?:number;blockId:string}
+  | ({kind:'coordinates';blockId:string}&CoordinateTarget)
+  | {kind:'coordinateDelta';axis:'x'|'y'|'z';amount:number;durationMs:number;blockId:string}
+  | {kind:'wait';durationMs:number;blockId:string};
 export type VariableValues={name:string;value:number}[];
 export type PreparedProgram={steps:PlannedStep[];variables:VariableValues};
 export class ProgramError extends Error {
@@ -104,7 +111,11 @@ export function copyInstructions(input:unknown,uniqueIds=false):Instruction[]{
             return {kind:'comment',blockId,text:node.text};
           }
           case 'call':return {kind:'call',blockId,name:variableName(node.name)};
-          case 'coordinates':throw Error(XYZ_REMOVED_MESSAGE);
+          case 'coordinates':return {kind:'coordinates',blockId,x:numeric(node.x,depth+1),y:numeric(node.y,depth+1),z:numeric(node.z,depth+1),pitch:numeric(node.pitch,depth+1),roll:numeric(node.roll,depth+1),claw:numeric(node.claw,depth+1),durationMs:duration(node.durationMs,depth+1,100)};
+          case 'coordinateDelta':{
+            if(!['x','y','z'].includes(String(node.axis)))throw Error('Choose the X, Y, or Z axis.');
+            return {kind:'coordinateDelta',blockId,axis:node.axis as 'x'|'y'|'z',amount:numeric(node.amount,depth+1),durationMs:duration(node.durationMs,depth+1,100)};
+          }
           case 'move':{
             const target=numeric(node.target,depth+1);
             if(typeof node.servo!=='number'||!Number.isInteger(node.servo)||node.servo<1||node.servo>6||typeof target==='number'&&(!Number.isInteger(target)||target<0||target>4095))throw Error('Choose a joint from 1–6 and an integer target from 0–4095.');
@@ -164,7 +175,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
   }
   function push(step:PlannedStep){
     if(steps.length>=100)throw Error('Program exceeds 100 movement steps. Try fewer repeats.');
-    durationMs+=step.kind==='wait'?step.durationMs:step.kind==='pose'?(step.durationMs??1000):0;
+    durationMs+=step.kind==='wait'||step.kind==='coordinates'||step.kind==='coordinateDelta'?step.durationMs:step.kind==='pose'?(step.durationMs??1000):0;
     if(durationMs>60000)throw Error('Pose durations and waits exceed the 60-second program budget.');
     steps.push(step);
   }
@@ -196,6 +207,15 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
             const target=numeric(node.target);if(!Number.isInteger(target)||target<0||target>4095)throw Error(`Joint ${node.servo} needs a whole-number target from 0–4095. Use a rounding block if needed.`);
             push({servo:node.servo as 1|2|3|4|5|6,target,blockId:node.blockId});break;
           }
+          case 'coordinates':{
+            const target=validateCoordinateTarget({x:numeric(node.x),y:numeric(node.y),z:numeric(node.z),pitch:numeric(node.pitch),roll:numeric(node.roll),claw:numeric(node.claw),durationMs:duration(node.durationMs,100)});
+            push({kind:'coordinates',blockId:node.blockId,...target});break;
+          }
+          case 'coordinateDelta':{
+            const amount=numeric(node.amount),durationMs=duration(node.durationMs,100);
+            if(!Number.isInteger(amount)||amount===0||Math.abs(amount)>100)throw Error('Axis increment must be a nonzero whole number from -100 to 100 mm.');
+            push({kind:'coordinateDelta',blockId:node.blockId,axis:node.axis,amount,durationMs});break;
+          }
           case 'wait':push({kind:'wait',durationMs:duration(node.durationMs,0),blockId:node.blockId});break;
           case 'pose':push({...node,durationMs:duration(node.durationMs??1000,100)});break;
         }
@@ -203,7 +223,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
     }
   }
   walk(instructions);
-  if(!steps.length&&!options.allowNoMotion)throw new ProgramError('Add a joint move, move to Home, saved position, or Wait on the selected program path. Save the program to keep calculations without running the robot.');
+  if(!steps.length&&!options.allowNoMotion)throw new ProgramError('Add a joint move, XYZ move, move to Home, saved position, or Wait on the selected program path. Save the program to keep calculations without running the robot.');
   return {steps,variables:[...variables].map(([name,value])=>({name:labels.get(name)!,value}))};
 }
 

@@ -8,6 +8,13 @@ it('records independent six-joint measurements and reloads named positions local
  const reloaded=new NamedPositions(storage);expect(reloaded.list()[0]!.name).toBe('Pickup');expect(JSON.parse(reloaded.export()).poses[0].positions).toEqual(pose);
  reloaded.remove('test-id');expect(new NamedPositions(storage).list()).toEqual([]);
 });
+it('records independent XYZ/P/R/C measurements and preserves legacy joint positions',()=>{
+ const storage=store(),positions=new NamedPositions(storage,()=> 'xyz-id'),coordinates={x:257,y:19,z:378,pitch:0,roll:1,claw:-87};
+ positions.addCoordinates('Above pickup',coordinates);coordinates.x=0;
+ expect(positions.list()).toEqual([{kind:'coordinates',id:'xyz-id',name:'Above pickup',coordinates:{x:257,y:19,z:378,pitch:0,roll:1,claw:-87},capturedAt:expect.any(String)}]);
+ const reloaded=new NamedPositions(storage);expect(reloaded.list()[0]).toMatchObject({kind:'coordinates',coordinates:{x:257,z:378}});
+ expect(()=>positions.addCoordinates('Bad',{x:-1,y:0,z:0,pitch:0,roll:0,claw:0})).toThrow('X (mm)');
+});
 it('rejects invalid measurements, duplicate labels and oversized/control-character names',()=>{
  const positions=new NamedPositions(store(),()=> 'test-id');positions.add('Pickup',pose);
  for(const name of ['', ' ', 'P'.repeat(41),'Drop\noff','pickup'])expect(()=>positions.add(name,pose)).toThrow();

@@ -9,10 +9,10 @@ it('round-trips loops, waits, joint moves and embedded six-joint poses',()=>{
  const loaded=loadProgramFile(saveProgramFile([pose]));(loaded[0] as typeof pose).positions[0]=0;expect(pose.positions[0]).toBe(2050);
  expect(loadProgramFile(saveProgramFile([]))).toEqual([]);
 });
-it('rejects retired XYZ files and exports, including XYZ inside repeats',()=>{
+it('round-trips XYZ files and exports, including XYZ inside repeats',()=>{
  for(const instructions of [[coordinates],[move,{kind:'repeat',blockId:'r',count:2,body:[coordinates]}]]){
-  expect(()=>saveProgramFile(instructions)).toThrow('XYZ coordinate blocks are no longer supported');
-  expect(()=>loadProgramFile(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:1,instructions}))).toThrow('XYZ coordinate blocks are no longer supported');
+  expect(loadProgramFile(saveProgramFile(instructions))).toEqual(instructions);
+  expect(loadProgramFile(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:1,instructions}))).toEqual(instructions);
  }
 });
 it('rejects executable/foreign content, unknown versions, malformed files and invalid block values',()=>{

@@ -17,6 +17,7 @@ import {chooseProgramFileToOpen,chooseProgramFileToSave,filePickerCanceled,writa
 import type {ProgramFileHandle} from './runtime/WritableProgramFile';
 import {KeyboardEvents,isKeyboardEditing,keyLabel,isStopKey} from './runtime/KeyboardEvents';
 import {programSignal} from './ProgramSignal';
+import {COORDINATE_FIELDS} from './protocol/CoordinateTarget';
 
 
 
@@ -111,11 +112,11 @@ function endKeyEvents(message='Keyboard events stopped. Run program to listen ag
   if(eventPreparation){eventPreparation=false;preparing=false;session++;runner.cancel();}
 }
 
-const cards=Array.from({length:6},(_,index)=>{
-  const servo=index+1,card=document.createElement('section');card.className='joint-card';
-  const title=document.createElement('h3');title.textContent=`Joint ${servo}`;
+const cards=COORDINATE_FIELDS.map(field=>{
+  const card=document.createElement('section');card.className='joint-card';
+  const title=document.createElement('h3');title.textContent=field.field;
   const measured=document.createElement('strong'),target=document.createElement('span');target.className='target';
-  card.append(title,measured,target);element('joints').append(card);return {measured,target};
+  card.append(title,measured,target);element('joints').append(card);return {field,measured,target};
 });
 function refresh(){
   teaching.refresh(true,preparing||loadingProgram||spaceHeld);
@@ -160,6 +161,7 @@ function refresh(){
   if(robot?.recovery&&robot.operation==='Home'&&robot.manualPhase==='Normal')element('state').textContent=robot.recovery.phase;
   if(robot?.recovery?.active)element('state').textContent=robot.recovery.phase;
   if(robot?.stopRelease?.active)element('state').textContent=robot.stopRelease.phase;
+  if(robot?.coordinate)element('state').textContent=robot.coordinate.phase;
   if(live&&robot?.operation==='Saved position'&&robot.connectionState==='Listening'&&robot.manualPhase==='Normal')element('state').textContent=robot.home?.phase??state;
   if(keyEvents.active&&!busy)element('state').textContent='Keys active';
   let activity=preparing?'Checking your program…':loadingProgram?'Loading program for review…':robot?.program?.message??readiness;
@@ -168,6 +170,7 @@ function refresh(){
     if(robot?.connectionState==='Disconnected'||!robot)activity='Connect the robot to run your program. You can edit without connecting.';
     if(robot&&robot.connectionState!=='Listening'&&robot.connectionState!=='Disconnected')activity=robot.message;
     if(live&&robot?.operation==='Saved position')activity=robot.message;
+    if(robot?.coordinate)activity=robot.message;
   }
   if(keyEvents.active&&!busy&&robot?.canMove)activity=`Listening for keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Space or Stop ends keyboard events.`;
   if(interfaceError)activity=interfaceError;
@@ -185,11 +188,9 @@ function refresh(){
   document.querySelector<HTMLElement>('.workspace-status')!.dataset.fault=String(!!interfaceError||!!robot?.faulted);
   const holding=robot&&robot.manualPhase!=='Normal'?`${robot.manualPhase} · Support the arm. Use Positions to restore holding.`:'';
   if(element('holding-summary').textContent!==holding)element('holding-summary').textContent=holding;
-  const positions=robot?.positions;
-  cards.forEach((card,index)=>{
-    const actual=positions?.[index];card.measured.textContent=actual===undefined?'—':String(actual);
-    const command=live?robot?.home?.commands?.find(command=>command.servo===index+1):null;
-    card.target.textContent=command&&actual!==undefined?`Target ${command.target} · remaining ${command.target-actual}`:robot?.feedbackFresh?'Live reported position':'Last reported position';
+  cards.forEach(card=>{
+    const actual=robot?.reportedPose?.[card.field.key];card.measured.textContent=actual===undefined?'—':String(actual);
+    card.target.textContent=robot?.feedbackFresh?card.field.label:'Last reported coordinate';
   });
   const activeIndex=robot?.program?.activeStep,active=activeIndex===null||activeIndex===undefined?undefined:plan[activeIndex];
   editor.highlight(interfaceError?interfaceErrorBlock:active?.blockId??null);
@@ -213,7 +214,7 @@ document.addEventListener('add-position-to-code',event=>{
 function cancel(stopRobot=true,releaseHolding=false){endKeyEvents();session++;runner.cancel();preparing=loadingProgram=false;if(stopRobot){stopRequested=true;if(releaseHolding)control?.stopThenRelease();else control?.stop();}refresh();}
 function validateTargets(result:PreparedProgram){
   for(const step of result.steps){
-    try{if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
+    try{if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(!step.kind)assertJointTarget(step.servo,step.target);}
     catch(error){throw new ProgramError(error instanceof Error?error.message:'Invalid target.',step.blockId);}
   }
 }

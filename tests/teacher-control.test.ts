@@ -319,27 +319,44 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
- it.each(['first','after joint','after pose','after wait','inside repeat'])('rejects retired XYZ %s before Home, calculation, or joint writes',async placement=>{
-   const f=fixture({directSession:true,homeBeforeProgram:true});await f.ready(TEACHER_HOME.map(n=>n+100));
-   const xyz={kind:'coordinates',blockId:'c',x:39,y:-1,z:-71,pitch:18.4,roll:8,claw:-87,durationMs:2000};
-   const first=placement==='after joint'?{kind:'move',blockId:'j',servo:1,target:2130}:placement==='after pose'?{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:[...TEACHER_HOME]}:{kind:'wait',blockId:'w',durationMs:1000};
-   const program=placement==='first'?[xyz]:placement==='inside repeat'?[{kind:'repeat',blockId:'r',count:2,body:[xyz]}]:[first,xyz];
-   expect(()=>f.control.runProgram(program)).toThrow('XYZ coordinate blocks are no longer supported');
-   for(let at=1200;at<=3500;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.writes).toHaveLength(0);
-   f.control.disconnect();await flush();
+ it('preflights a direct XYZ route before moving and verifies final coordinate feedback',async()=>{
+   const f=fixture({directSession:true});await f.ready();const target={x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300};
+   f.control.moveToCoordinates(target);await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[4]).toBe(7);
+   await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);f.setTime(1120);f.control.tick();await flush();expect(f.writes).toHaveLength(2);expect(f.writes[1]!.bytes[4]).toBe(8);
+   await f.feed(1420,TEACHER_HOME,false,[15,0,0,0,0,0]);f.control.tick();await f.feed(1520,TEACHER_HOME,false,[15,0,0,0,0,0]);
+   expect(f.control.snapshot().coordinate).toBeNull();expect(f.control.snapshot().message).toContain('XYZ target reached');f.control.disconnect();await flush();
+ });
+ it('rejects an XYZ calculation outside a joint operating range before command 8',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();
+   const invalid=[...TEACHER_HOME];invalid[2]=1999;await f.solution(invalid,[15,0,0,0,0,0]);
+   expect(f.writes).toHaveLength(1);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('J3 target 1999');f.control.disconnect();await flush();
+ });
+ it('rejects a direct XYZ route that starts outside a joint operating range before command 7',async()=>{
+   const f=fixture({directSession:true}),outside=[...TEACHER_HOME];outside[3]=3001;await f.ready(outside);
+   expect(()=>f.control.jogCoordinate('z',5)).toThrow('Current pose for XYZ movement: J4 target 3001');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
+ });
+ it('calculates every waypoint before sending the first coordinate movement',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:30,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:600});await flush();
+   expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);
+   f.setTime(1150);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7]);await f.solution(TEACHER_HOME,[30,0,0,0,0,0]);
+   expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7]);f.setTime(1170);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7,8]);f.control.disconnect();await flush();
+ });
+ it('cancels a direct XYZ preflight after feedback becomes stale and never sends movement later',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);
+   f.setTime(2701);f.control.tick();expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('without valid feedback');await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);f.control.disconnect();await flush();
  });
  it.each([false,true])('rejects native packets at the writer boundary even with a preceding joint packet: %s',async prefixJoint=>{
    const f=fixture({directSession:true});await f.ready();let callback=false;
    const gateway=f.control as unknown as {write:(packet:Uint8Array,completed:()=>void)=>void};
    const native=encodeCoordinateTarget({x:200,y:0,z:200,pitch:0,roll:0,claw:0,durationMs:2000});
    gateway.write(prefixJoint?Uint8Array.from([...encodeSpeedPosition(1,2130,600,10),...native]):native,()=>{callback=true;});await flush();
-   expect(f.writes).toHaveLength(0);expect(callback).toBe(false);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('no longer supported');f.control.disconnect();await flush();
+   expect(f.writes).toHaveLength(0);expect(callback).toBe(false);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('preflighted coordinate route');f.control.disconnect();await flush();
  });
  it('also rejects calculation-only XYZ packets before any USB write',async()=>{
    const f=fixture({directSession:true});await f.ready();let completed=false;
    const gateway=f.control as unknown as {write:(packet:Uint8Array,completed:()=>void)=>void};
    gateway.write(encodeCoordinateCalculation({x:200,y:0,z:200,pitch:0,roll:0,claw:0,durationMs:1000}),()=>{completed=true;});await flush();
-   expect(f.writes).toHaveLength(0);expect(completed).toBe(false);expect(f.control.snapshot().message).toContain('no longer supported');f.control.disconnect();await flush();
+   expect(f.writes).toHaveLength(0);expect(completed).toBe(false);expect(f.control.snapshot().message).toContain('preflighted coordinate route');f.control.disconnect();await flush();
  });
  it('reports passive coordinates with freshness and diagnostics, rejects weak updates, and clears them on reconnect without writes',async()=>{
    const f=fixture({directSession:true});await f.ready();

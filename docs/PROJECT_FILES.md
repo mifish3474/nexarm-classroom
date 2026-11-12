@@ -1,7 +1,8 @@
-# Program files, automatic saving and saved positions: dev.66
+# Program files, automatic saving and saved positions: dev.67
 
 Saved positions belong to the current program. **Save program** includes every
-position's name and six joint measurements, even if no block uses that position.
+position's name and XYZ/P/R/C measurements, even if no block uses that position.
+Older six-joint positions remain in the file as explicitly labeled legacy data.
 In Chrome or Edge, a user-selected JSON file is the working document. After the
 first Save, changes to code, project name, My Blocks and saved positions
 update that same file automatically after a short pause. The browser position
@@ -71,6 +72,7 @@ the importer gives them distinct names/IDs while preserving all six target value
 Older app builds cannot open format 6.
 
 Up to 32 positions may be stored per program. File size, measured-value validation,
-joint target checks and motion policy remain in effect. An endpoint does not
-establish a collision-free route. The separate **Export saved positions** tool
+calculated joint target checks and motion policy remain in effect. A coordinate
+endpoint does not by itself establish a collision-free route; dev.67 preflights
+bounded straight-line waypoints before movement. The separate **Export saved positions** tool
 still downloads a positions-only backup; use Save program for a complete project.

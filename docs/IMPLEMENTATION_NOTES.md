@@ -1,4 +1,36 @@
-# Classroom programming development preview 0.7.0-dev.66
+# Classroom programming development preview 0.7.0-dev.67
+
+## Calculation-first XYZ development controls
+
+Dev.67 restores physical XYZ programming with the operator's explicit approval
+for one development robot. Motion now uses the factory controller's documented
+two-stage interface: command 7 calculates six joint targets without movement,
+then command 8 executes only after every point in the route has passed checks.
+The browser divides a straight Cartesian segment into waypoints no farther than
+15 mm or 5 degrees apart, asks the controller to solve the complete route before
+the first movement, checks every proposed joint against the current development
+operating ranges, and rejects any adjacent solution that changes a joint by more
+than 350 raw units. A rejected, missing, malformed or all-zero calculation reply
+sends no command 8 movement. Long routes require an intermediate position.
+
+The Motion toolbox adds an absolute X/Y/Z/P/R/C block and a relative X, Y or Z
+increment block. Positions shows live X/Y/Z/P/R/C, offers 1â€“25 mm axis jogs, and
+records new named positions as coordinate measurements. Saved coordinate buttons
+and blocks use the same preflighted route. Older six-joint saved positions remain
+loadable and are labeled legacy; they are not silently converted. Program files
+continue to use format 6 and store both coordinate and legacy records.
+
+Command 8 waypoint duration is supplied to the factory firmware, whose internal
+IK, speed and acceleration choices remain firmware-controlled. Final passive
+feedback must be within 8 mm on X/Y/Z and 4 degrees on P/R/C. These checks reduce
+configuration jumps and reject known joint-limit conflicts; they do not prove
+collision clearance, singularity avoidance, force limiting or certified stopping.
+Space/Stop retains the tested fast-hold, steady-feedback and release sequence.
+Initial hardware testing should begin at a clear known pose with one 5 mm jog.
+
+Validation: TypeScript check, production build, 409 unit tests and all 108
+browser checks pass after the coordinate UI/runtime changes. Browser
+robot tests use mocked USB. Physical XYZ movement has not been run by the agent.
 
 ## Draft-capable program files
 

@@ -1,9 +1,26 @@
-# Checked XYZ/P/R/C programming: dev.43
+# Calculation-first XYZ/P/R/C programming: dev.67
 
-**Historical reference only. XYZ programming was removed in dev.47.** Programs
-now use joint moves and saved six-joint positions. Old XYZ program files are
-rejected with an explanation, preserving the current editor. Do not follow the
-old testing instructions below. Custom ESP32/AT32 firmware is outside scope.
+XYZ programming returned in dev.67 with explicit operator approval for the one
+development robot. The current route is not the old direct sender or the dev.43
+joint-pose replay. It divides the requested straight Cartesian segment into
+waypoints no farther than 15 mm or 5 degrees apart, obtains command-7 joint
+solutions for the entire route before any movement, validates all six joint
+targets and adjacent-solution continuity, and only then sends the command-8
+waypoints. The same executor serves absolute blocks, relative-axis blocks,
+axis jogs and newly saved coordinate positions. Command-8 timing and internal IK
+remain factory-firmware controlled; custom firmware remains out of scope.
+
+The first physical check should be one 5 mm axis jog from a clear, known pose.
+Final passive feedback is checked within 8 mm on X/Y/Z and 4 degrees on P/R/C.
+These controls do not prove collision clearance, force limiting, singularity
+avoidance or a certified stop. See the dev.67 section of
+[implementation notes](./IMPLEMENTATION_NOTES.md) for the current implementation.
+
+## Historical dev.43 record
+
+The material below records the earlier investigation and is not the current
+execution design. In particular, dev.67 does use command 8 after full-route
+preflight; it does not replay each calculated endpoint as a joint-pose frame.
 
 Dev.43 immediately reports a fully checked calculation reply containing 24
 zero bytes as **no usable joint solution supplied**. The block-4 diagnostic
