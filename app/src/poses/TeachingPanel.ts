@@ -1,6 +1,6 @@
 import type {TeacherRobotControl} from '../safety/TeacherRobotControl';
 import {NamedPositions} from './NamedPositions';
-import {poseIssues} from '../safety/OperatingRanges';
+import {OPERATING_RANGES,poseIssues} from '../safety/OperatingRanges';
 import {COORDINATE_FIELDS} from '../protocol/CoordinateTarget';
 
 export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
@@ -14,6 +14,14 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
     const input=document.createElement('input');input.type='text';input.readOnly=true;input.value='—';input.setAttribute('aria-label',`${field.label} reported value`);
     const reference=document.createElement('small');reference.textContent=`${field.min}–${field.max}${field.key==='pitch'?'°':'xyz'.includes(field.key)?' mm':'°'}`;reference.title='Development input range; not proof that every point is reachable.';
     const status=document.createElement('span');status.className='teach-reading-status';label.append(input);box.append(label,reference,status);node('teach-readings').append(box);return {field,box,input,status};
+  });
+  const jointReadings=OPERATING_RANGES.map((range,index)=>{
+    const joint=index+1,box=document.createElement('div');box.className='joint-safety-card';box.dataset.joint=String(joint);
+    const label=document.createElement('strong');label.textContent=`J${joint}`;
+    const value=document.createElement('span');value.className='joint-safety-value';value.textContent='—';
+    const accepted=document.createElement('small');accepted.textContent=`Accepted ${range.min}–${range.max}`;
+    const status=document.createElement('span');status.className='joint-safety-result';status.textContent='Waiting';
+    box.append(label,value,accepted,status);node('teach-joints').append(box);return {joint,range,box,value,status};
   });
   const jogStep=node<HTMLInputElement>('teach-jog-step');
   const jogButtons=[...document.querySelectorAll<HTMLButtonElement>('[data-xyz-jog]')];
@@ -61,9 +69,18 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
       input.value=value===undefined?'—':String(value);input.setAttribute('aria-invalid',String(invalid));box.classList.toggle('out-of-range',invalid);
       status.textContent=value===undefined?'Waiting':invalid?'Outside input range':state?.feedbackFresh?'Live':'Last reading';
     });
+    const jointIssues=jointReadings.flatMap(({joint,range,box,value,status})=>{
+      const actual=state?.positions?.[joint-1],invalid=actual!==undefined&&(actual<range.min||actual>range.max);
+      value.textContent=actual===undefined?'—':String(actual);box.classList.toggle('out-of-range',invalid);box.setAttribute('aria-invalid',String(invalid));
+      status.textContent=actual===undefined?'Waiting':invalid?'OUTSIDE RANGE':state?.feedbackFresh?'In range':'Last reading';
+      return invalid?[`J${joint} is ${actual}; accepted range is ${range.min}–${range.max}`]:[];
+    });
+    const jointInvalid=jointIssues.length>0,jointStatus=node('joint-safety-status');
+    node('joint-safety').classList.toggle('out-of-range',jointInvalid);
+    jointStatus.textContent=jointInvalid?`Cannot record this position. ${jointIssues.join('. ')}.`:state?.positions?(state.feedbackFresh?'All six joints are inside their accepted ranges.':'Showing the last joint readings; wait for fresh feedback.'):'Connect for live joint checks.';
     const coordinateInvalid=readings.some(({field})=>{const value=state?.reportedPose?.[field.key];return value!==undefined&&(value<field.min||value>field.max);});
-    node('pose-recording').classList.toggle('out-of-range',coordinateInvalid);
-    const captureStatus=coordinateInvalid?'Cannot record: one or more coordinates are outside the development input range.':isPreparing?'Wait for program preparation.':!state?.feedbackFresh?'Waiting for fresh live coordinate readings.':!state.canCapture?state.captureReason:!saved.canAdd?'Export or delete an old position before recording another.':!name.value.trim()?'Enter a position name to record this XYZ/P/R/C point.':'Ready to record this XYZ/P/R/C point.';
+    node('pose-recording').classList.toggle('out-of-range',coordinateInvalid||jointInvalid);
+    const captureStatus=jointInvalid?`Cannot record: ${jointIssues.join('. ')}.`:coordinateInvalid?'Cannot record: one or more coordinates are outside the development input range.':isPreparing?'Wait for program preparation.':!state?.feedbackFresh?'Waiting for fresh live coordinate readings.':!state.canCapture?state.captureReason:!saved.canAdd?'Export or delete an old position before recording another.':!name.value.trim()?'Enter a position name to record this XYZ/P/R/C point.':'Ready to record this XYZ/P/R/C point.';
     node('pose-capture-status').textContent=captureStatus;node('teach-error').textContent=error;node('teach-error').hidden=!error;name.disabled=isPreparing||!!state?.busy;jogStep.disabled=isPreparing||!!state?.busy;
   }
   node('teach-release').onclick=()=>act(()=>getControl()?.setHolding(false,true));

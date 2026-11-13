@@ -610,8 +610,8 @@ test('endpoint-path deviations do not interrupt timed pose playback and Stop rem
 test('live coordinate boxes show ranges beside the name and block every out-of-range or stale capture',async({page})=>{
  await station(page);await connect(page);await page.getByRole('tab',{name:'Positions',exact:true}).click();await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);
  const name=page.getByRole('textbox',{name:'Position name'}),record=page.getByRole('button',{name:'Record current XYZ position',exact:true});await name.fill('Pickup');
- await expect(page.locator('#teach-readings .teach-reading')).toHaveCount(6);await expect(record).toBeEnabled();
- const nameBox=await name.boundingBox(),readingsBox=await page.locator('#teach-readings').boundingBox();expect(Math.abs(readingsBox!.x-nameBox!.x)).toBeLessThan(5);expect(nameBox!.y-readingsBox!.y).toBeLessThan(300);
+ await expect(page.locator('#teach-readings .teach-reading')).toHaveCount(6);await expect(page.locator('#teach-joints .joint-safety-card')).toHaveCount(6);await expect(page.locator('#joint-safety-status')).toContainText('All six joints');await expect(record).toBeEnabled();
+ const nameBox=await name.boundingBox(),readingsBox=await page.locator('#teach-readings').boundingBox();expect(Math.abs(readingsBox!.x-nameBox!.x)).toBeLessThan(5);expect(nameBox!.y-readingsBox!.y).toBeLessThan(550);
  const keys=['x','y','z','pitch','roll','claw'],labels=['X (mm)','Y (mm)','Z (mm)','P · pitch (degrees)','R · roll (degrees)','C · claw (degrees)'],invalid=[[-1,551],[-551,551],[-571,571],[-1801,1801],[-91,91],[-91,91]],home=[39,-1,399,184,8,-87];
  for(let i=0;i<6;i++){
    const box=page.locator(`.teach-reading[data-coordinate="${keys[i]}"]`),input=page.getByRole('textbox',{name:`${labels[i]} reported value`,exact:true});
@@ -621,6 +621,11 @@ test('live coordinate boxes show ranges beside the name and block every out-of-r
    }
    await page.evaluate(pose=>(window as unknown as {classroomRobot:{reportedPose:number[]}}).classroomRobot.reportedPose.splice(0,6,...pose),home);await page.clock.runFor(100);await expect(input).toHaveAttribute('aria-invalid','false');await expect(record).toBeEnabled();
  }
+ const j4=page.locator('.joint-safety-card[data-joint="4"]');
+ await page.evaluate(()=>{const robot=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;robot.positions[3]=robot.targets[3]=3379;});await page.clock.runFor(100);
+ await expect(j4).toContainText('3379');await expect(j4).toContainText('Accepted 1250');await expect(j4).toContainText('OUTSIDE RANGE');await expect(j4).toHaveCSS('border-top-color','rgb(180, 35, 24)');
+ await expect(page.locator('#joint-safety')).toHaveClass(/out-of-range/);await expect(page.locator('#joint-safety-status')).toContainText('J4 is 3379');await expect(page.locator('#pose-capture-status')).toContainText('J4 is 3379');await expect(record).toBeDisabled();
+ await page.evaluate(()=>{const robot=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;robot.positions[3]=robot.targets[3]=2200;});await page.clock.runFor(100);await expect(j4).not.toHaveClass(/out-of-range/);await expect(record).toBeEnabled();
  expect(await writes(page)).toHaveLength(1);expect(await page.evaluate(()=>localStorage.getItem('nexarm.named-positions.v1'))).toBeNull();
  await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=true);await page.clock.runFor(700);await expect(record).toBeDisabled();await expect(page.locator('#pose-capture-status')).toContainText('fresh live coordinate readings');await expect(page.locator('#teach-readings')).toContainText('Last reading');
  await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=false);await page.clock.runFor(100);await expect(record).toBeEnabled();await record.click();await expect(page.locator('#saved-positions')).toContainText('Pickup');expect(await writes(page)).toHaveLength(1);

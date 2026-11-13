@@ -1,4 +1,17 @@
-# Classroom programming development preview 0.7.0-dev.68
+# Classroom programming development preview 0.7.0-dev.69
+
+## Prominent joint-range feedback while teaching XYZ positions
+
+Dev.69 keeps XYZ/P/R/C as the primary teaching display and adds a dedicated live
+six-joint safety panel immediately below it. Every joint card shows the measured
+raw value and its accepted development range. If a joint is outside that range,
+its card and the complete safety panel turn red, the card says `OUTSIDE RANGE`,
+and both status areas identify the exact joint, value and range. Recording remains
+disabled through the existing capture policy. This is a visibility improvement;
+it changes no operating ranges, coordinate calculations or physical movement.
+
+Validation: TypeScript check, production build, all 410 unit tests and all 108
+browser checks pass, including simulated J4=3379 detection and recovery to range.
 
 ## Smooth calculation-first XYZ playback
 

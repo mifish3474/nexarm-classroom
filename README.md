@@ -3,6 +3,12 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.69: visible joint checks for XYZ teaching.** The Positions panel now shows
+all six live joint values and accepted ranges directly beneath XYZ/P/R/C. An
+out-of-range joint and the complete check panel turn red, and the status names
+the exact joint, value and range that block recording. This changes no motion or
+range policy.
+
 **Dev.68: smooth calculation-first XYZ development.** Motion includes absolute
 X/Y/Z/P/R/C and relative-axis blocks. The Positions panel shows and records
 coordinates and provides small X/Y/Z jog controls. Before any coordinate route
