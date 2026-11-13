@@ -562,6 +562,12 @@ test('axis jog and relative-axis blocks use the same calculation-first XYZ route
  await page.locator('#program-file').setInputFiles({name:'jog.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[delta]}))});await clickControl(page,'Run program');await page.clock.runFor(1200);
  expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3,7,3,3,3,3,3,3]);await expect(page.locator('#teach-readings [data-coordinate="z"] input')).toHaveValue('404');await clickControl(page,'Disconnect robot');
 });
+test('a 100 mm relative-axis block calculates only its exact final destination',async({page})=>{
+ await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{ikTargets:number[]}}).classroomRobot.ikTargets=[2050,2150,2100,2200,2000,1080]);
+ const delta={kind:'coordinateDelta',blockId:'large-z',axis:'z',amount:100,durationMs:1000};
+ await page.locator('#program-file').setInputFiles({name:'large-z.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[delta]}))});await clickControl(page,'Run program');await page.clock.runFor(1600);
+ await expect(page.locator('#state')).toHaveText('Completed');expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3]);await expect(page.locator('#joints .joint-card strong').nth(2)).toHaveText('499');await clickControl(page,'Disconnect robot');
+});
 
 test('editing a joint-only program does not connect USB and the simulator stays hidden',async({page})=>{
  await station(page);await clickControl(page,'New empty program');await dragBlock(page,'Control','wait');

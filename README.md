@@ -3,6 +3,12 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.70: endpoint-first XYZ calculation.** Absolute, saved-position and relative
+axis blocks now ask the factory controller to solve exactly the destination that
+will be executed. An all-zero final result is reported as an unreachable final
+destination; unused interpolated coordinates can no longer reject a smooth
+joint-space move. Final joint targets must still pass all six operating ranges.
+
 **Dev.69: visible joint checks for XYZ teaching.** The Positions panel now shows
 all six live joint values and accepted ranges directly beneath XYZ/P/R/C. An
 out-of-range joint and the complete check panel turn red, and the status names
@@ -12,9 +18,9 @@ range policy.
 **Dev.68: smooth calculation-first XYZ development.** Motion includes absolute
 X/Y/Z/P/R/C and relative-axis blocks. The Positions panel shows and records
 coordinates and provides small X/Y/Z jog controls. Before any coordinate route
-moves, the app asks the factory controller to calculate every bounded waypoint,
-checks all six proposed joint targets and rejects abrupt joint-solution changes.
-It then sends the accepted endpoint through the same coordinated timed-joint
+moves, the app asks the factory controller to calculate the exact endpoint and
+checks all six proposed joint targets. It then sends the accepted endpoint
+through the same coordinated timed-joint
 executor used by reliable saved joint positions. Coordinate differences after
 frame time are reported but do not trigger retries or abort later blocks.
 Older joint positions remain available as labeled legacy records. This is a
@@ -108,9 +114,9 @@ Control, and Undo/Redo are visible. Motion settings and program-file compatibili
 are unchanged. Project naming, autosave and destructive-edit recovery remain
 future work. See [the usability review](docs/USABILITY_REVIEW.md).
 
-**Dev.47 (superseded by dev.68): joint and saved-position programming.** Blockly
-temporarily removed XYZ while factory behavior was investigated. Dev.68 restores
-it through calculation-only preflight and bounded Cartesian waypoints. The project
+**Dev.47 (superseded by dev.70): joint and saved-position programming.** Blockly
+temporarily removed XYZ while factory behavior was investigated. Dev.70 restores
+it through endpoint calculation and checked timed joint-pose playback. The project
 still uses factory firmware only; custom ESP32/AT32 firmware is out of scope.
 
 **Dev.46 updates [read-only servo diagnostics](docs/READ_ONLY_SERVO_DIAGNOSTICS.md)**

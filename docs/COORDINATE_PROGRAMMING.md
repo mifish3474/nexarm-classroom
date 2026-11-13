@@ -1,14 +1,9 @@
-# Smooth calculation-first XYZ/P/R/C programming: dev.68
+# Endpoint-first XYZ/P/R/C programming: dev.70
 
 XYZ programming returned with explicit operator approval for the one development
-robot. Dev.68 keeps calculation-first validation but returns execution to the
-proven timed joint-pose method after dev.67's command-8 waypoint chain produced
-jerky start-stop motion and false settlement errors. It divides the requested
-straight Cartesian segment into
-waypoints no farther than 15 mm or 5 degrees apart, obtains command-7 joint
-solutions for the entire route before any movement, validates all six joint
-targets and adjacent-solution continuity, and only then sends the final accepted
-six-joint solution through `TimedPoseMotion`. The same executor serves absolute
+robot. Dev.70 requests one command-7 calculation for the exact final XYZ/P/R/C
+destination, validates all six returned joint targets, and only then sends that
+accepted solution through `TimedPoseMotion`. The same executor serves absolute
 blocks, relative-axis blocks, axis jogs and newly saved coordinate positions.
 Factory command-7 IK is retained, while command-8 timing is no longer used for
 playback; custom firmware remains out of scope.
@@ -22,9 +17,10 @@ avoidance or a certified stop. See the dev.68 section of
 
 ## Historical dev.43 record
 
-The material below records the earlier investigation. Dev.68 once again uses the
-calculated endpoint as a timed joint pose after full-route preflight. It does not
-physically replay every calculated sample and does not use command 8.
+The material below records the earlier investigation. Dev.70 uses the calculated
+endpoint as a timed joint pose after an endpoint-only preflight. It does not
+calculate or physically replay intermediate Cartesian samples and does not use
+command 8.
 
 Dev.43 immediately reports a fully checked calculation reply containing 24
 zero bytes as **no usable joint solution supplied**. The block-4 diagnostic

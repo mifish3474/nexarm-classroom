@@ -1,4 +1,4 @@
-# Program files, automatic saving and saved positions: dev.69
+# Program files, automatic saving and saved positions: dev.70
 
 Saved positions belong to the current program. **Save program** includes every
 position's name and XYZ/P/R/C measurements, even if no block uses that position.
@@ -73,7 +73,7 @@ Older app builds cannot open format 6.
 
 Up to 32 positions may be stored per program. File size, measured-value validation,
 calculated joint target checks and motion policy remain in effect. A coordinate
-endpoint does not by itself establish a collision-free route; dev.68 preflights
-bounded straight-line calculation samples, then executes one smooth joint-space
-move to the accepted endpoint. The separate **Export saved positions** tool
+endpoint does not by itself establish a collision-free route; dev.70 checks the
+exact endpoint and then executes one smooth joint-space move to it. The separate
+**Export saved positions** tool
 still downloads a positions-only backup; use Save program for a complete project.

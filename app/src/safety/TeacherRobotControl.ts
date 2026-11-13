@@ -16,7 +16,7 @@ import type {PlannedStep} from '../runtime/instructions';
 
 import { TEACHER_HOME } from './TeacherControlPlan';
 import {assertJointTarget,assertPoseTargets,OPERATING_RANGES,poseIssues} from './OperatingRanges';
-import {assertCoordinateSolutionContinuity,coordinateArrivalIssues,coordinateWaypoints} from './CoordinateRoute';
+import {coordinateArrivalIssues,coordinatePreflightTarget} from './CoordinateRoute';
 
 export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableStream<Uint8Array> | null; }
 type Operation = 'Jog' | 'Home' | 'Saved position' | 'XYZ' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
@@ -344,34 +344,33 @@ export class TeacherRobotControl {
     if(!this.positions||!this.reportedPose||this.now()-this.receivedAt>500)throw Error('Wait for fresh joint and XYZ feedback before coordinate movement.');
     assertPoseTargets(this.positions,'Current pose for XYZ movement');
     if(operation!=='Program')this.cancelKeyboardSession();
-    const waypoints=coordinateWaypoints(this.reportedPose,input);
+    const waypoints=[coordinatePreflightTarget(input)];
     this.stopObservation=null;this.retain();this.route=null;this.liveTarget=null;this.lastLive=null;this.faulted=false;this.operation=operation;
     this.coordinate={generation:this.generation,target:waypoints.at(-1)!,waypoints,solutions:[],phase:'Calculating',checkIndex:0,pending:null,pendingAt:null,operation};
-    this.message=`Checking ${waypoints.length} XYZ waypoint${waypoints.length===1?'':'s'} before any movement.`;
+    this.message='Checking the final XYZ destination before any movement.';
     this.recordEvent('xyz-preflight',this.message);this.progressCoordinate();this.changed();
   }
   private receiveCoordinateSolution(frame:Frame){
     const task=this.coordinate,target=task?.pending;if(!task||task.phase!=='Calculating'||!target)return;
     const result=inspectCoordinateSolution(frame,target);
-    if(!result.positions){if(result.reason)this.fault(`XYZ waypoint ${task.checkIndex+1} was rejected: ${result.reason} No movement sent.`);return;}
+    if(!result.positions){if(result.reason)this.fault(`Final XYZ destination was rejected: ${result.reason} No movement sent.`);return;}
     try{
-      assertPoseTargets(result.positions,`XYZ waypoint ${task.checkIndex+1}`);
-      assertCoordinateSolutionContinuity(task.solutions.at(-1)??this.positions!,result.positions,task.checkIndex+1);
-    }catch(error){this.fault(error instanceof Error?error.message:'XYZ waypoint joint targets were rejected.');return;}
+      assertPoseTargets(result.positions,'Final XYZ destination');
+    }catch(error){this.fault(error instanceof Error?error.message:'Final XYZ joint targets were rejected.');return;}
     task.solutions.push([...result.positions]);task.checkIndex++;task.pending=null;task.pendingAt=null;
-    this.message=`XYZ route checked ${task.checkIndex} of ${task.waypoints.length} waypoints. No movement sent yet.`;
+    this.message='Final XYZ destination passed its six joint-range checks. No movement sent yet.';
     this.progressCoordinate();
   }
   private progressCoordinate(){
     const task=this.coordinate;if(!task)return;
     if(task.generation!==this.generation||!this.armed||this.connectionState!=='Listening'||!this.visible()||this.now()-this.receivedAt>1500){this.fault('XYZ route canceled because the robot session or fresh feedback changed.');return;}
     if(task.phase==='Calculating'){
-      if(task.pending){if(this.now()-(task.pendingAt??this.now())>=2000)this.fault(`No calculation-only reply for XYZ waypoint ${task.checkIndex+1} within two seconds. No movement sent.`);return;}
+      if(task.pending){if(this.now()-(task.pendingAt??this.now())>=2000)this.fault('No calculation-only reply for the final XYZ destination within two seconds. No movement sent.');return;}
       if(task.checkIndex>=task.waypoints.length){
         const finalSolution=task.solutions.at(-1);if(!finalSolution){this.fault('XYZ preflight supplied no final joint solution. No movement sent.');return;}
         const plan=timedPosePlan(this.positions!,finalSolution,task.target.durationMs);
         task.phase='Moving';this.route=new TimedPoseMotion(this.positions!,this.now(),plan);this.route.start(this.positions!,this.now());
-        this.message=`All ${task.waypoints.length} XYZ checks passed. Moving all six joints together over ${plan.durationMs/1000} seconds.`;
+        this.message=`Final XYZ destination passed. Moving all six joints together over ${plan.durationMs/1000} seconds.`;
         this.recordEvent('xyz-move',this.message);this.pump();
       }
       else if(!this.writeInFlight&&this.now()-this.lastCommandAt>=50){

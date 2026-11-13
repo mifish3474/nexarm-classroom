@@ -342,11 +342,14 @@ describe('smooth teacher controls',()=>{
    const f=fixture({directSession:true}),outside=[...TEACHER_HOME];outside[3]=3001;await f.ready(outside);
    expect(()=>f.control.jogCoordinate('z',5)).toThrow('Current pose for XYZ movement: J4 target 3001');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
  });
- it('calculates every waypoint before sending the first coordinated joint target',async()=>{
+ it('calculates only the final destination before sending the first coordinated joint target',async()=>{
    const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:30,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:600});await flush();
-   expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);
-   f.setTime(1150);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7]);await f.solution(TEACHER_HOME,[30,0,0,0,0,0]);
-   expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7]);f.setTime(1170);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,7,3]);expect(f.writes[2]!.bytes[2]).toBe(1);f.control.disconnect();await flush();
+   expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);await f.solution(TEACHER_HOME,[30,0,0,0,0,0]);
+   expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);f.setTime(1150);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,3]);expect(f.writes[1]!.bytes[2]).toBe(1);f.control.disconnect();await flush();
+ });
+ it('rejects an all-zero final destination result without sending joint movement',async()=>{
+   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:30,y:0,z:100,pitch:0,roll:0,claw:0,durationMs:600});await flush();
+   await f.solution([0,0,0,0,0,0],[0,0,0,0,0,0]);expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('Final XYZ destination was rejected');expect(f.control.snapshot().message).toContain('all-zero calculation result');f.control.disconnect();await flush();
  });
  it('cancels a direct XYZ preflight after feedback becomes stale and never sends movement later',async()=>{
    const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);

@@ -1,4 +1,27 @@
-# Classroom programming development preview 0.7.0-dev.69
+# Classroom programming development preview 0.7.0-dev.70
+
+## Endpoint-first coordinate calculations
+
+Dev.70 follows the operator's observation that three saved XYZ positions ran but
+a final `move Z by 100 mm` block failed at invented waypoint 2. Dev.68/69 executed
+only the final calculated joint pose, so rejecting an unused intermediate
+Cartesian calculation did not describe the physical movement actually sent.
+
+Absolute coordinate blocks, saved coordinate positions and X/Y/Z increments now
+send one calculation-only command 7 for their exact final XYZ/P/R/C destination.
+The returned six-joint solution must be present, nonzero and inside every existing
+operating range before movement. A valid solution runs through the unchanged
+smooth timed-pose executor. An all-zero reply now identifies the **final XYZ
+destination** as rejected and sends no joint movement. There is no automatic
+clamping, retry, command-8 fallback or intermediate Cartesian calculation.
+
+This policy matches the actual joint-space playback but does not establish a
+straight Cartesian tool path, collision clearance or obstruction protection.
+Space/Stop and the physical cutoff remain unchanged.
+
+Validation: TypeScript check, production build, all 410 unit tests and all 109
+browser checks pass. Coverage includes a 100 mm Z increment issuing exactly one
+final coordinate calculation and one six-joint timed pose.
 
 ## Prominent joint-range feedback while teaching XYZ positions
 
@@ -21,14 +44,10 @@ command-8 movement and then required final XYZ/P/R/C settlement. That made the
 firmware accelerate and decelerate repeatedly, and ordinary endpoint error could
 abort the program even after useful physical movement.
 
-The calculation-first safety gate remains. Command 7 calculates six joint targets
-without movement for every sampled point in the requested route. The browser
-checks every proposed joint against the current development operating ranges and
-rejects any adjacent solution that changes a joint by more than 350 raw units.
-The browser divides a straight Cartesian segment into waypoints no farther than
-15 mm or 5 degrees apart, asks the controller to solve the complete route before
-the first movement. A rejected, missing, malformed or all-zero calculation reply
-sends no movement. Long routes still require an intermediate position.
+This section records the superseded dev.68 behavior. Its calculation-first gate
+asked command 7 to calculate six joint targets without movement for sampled
+points along the requested route. Dev.70 replaces those samples with one exact
+endpoint calculation because playback itself is one joint-space pose.
 
 After preflight, the final accepted six-joint solution now runs through the same
 `TimedPoseMotion` executor used by reliable joint saved positions: all six targets
@@ -46,7 +65,7 @@ and blocks use the same preflighted route. Older six-joint saved positions remai
 loadable and are labeled legacy; they are not silently converted. Program files
 continue to use format 6 and store both coordinate and legacy records.
 
-The calculation points establish bounded IK solutions but do not define the
+The final calculation establishes a bounded IK endpoint but does not define the
 physical interpolation. The actual movement is a smooth joint-space sweep to the
 accepted endpoint, not a guaranteed straight Cartesian tool path. Final passive
 feedback uses 8 mm X/Y/Z and 4 degree P/R/C tolerances only to describe endpoint

@@ -54,7 +54,7 @@ export function createTeachingPanel(getControl:()=>TeacherRobotControl|null){
   function act(action:()=>void){error='';try{action();}catch(caught){error=caught instanceof Error?caught.message:'Action could not complete.';}refresh(live,preparing);}
   function refresh(robotMode:boolean,isPreparing:boolean){
     live=robotMode;preparing=isPreparing;const state=getControl()?.snapshot();
-    moveButtons.forEach(({button,issue})=>{button.disabled=!!issue||isPreparing||!state?.canMove;button.title=issue||state?.reason||'Preflight the coordinate samples, then make one coordinated joint-space move to the endpoint.';});
+    moveButtons.forEach(({button,issue})=>{button.disabled=!!issue||isPreparing||!state?.canMove;button.title=issue||state?.reason||'Calculate and check the exact coordinate endpoint, then make one coordinated joint-space move.';});
     addButtons.forEach(button=>button.disabled=isPreparing||!!state?.busy);
     jogButtons.forEach(button=>{button.disabled=isPreparing||!state?.canMove;button.title=state?.reason||'Move a small distance along one Cartesian axis after route preflight.';});
     node<HTMLButtonElement>('teach-release').disabled=isPreparing||!state?.canRelease;
