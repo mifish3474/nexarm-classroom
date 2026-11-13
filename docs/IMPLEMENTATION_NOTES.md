@@ -1,4 +1,21 @@
-# Classroom programming development preview 0.7.0-dev.70
+# Classroom programming development preview 0.7.0-dev.71
+
+## Temporary J4 development allowance
+
+The endpoint-first `Z + 100 mm` calculation succeeded but proposed J4=3054,
+54 raw units beyond the prior development ceiling. With explicit operator
+approval for the single test robot, dev.71 changes only J4's shared development
+range from 1250–3000 to **1250–3100**. The Positions safety panel, recording,
+Blockly validation, direct controls and diagnostics all read this same constant.
+
+This is a temporary testing allowance, not a measured mechanical limit or a
+student safety policy. No servo configuration is written and the other five
+ranges are unchanged. Revisit protected limits after observing the movement.
+
+Validation: TypeScript check, production build, all 410 unit tests and all 109
+browser checks pass. The Z+100 regression uses the exact calculated J4=3054
+target and confirms the timed executor safely extends its one-second request to
+respect the unchanged 600 speed cap.
 
 ## Endpoint-first coordinate calculations
 

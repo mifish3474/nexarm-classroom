@@ -1,4 +1,4 @@
-# Development operating ranges: dev.41
+# Development operating ranges: dev.71
 
 Dev.40 adds checked XYZ/P/R/C execution: calculate all coordinate destinations
 without moving, reject out-of-range joint solutions, then send accepted targets
@@ -21,13 +21,19 @@ student policy planned for later.
 | J1 | 900 | 3000 |
 | J2 | 525 | 2600 |
 | J3 | 2000 | 2900 |
-| J4 | 1250 | 3000 |
+| J4 | 1250 | 3100 |
 | J5 | 1024 | 3072 |
 | J6 | 1024 (open) | 2731 |
 
 In dev.30 the operator lowered J2's minimum from 1200 to 525. The upper
 endpoint remains 2600. Live readouts, recording, sliders and movement validation
 all use this same range.
+
+In dev.71 the operator explicitly approved a temporary development-only increase
+of J4's maximum from 3000 to 3100 so the endpoint-first `Z + 100 mm` test can use
+the controller-calculated J4 target 3054. This is an experimental allowance for
+the single development robot, not a verified mechanical limit or future student
+policy. Revisit J4 and all other protected limits before student release.
 
 `app/src/safety/OperatingRanges.ts` is the shared, fixed configuration. There is
 no browser range editor, saved-profile setup, additional margin or teacher
@@ -73,5 +79,6 @@ instead of 3144, and S4 3084 instead of 3407. Feedback continued, with no later
 goal commands before the fault. This establishes repeated shortfall, not its
 physical cause. Under the new operating ranges, t1's J3 3006 and t2's J3 3144 /
 J4 3407 are rejected before movement. Other old poses may also need replacement.
-No wider tolerance, increased power, retry, calibration or automatic movement
-was added as a remedy. Home remains inside all six supplied ranges.
+Dev.71 later widened only the J4 development ceiling to 3100 for the explicitly
+approved endpoint test; it did not add power, retries, calibration or automatic
+movement. Home remains inside all six supplied ranges.

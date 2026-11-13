@@ -339,8 +339,8 @@ describe('smooth teacher controls',()=>{
    expect(f.writes).toHaveLength(1);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('J3 target 1999');f.control.disconnect();await flush();
  });
  it('rejects a direct XYZ route that starts outside a joint operating range before command 7',async()=>{
-   const f=fixture({directSession:true}),outside=[...TEACHER_HOME];outside[3]=3001;await f.ready(outside);
-   expect(()=>f.control.jogCoordinate('z',5)).toThrow('Current pose for XYZ movement: J4 target 3001');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
+   const f=fixture({directSession:true}),outside=[...TEACHER_HOME];outside[3]=3101;await f.ready(outside);
+   expect(()=>f.control.jogCoordinate('z',5)).toThrow('Current pose for XYZ movement: J4 target 3101');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
  });
  it('calculates only the final destination before sending the first coordinated joint target',async()=>{
    const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:30,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:600});await flush();
@@ -484,7 +484,7 @@ describe('smooth teacher controls',()=>{
  it('checks slider, jog and factory comparison targets without blocking read-only out-of-range feedback or Stop holds',async()=>{
    const f=fixture(),outside=[2050,2150,3003,3084,2000,1080];await f.ready(outside);f.control.enable(true);
    expect(f.control.snapshot().positions).toEqual(outside);expect(()=>f.control.capturePosition()).toThrow('Cannot record position');
-   expect(()=>f.control.moveJoint(3,2901)).toThrow('2000–2900');expect(()=>f.control.liveJoint(4,3001)).toThrow('1250–3000');
+   expect(()=>f.control.moveJoint(3,2901)).toThrow('2000–2900');expect(()=>f.control.liveJoint(4,3101)).toThrow('1250–3100');
    expect(()=>f.control.jog(3,20)).toThrow('J3');expect(()=>f.control.compareServo3Factory()).toThrow('J3');expect(f.writes).toHaveLength(0);
    f.control.moveJoint(3,2900);await flush();expect(f.writes[0]!.bytes[7]!+256*f.writes[0]!.bytes[8]!).toBe(2900);
    f.control.stop();await flush();expect(f.writes[1]!.bytes[7]!+256*f.writes[1]!.bytes[8]!).toBe(3003);

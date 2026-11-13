@@ -3,6 +3,11 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.71: temporary J4 development allowance.** With explicit operator approval
+for the single test robot, the shared J4 range is temporarily 1250–3100 so the
+controller-calculated J4=3054 endpoint can be observed. All other ranges remain
+unchanged. This is not a student limit or a verified mechanical boundary.
+
 **Dev.70: endpoint-first XYZ calculation.** Absolute, saved-position and relative
 axis blocks now ask the factory controller to solve exactly the destination that
 will be executed. An all-zero final result is reported as an unreachable final

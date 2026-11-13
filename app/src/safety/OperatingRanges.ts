@@ -3,7 +3,7 @@
 // or the protected classroom policy planned for student release.
 export const OPERATING_RANGES=Object.freeze([
   Object.freeze({min:900,max:3000}),Object.freeze({min:525,max:2600}),
-  Object.freeze({min:2000,max:2900}),Object.freeze({min:1250,max:3000}),
+  Object.freeze({min:2000,max:2900}),Object.freeze({min:1250,max:3100}),
   Object.freeze({min:1024,max:3072}),Object.freeze({min:1024,max:2731}),
 ]);
 export function targetIssue(servo:number,target:number):string|null{
