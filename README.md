@@ -3,11 +3,14 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
-**Dev.67: calculation-first XYZ development.** Motion now includes absolute
+**Dev.68: smooth calculation-first XYZ development.** Motion includes absolute
 X/Y/Z/P/R/C and relative-axis blocks. The Positions panel shows and records
 coordinates and provides small X/Y/Z jog controls. Before any coordinate route
 moves, the app asks the factory controller to calculate every bounded waypoint,
 checks all six proposed joint targets and rejects abrupt joint-solution changes.
+It then sends the accepted endpoint through the same coordinated timed-joint
+executor used by reliable saved joint positions. Coordinate differences after
+frame time are reported but do not trigger retries or abort later blocks.
 Older joint positions remain available as labeled legacy records. This is a
 development feature, not a claim of collision-free or student-ready operation.
 
@@ -99,8 +102,8 @@ Control, and Undo/Redo are visible. Motion settings and program-file compatibili
 are unchanged. Project naming, autosave and destructive-edit recovery remain
 future work. See [the usability review](docs/USABILITY_REVIEW.md).
 
-**Dev.47 (superseded by dev.67): joint and saved-position programming.** Blockly
-temporarily removed XYZ while factory behavior was investigated. Dev.67 restores
+**Dev.47 (superseded by dev.68): joint and saved-position programming.** Blockly
+temporarily removed XYZ while factory behavior was investigated. Dev.68 restores
 it through calculation-only preflight and bounded Cartesian waypoints. The project
 still uses factory firmware only; custom ESP32/AT32 firmware is out of scope.
 
@@ -120,7 +123,7 @@ return stops before block 1; Stop cancels startup as well as the program. Connec
 and Load remain motion-free. Home-first does not make an invalid destination valid.
 
 Programs validate joint targets and preflight coordinate routes before movement.
-See the dev.67 section in [implementation notes](docs/IMPLEMENTATION_NOTES.md)
+See the dev.68 section in [implementation notes](docs/IMPLEMENTATION_NOTES.md)
 for the remaining limitations.
 
 The root `index.html` is the working **Connection Lab v0.6.1** prototype. It

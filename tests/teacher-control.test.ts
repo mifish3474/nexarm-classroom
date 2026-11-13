@@ -333,7 +333,7 @@ describe('smooth teacher controls',()=>{
    await f.feed(1430,TEACHER_HOME,false,[0,0,0,0,0,0]);f.control.tick();
    expect(f.control.snapshot()).toMatchObject({faulted:false,coordinate:null});expect(f.control.snapshot().message).toContain('Movement complete');expect(f.writes).toHaveLength(7);f.control.disconnect();await flush();
  });
- it('rejects an XYZ calculation outside a joint operating range before command 8',async()=>{
+ it('rejects an XYZ calculation outside a joint operating range before movement',async()=>{
    const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();
    const invalid=[...TEACHER_HOME];invalid[2]=1999;await f.solution(invalid,[15,0,0,0,0,0]);
    expect(f.writes).toHaveLength(1);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('J3 target 1999');f.control.disconnect();await flush();

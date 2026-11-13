@@ -1,26 +1,30 @@
-# Calculation-first XYZ/P/R/C programming: dev.67
+# Smooth calculation-first XYZ/P/R/C programming: dev.68
 
-XYZ programming returned in dev.67 with explicit operator approval for the one
-development robot. The current route is not the old direct sender or the dev.43
-joint-pose replay. It divides the requested straight Cartesian segment into
+XYZ programming returned with explicit operator approval for the one development
+robot. Dev.68 keeps calculation-first validation but returns execution to the
+proven timed joint-pose method after dev.67's command-8 waypoint chain produced
+jerky start-stop motion and false settlement errors. It divides the requested
+straight Cartesian segment into
 waypoints no farther than 15 mm or 5 degrees apart, obtains command-7 joint
 solutions for the entire route before any movement, validates all six joint
-targets and adjacent-solution continuity, and only then sends the command-8
-waypoints. The same executor serves absolute blocks, relative-axis blocks,
-axis jogs and newly saved coordinate positions. Command-8 timing and internal IK
-remain factory-firmware controlled; custom firmware remains out of scope.
+targets and adjacent-solution continuity, and only then sends the final accepted
+six-joint solution through `TimedPoseMotion`. The same executor serves absolute
+blocks, relative-axis blocks, axis jogs and newly saved coordinate positions.
+Factory command-7 IK is retained, while command-8 timing is no longer used for
+playback; custom firmware remains out of scope.
 
 The first physical check should be one 5 mm axis jog from a clear, known pose.
-Final passive feedback is checked within 8 mm on X/Y/Z and 4 degrees on P/R/C.
+Final passive feedback is compared with 8 mm X/Y/Z and 4 degree P/R/C reporting
+tolerances. A difference is reported but does not retry, fault, or stop later blocks.
 These controls do not prove collision clearance, force limiting, singularity
-avoidance or a certified stop. See the dev.67 section of
+avoidance or a certified stop. See the dev.68 section of
 [implementation notes](./IMPLEMENTATION_NOTES.md) for the current implementation.
 
 ## Historical dev.43 record
 
-The material below records the earlier investigation and is not the current
-execution design. In particular, dev.67 does use command 8 after full-route
-preflight; it does not replay each calculated endpoint as a joint-pose frame.
+The material below records the earlier investigation. Dev.68 once again uses the
+calculated endpoint as a timed joint pose after full-route preflight. It does not
+physically replay every calculated sample and does not use command 8.
 
 Dev.43 immediately reports a fully checked calculation reply containing 24
 zero bytes as **no usable joint solution supplied**. The block-4 diagnostic

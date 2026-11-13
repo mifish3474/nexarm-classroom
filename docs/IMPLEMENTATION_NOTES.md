@@ -1,17 +1,30 @@
-# Classroom programming development preview 0.7.0-dev.67
+# Classroom programming development preview 0.7.0-dev.68
 
-## Calculation-first XYZ development controls
+## Smooth calculation-first XYZ playback
 
-Dev.67 restores physical XYZ programming with the operator's explicit approval
-for one development robot. Motion now uses the factory controller's documented
-two-stage interface: command 7 calculates six joint targets without movement,
-then command 8 executes only after every point in the route has passed checks.
+Dev.68 corrects the jerky start-stop behavior observed during the first physical
+XYZ route. Dev.67 sent every 15 mm / 5 degree calculation point as a separate
+command-8 movement and then required final XYZ/P/R/C settlement. That made the
+firmware accelerate and decelerate repeatedly, and ordinary endpoint error could
+abort the program even after useful physical movement.
+
+The calculation-first safety gate remains. Command 7 calculates six joint targets
+without movement for every sampled point in the requested route. The browser
+checks every proposed joint against the current development operating ranges and
+rejects any adjacent solution that changes a joint by more than 350 raw units.
 The browser divides a straight Cartesian segment into waypoints no farther than
 15 mm or 5 degrees apart, asks the controller to solve the complete route before
-the first movement, checks every proposed joint against the current development
-operating ranges, and rejects any adjacent solution that changes a joint by more
-than 350 raw units. A rejected, missing, malformed or all-zero calculation reply
-sends no command 8 movement. Long routes require an intermediate position.
+the first movement. A rejected, missing, malformed or all-zero calculation reply
+sends no movement. Long routes still require an intermediate position.
+
+After preflight, the final accepted six-joint solution now runs through the same
+`TimedPoseMotion` executor used by reliable joint saved positions: all six targets
+are sent with individually calculated speeds, a 600 speed cap and acceleration
+10, and the operation advances after effective frame time. Calculation samples
+are not physical stop points. Command 8 is no longer used for route playback.
+This removes the deliberate stop between waypoints and avoids a settlement retry
+loop. A final passive coordinate difference is reported for diagnosis but does
+not fault, retry, or prevent the next program block.
 
 The Motion toolbox adds an absolute X/Y/Z/P/R/C block and a relative X, Y or Z
 increment block. Positions shows live X/Y/Z/P/R/C, offers 1â€“25 mm axis jogs, and
@@ -20,17 +33,19 @@ and blocks use the same preflighted route. Older six-joint saved positions remai
 loadable and are labeled legacy; they are not silently converted. Program files
 continue to use format 6 and store both coordinate and legacy records.
 
-Command 8 waypoint duration is supplied to the factory firmware, whose internal
-IK, speed and acceleration choices remain firmware-controlled. Final passive
-feedback must be within 8 mm on X/Y/Z and 4 degrees on P/R/C. These checks reduce
-configuration jumps and reject known joint-limit conflicts; they do not prove
-collision clearance, singularity avoidance, force limiting or certified stopping.
+The calculation points establish bounded IK solutions but do not define the
+physical interpolation. The actual movement is a smooth joint-space sweep to the
+accepted endpoint, not a guaranteed straight Cartesian tool path. Final passive
+feedback uses 8 mm X/Y/Z and 4 degree P/R/C tolerances only to describe endpoint
+error. These checks reduce configuration jumps and reject known joint-limit
+conflicts; they do not prove collision clearance, singularity avoidance, force
+limiting or certified stopping.
 Space/Stop retains the tested fast-hold, steady-feedback and release sequence.
 Initial hardware testing should begin at a clear known pose with one 5 mm jog.
 
-Validation: TypeScript check, production build, 409 unit tests and all 108
-browser checks pass after the coordinate UI/runtime changes. Browser
-robot tests use mocked USB. Physical XYZ movement has not been run by the agent.
+Validation: TypeScript check, production build, all 410 unit tests and all 108
+browser checks pass. Browser robot tests use mocked USB. Physical verification
+of the smoother XYZ sweep remains with the operator.
 
 ## Draft-capable program files
 
