@@ -1,4 +1,4 @@
-# Program files, automatic saving and saved positions: dev.70
+# Program files, automatic saving and saved positions: dev.72
 
 Saved positions belong to the current program. **Save program** includes every
 position's name and XYZ/P/R/C measurements, even if no block uses that position.

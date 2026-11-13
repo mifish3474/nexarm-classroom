@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {encodeCoordinateTarget} from '../app/src/protocol/NexArmCodec';
-import {validateCoordinateTarget} from '../app/src/protocol/CoordinateTarget';
+import {COORDINATE_INCREMENT_LIMITS,validateCoordinateIncrement,validateCoordinateTarget} from '../app/src/protocol/CoordinateTarget';
 import {interpret} from '../app/src/runtime/instructions';
 const target={x:39,y:-1,z:399,pitch:18.4,roll:8,claw:-87,durationMs:2000};
 
@@ -24,4 +24,12 @@ it('prepares absolute and relative coordinate instructions at any nesting depth'
  expect(interpret([node])).toEqual([{kind:'coordinates',blockId:'c',...target}]);
  expect(interpret([{kind:'repeat',blockId:'r',count:2,body:[node]}])).toHaveLength(2);
  expect(interpret([{kind:'coordinateDelta',blockId:'d',axis:'z',amount:5,durationMs:500}])).toEqual([{kind:'coordinateDelta',blockId:'d',axis:'z',amount:5,durationMs:500}]);
+});
+it('uses axis-specific relative limits while leaving final-coordinate reachability to runtime',()=>{
+ expect(COORDINATE_INCREMENT_LIMITS).toEqual({x:550,y:1100,z:1140});
+ for(const [axis,limit] of Object.entries(COORDINATE_INCREMENT_LIMITS) as ['x'|'y'|'z',number][]){
+  expect(validateCoordinateIncrement(axis,limit)).toBe(limit);expect(validateCoordinateIncrement(axis,-limit)).toBe(-limit);
+  expect(()=>validateCoordinateIncrement(axis,limit+1)).toThrow(`${axis.toUpperCase()} increment`);expect(()=>validateCoordinateIncrement(axis,0)).toThrow();
+ }
+ expect(interpret([{kind:'coordinateDelta',blockId:'large-y',axis:'y',amount:900,durationMs:1000}])).toMatchObject([{axis:'y',amount:900}]);
 });

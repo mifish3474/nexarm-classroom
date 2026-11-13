@@ -1,4 +1,4 @@
-# Endpoint-first XYZ/P/R/C programming: dev.70
+# Endpoint-first XYZ/P/R/C programming: dev.72
 
 XYZ programming returned with explicit operator approval for the one development
 robot. Dev.70 requests one command-7 calculation for the exact final XYZ/P/R/C
@@ -108,6 +108,9 @@ physical clearance/Stop validation remain student-release requirements.
 
 Development input bounds remain X 0–550, Y -550–550, Z -570–570, P -180–180,
 R/C -90–90. Z=-71 is accepted. These are input bounds, not a calibrated workspace.
+Relative instruction amounts may span the corresponding full domain: X ±550,
+Y ±1100 and Z ±1140 mm. The amount is then added to the fresh reported position;
+the resulting absolute coordinate must still remain inside the bounds above.
 
 1. Refresh and confirm **0.7.0-dev.43**. Connect and check the live joint and
    XYZ/P/R/C readings under **Robot readings and diagnostics** against the LCD.

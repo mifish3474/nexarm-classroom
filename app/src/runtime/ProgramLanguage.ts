@@ -1,5 +1,5 @@
 import {TEACHER_HOME} from '../safety/TeacherControlPlan';
-import {validateCoordinateTarget} from '../protocol/CoordinateTarget';
+import {validateCoordinateIncrement,validateCoordinateTarget} from '../protocol/CoordinateTarget';
 import type {CoordinateTarget} from '../protocol/CoordinateTarget';
 
 export type Numeric = number
@@ -212,8 +212,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
             push({kind:'coordinates',blockId:node.blockId,...target});break;
           }
           case 'coordinateDelta':{
-            const amount=numeric(node.amount),durationMs=duration(node.durationMs,100);
-            if(!Number.isInteger(amount)||amount===0||Math.abs(amount)>100)throw Error('Axis increment must be a nonzero whole number from -100 to 100 mm.');
+            const amount=validateCoordinateIncrement(node.axis,numeric(node.amount)),durationMs=duration(node.durationMs,100);
             push({kind:'coordinateDelta',blockId:node.blockId,axis:node.axis,amount,durationMs});break;
           }
           case 'wait':push({kind:'wait',durationMs:duration(node.durationMs,0),blockId:node.blockId});break;

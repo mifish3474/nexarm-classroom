@@ -1,4 +1,22 @@
-# Classroom programming development preview 0.7.0-dev.71
+# Classroom programming development preview 0.7.0-dev.72
+
+## Axis-specific coordinate increments
+
+Dev.72 replaces the early generic ±100 mm relative-motion guard with limits based
+on each axis's complete development input domain: **X ±550 mm, Y ±1100 mm, and
+Z ±1140 mm**. One shared validator is used by prepared Blockly programs and the
+controller API. The visible hand-jog control intentionally remains 1–25 mm.
+
+These are instruction bounds, not permission to leave the coordinate domain. At
+movement time, the increment is added to fresh reported coordinates and the
+resulting absolute X/Y/Z/P/R/C target must still pass its ordinary input bounds,
+factory command-7 calculation and all six joint ranges. Speed caps, timed-frame
+extension, Stop and the physical cutoff are unchanged.
+
+Validation: TypeScript check, production build, all 411 unit tests and all 109
+browser checks pass. The browser regression executes `Z + 150 mm`, confirming
+that a value above the old generic cap reaches the calculation-first route and
+the existing timed joint executor.
 
 ## Temporary J4 development allowance
 

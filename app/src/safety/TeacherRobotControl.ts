@@ -4,7 +4,7 @@ import { FrameParser, decodePositions, decodeReportedPose } from '../protocol/Fr
 import type {Frame,ReportedPose} from '../protocol/FrameParser';
 import { encodeCoordinateCalculation,encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
 import {inspectCoordinateSolution} from '../protocol/CoordinateSolution';
-import {validateCoordinateTarget} from '../protocol/CoordinateTarget';
+import {validateCoordinateIncrement,validateCoordinateTarget} from '../protocol/CoordinateTarget';
 import type {CoordinateTarget} from '../protocol/CoordinateTarget';
 import { ConcurrentHomeMotion } from './ConcurrentHomeMotion';
 import {TimedPoseMotion,timedPosePlan} from './TimedPoseMotion';
@@ -337,8 +337,8 @@ export class TeacherRobotControl {
   jogCoordinate(axis:'x'|'y'|'z',amount:number,durationMs=600){
     const reason=this.movementReason();if(reason)throw Error(reason);
     if(!this.reportedPose)throw Error('Wait for current XYZ feedback.');
-    if(!Number.isInteger(amount)||amount===0||Math.abs(amount)>100)throw Error('XYZ jog must be a nonzero whole number from -100 to 100 mm.');
-    this.startCoordinate({...this.reportedPose,[axis]:this.reportedPose[axis]+amount,durationMs},'XYZ');
+    const checked=validateCoordinateIncrement(axis,amount);
+    this.startCoordinate({...this.reportedPose,[axis]:this.reportedPose[axis]+checked,durationMs},'XYZ');
   }
   private startCoordinate(input:CoordinateTarget,operation:'XYZ'|'Program'){
     if(!this.positions||!this.reportedPose||this.now()-this.receivedAt>500)throw Error('Wait for fresh joint and XYZ feedback before coordinate movement.');

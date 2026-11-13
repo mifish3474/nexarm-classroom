@@ -3,6 +3,11 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
+**Dev.72: axis-specific increments.** Relative motion blocks now allow X ±550,
+Y ±1100 and Z ±1140 mm instead of the arbitrary generic ±100. The resulting
+absolute coordinate must still fit its axis domain and pass factory IK plus all
+six joint checks. Small hand-jog buttons remain limited to 1–25 mm.
+
 **Dev.71: temporary J4 development allowance.** With explicit operator approval
 for the single test robot, the shared J4 range is temporarily 1250–3100 so the
 controller-calculated J4=3054 endpoint can be observed. All other ranges remain

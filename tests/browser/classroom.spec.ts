@@ -562,11 +562,11 @@ test('axis jog and relative-axis blocks use the same calculation-first XYZ route
  await page.locator('#program-file').setInputFiles({name:'jog.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[delta]}))});await clickControl(page,'Run program');await page.clock.runFor(1200);
  expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3,7,3,3,3,3,3,3]);await expect(page.locator('#teach-readings [data-coordinate="z"] input')).toHaveValue('404');await clickControl(page,'Disconnect robot');
 });
-test('a 100 mm relative-axis block accepts the temporary J4=3054 development target',async({page})=>{
+test('a 150 mm relative-axis block exceeds the old cap and accepts the temporary J4=3054 target',async({page})=>{
  await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{ikTargets:number[]}}).classroomRobot.ikTargets=[2050,2150,2100,3054,2000,1080]);
- const delta={kind:'coordinateDelta',blockId:'large-z',axis:'z',amount:100,durationMs:1000};
+ const delta={kind:'coordinateDelta',blockId:'large-z',axis:'z',amount:150,durationMs:1000};
  await page.locator('#program-file').setInputFiles({name:'large-z.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[delta]}))});await clickControl(page,'Run program');await page.clock.runFor(2500);
- await expect(page.locator('#state')).toHaveText('Completed');const commands=await writes(page);expect(commands.map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3]);expect(commands[4]![2]).toBe(4);expect(commands[4]![7]!+256*commands[4]![8]!).toBe(3054);await expect(page.locator('#joints .joint-card strong').nth(2)).toHaveText('499');await clickControl(page,'Disconnect robot');
+ await expect(page.locator('#state')).toHaveText('Completed');const commands=await writes(page);expect(commands.map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3]);expect(commands[4]![2]).toBe(4);expect(commands[4]![7]!+256*commands[4]![8]!).toBe(3054);await expect(page.locator('#joints .joint-card strong').nth(2)).toHaveText('549');await clickControl(page,'Disconnect robot');
 });
 
 test('editing a joint-only program does not connect USB and the simulator stays hidden',async({page})=>{
