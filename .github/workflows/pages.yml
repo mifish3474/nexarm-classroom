@@ -1,8 +1,8 @@
-name: Publish classroom app
+name: Validate and publish classroom app
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/motion-safety-watchdog]
   workflow_dispatch:
 
 permissions:
@@ -38,11 +38,22 @@ jobs:
         run: npm run test:browser
       - name: Prepare public site metadata
         run: node scripts/prepare-pages.mjs
+      - name: Keep checked safety-branch build for review
+        if: github.ref == 'refs/heads/feature/motion-safety-watchdog'
+        uses: actions/upload-artifact@v6
+        with:
+          name: motion-safety-watchdog-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/configure-pages@v5
+        if: github.ref == 'refs/heads/main'
       - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
         with:
           path: dist
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10

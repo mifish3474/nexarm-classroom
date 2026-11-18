@@ -187,6 +187,14 @@ Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). This serv
 the new app, not root `index.html`. The development server uses a local WebSocket
 for code updates; the production build disables runtime data connections.
 
+Safety-watchdog development is isolated on
+`feature/motion-safety-watchdog`. Test that branch with the same local address;
+localhost is a browser secure context and is the supported way to exercise Web
+Serial with the development robot. Pushes to the branch run unit tests, the
+production build and mocked-USB browser checks in GitHub Actions, then retain the
+checked `dist/` folder as a 14-day workflow artifact. They do not deploy over the
+public site. Only `main` can enter the GitHub Pages deploy job.
+
 Verification commands:
 
 ```powershell
