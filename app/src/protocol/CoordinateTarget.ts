@@ -1,17 +1,4 @@
 export interface CoordinateTarget {x:number;y:number;z:number;pitch:number;roll:number;claw:number;durationMs:number;}
-export type CoordinateAxis='x'|'y'|'z';
-
-// A relative instruction may span at most the full development domain of its
-// selected axis. The resulting absolute destination is validated separately.
-export const COORDINATE_INCREMENT_LIMITS=Object.freeze({x:550,y:1100,z:1140});
-
-export function validateCoordinateIncrement(axis:CoordinateAxis,amount:unknown):number{
-  const limit=COORDINATE_INCREMENT_LIMITS[axis];
-  if(!limit)throw Error('Choose the X, Y, or Z axis.');
-  if(typeof amount!=='number'||!Number.isInteger(amount)||amount===0||Math.abs(amount)>limit)
-    throw Error(`${axis.toUpperCase()} increment must be a nonzero whole number from -${limit} to ${limit} mm.`);
-  return amount;
-}
 
 // Bounded development inputs, not a calibrated workspace or collision policy.
 // X/Y and upper Z follow the supplied factory UI; Z also permits negative LCD

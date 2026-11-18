@@ -43,7 +43,7 @@ it('rejects duplicate keys and source IDs, unsupported events and invalid code i
  expect(()=>copyProject({instructions:body,keyEvents:project().keyEvents})).toThrow('unique across');
  expect(()=>copyProject({instructions:[],keyEvents:[{blockId:'e',key:'Enter',body}]})).toThrow('Choose an arrow');
  expect(()=>copyProject({instructions:[],keyEvents:Array.from({length:17},(_,i)=>({blockId:`k${i}`,key:'a',body:[]}))})).toThrow('16');
- expect(copyProject({instructions:[],keyEvents:[{blockId:'k',key:'a',body:[{kind:'coordinates',blockId:'xyz',x:200,y:0,z:200,pitch:0,roll:0,claw:0,durationMs:1000}]}]}).keyEvents).toHaveLength(1);
+ expect(()=>copyProject({instructions:[],keyEvents:[{blockId:'k',key:'a',body:[{kind:'coordinates',blockId:'retired'}]}]})).toThrow('XYZ');
  expect(copyProject({instructions:[],keyEvents:[{blockId:'k',key:'a',body:[{kind:'move',blockId:'bad',servo:1,target:{kind:'variable',name:'unset'}}]}]}).keyEvents).toHaveLength(1);
 });
 it('loads old Space handlers for reassignment without permitting Check, Run or Save',()=>{

@@ -3,38 +3,12 @@
 A middle-school programming environment for the Hiwonder NexArm robot.
 Development priorities are student safety, privacy, reliability, and learning.
 
-**Dev.72: axis-specific increments.** Relative motion blocks now allow X ±550,
-Y ±1100 and Z ±1140 mm instead of the arbitrary generic ±100. The resulting
-absolute coordinate must still fit its axis domain and pass factory IK plus all
-six joint checks. Small hand-jog buttons remain limited to 1–25 mm.
-
-**Dev.71: temporary J4 development allowance.** With explicit operator approval
-for the single test robot, the shared J4 range is temporarily 1250–3100 so the
-controller-calculated J4=3054 endpoint can be observed. All other ranges remain
-unchanged. This is not a student limit or a verified mechanical boundary.
-
-**Dev.70: endpoint-first XYZ calculation.** Absolute, saved-position and relative
-axis blocks now ask the factory controller to solve exactly the destination that
-will be executed. An all-zero final result is reported as an unreachable final
-destination; unused interpolated coordinates can no longer reject a smooth
-joint-space move. Final joint targets must still pass all six operating ranges.
-
-**Dev.69: visible joint checks for XYZ teaching.** The Positions panel now shows
-all six live joint values and accepted ranges directly beneath XYZ/P/R/C. An
-out-of-range joint and the complete check panel turn red, and the status names
-the exact joint, value and range that block recording. This changes no motion or
-range policy.
-
-**Dev.68: smooth calculation-first XYZ development.** Motion includes absolute
-X/Y/Z/P/R/C and relative-axis blocks. The Positions panel shows and records
-coordinates and provides small X/Y/Z jog controls. Before any coordinate route
-moves, the app asks the factory controller to calculate the exact endpoint and
-checks all six proposed joint targets. It then sends the accepted endpoint
-through the same coordinated timed-joint
-executor used by reliable saved joint positions. Coordinate differences after
-frame time are reported but do not trigger retries or abort later blocks.
-Older joint positions remain available as labeled legacy records. This is a
-development feature, not a claim of collision-free or student-ready operation.
+**Dev.73: joint-position classroom restored.** The dev.67–72 XYZ experiment is
+retired from the visible application. Motion uses joints, saved six-joint poses
+and Home; position teaching shows only live joint values and accepted ranges.
+Old XYZ projects are rejected without replacing the current workspace. All
+Blockly, functions, variables, files, Stop/release and recovery work from the
+joint-only dev.66 milestone remains in place.
 
 **Open the app: https://nexarm.mrfish.app/**. The operator-approved public
 deployment builds the Blockly app from `main`; the old root prototype stays in
@@ -124,10 +98,11 @@ Control, and Undo/Redo are visible. Motion settings and program-file compatibili
 are unchanged. Project naming, autosave and destructive-edit recovery remain
 future work. See [the usability review](docs/USABILITY_REVIEW.md).
 
-**Dev.47 (superseded by dev.70): joint and saved-position programming.** Blockly
-temporarily removed XYZ while factory behavior was investigated. Dev.70 restores
-it through endpoint calculation and checked timed joint-pose playback. The project
-still uses factory firmware only; custom ESP32/AT32 firmware is out of scope.
+**Dev.47: joint and saved-position programming.** Blockly offers joint moves,
+saved six-joint positions, Wait and Repeat. XYZ blocks and coordinate execution
+have been removed. Older XYZ program files are rejected with an explanation
+without replacing the current workspace; joint/pose programs still load normally.
+The project uses factory firmware only; custom ESP32/AT32 firmware is out of scope.
 
 **Dev.46 updates [read-only servo diagnostics](docs/READ_ONLY_SERVO_DIAGNOSTICS.md)**
 at `/servo-diagnostics.html`, linked under Help & tools. It collects raw identity,
@@ -144,9 +119,9 @@ executes the blocks.** Already near Home skips the redundant return. An unsucces
 return stops before block 1; Stop cancels startup as well as the program. Connect
 and Load remain motion-free. Home-first does not make an invalid destination valid.
 
-Programs validate joint targets and preflight coordinate routes before movement.
-See the dev.68 section in [implementation notes](docs/IMPLEMENTATION_NOTES.md)
-for the remaining limitations.
+Programs validate joint and saved-position targets before Home or program
+movement. Coordinate instructions are rejected, including inside loops. Earlier
+[coordinate research](docs/COORDINATE_PROGRAMMING.md) is historical only.
 
 The root `index.html` is the working **Connection Lab v0.6.1** prototype. It
 supports teacher-tested USB communication and small individual-servo commands;
@@ -176,10 +151,10 @@ Timed-pose start/target path comparisons are diagnostic-only; continued movement
 from previous frames does not trigger a path fault. Target limits, feedback-loss
 checks, USB write checks, and Stop remain active.
 The initial program contains only When Run clicked; File provides examples.
-New saved positions contain measured X/Y/Z/P/R/C values; older six-joint records
-remain labeled legacy. Their blocks connect with Wait and Repeat. The programming
-page shows live coordinates and provides small axis jogs. Browser Stop attempts
-the existing measured-position holds.
+Saved positions contain six measured joint values. Their blocks connect with
+Wait and Repeat. The programming page shows joint readings; passive coordinate
+data remains available only in setup/diagnostics. Browser Stop attempts the
+existing measured-position holds.
 A separate setup page provides read-only USB
 inspection and unreviewed reference capture; open it explicitly from Help & tools.
 That page links to direct teacher controls at `/mapping.html`: reusable +/-20

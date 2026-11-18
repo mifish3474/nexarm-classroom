@@ -1,11 +1,9 @@
 import { PassiveConnection } from '../serial/PassiveConnection';
 import type { ReadOnlyPort } from '../serial/PassiveConnection';
 import { FrameParser, decodePositions, decodeReportedPose } from '../protocol/FrameParser';
-import type {Frame,ReportedPose} from '../protocol/FrameParser';
-import { encodeCoordinateCalculation,encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
-import {inspectCoordinateSolution} from '../protocol/CoordinateSolution';
-import {validateCoordinateIncrement,validateCoordinateTarget} from '../protocol/CoordinateTarget';
-import type {CoordinateTarget} from '../protocol/CoordinateTarget';
+import type {ReportedPose} from '../protocol/FrameParser';
+import { encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
+import {COORDINATE_EXECUTION_BLOCKED_REASON} from './CoordinateExecutionPolicy';
 import { ConcurrentHomeMotion } from './ConcurrentHomeMotion';
 import {TimedPoseMotion,timedPosePlan} from './TimedPoseMotion';
 import { ManualPositioning } from './ManualPositioning';
@@ -16,10 +14,9 @@ import type {PlannedStep} from '../runtime/instructions';
 
 import { TEACHER_HOME } from './TeacherControlPlan';
 import {assertJointTarget,assertPoseTargets,OPERATING_RANGES,poseIssues} from './OperatingRanges';
-import {coordinateArrivalIssues,coordinatePreflightTarget} from './CoordinateRoute';
 
 export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableStream<Uint8Array> | null; }
-type Operation = 'Jog' | 'Home' | 'Saved position' | 'XYZ' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
+type Operation = 'Jog' | 'Home' | 'Saved position' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
 type SliderTarget={servo:number;target:number;speed:number;acceleration:number};
 const LIVE_TARGET_DEADBAND=10;
 const PROGRAM_SPEED=600,PROGRAM_ACCELERATION=10;
@@ -30,7 +27,6 @@ type WriteDiagnostic={atMs:number;operation:Operation|null;bytes:number[];positi
 type StopDiagnostic={requestedAtMs:number;submittedAtMs:number|null;finishedAtMs:number|null;servos:number[];targets:number[]|null;feedbackAgeAtSendMs:number|null;outcome:'waiting-for-writer'|'submitted'|'stream-write-resolved'|'unavailable'|'canceled';message:string;feedback:{atMs:number;positions:number[]}[]};
 type StopRelease={generation:number;requestedAtMs:number;hold:StopDiagnostic;phase:'Stopping'|'Waiting for steady readings'|'Release pending'|'Release sent'|'Canceled'|'Fault';deadlineMs:number|null;samples:{atMs:number;positions:number[]}[];releaseSubmittedAtMs:number|null;releaseFinishedAtMs:number|null;message:string};
 type HomeRecovery={generation:number;requestedAtMs:number;phase:'Restoring holding'|'Returning Home'|'Checking Home'|'Ready at Home'|'Canceled'|'Fault';readyAfterMs:number|null;deadlineMs:number|null;message:string};
-type CoordinateTask={generation:number;target:CoordinateTarget;waypoints:CoordinateTarget[];solutions:number[][];phase:'Calculating'|'Moving';checkIndex:number;pending:CoordinateTarget|null;pendingAt:number|null;operation:'XYZ'|'Program'};
 
 // Teacher-only direct controls. All jog, Home, and holding writes pass through
 // the same executor and exclusive USB lease. Live dragging retains only the
@@ -76,7 +72,6 @@ export class TeacherRobotControl {
     if(!this.manual.blocked&&!this.armed){this.armed=true;if(!this.faulted)this.message='Ready. Choose Run, a saved position, or a joint control. No movement starts automatically.';}
   }
   private route: SmoothTeacherMotion | ConcurrentHomeMotion | TimedPoseMotion | null = null;
-  private coordinate:CoordinateTask|null=null;
   private operation: Operation | null = null;
   private history: unknown[] = [];
   private writes:WriteDiagnostic[]=[];
@@ -102,10 +97,7 @@ export class TeacherRobotControl {
     // encoding values; protected robot-specific limits are a student-release gate.
     const steps=evaluateProgram(instructions,{allowNoMotion:keyboard!==null}).steps;
     // Validate the entire program before the first write, including later poses.
-    for(const step of steps){
-      if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);
-      else if(!step.kind)assertJointTarget(step.servo,step.target);
-    }
+    for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
     this.recovery=null;this.stopObservation=null;this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
     this.faulted=false;
     this.program={steps,keyboardSession:keyboard!==null,startup:keyboard==='event'||keyboard===null&&this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:keyboard==='event'?'Running key event from the current pose.':'Preparing Home-first program.'};
@@ -113,7 +105,7 @@ export class TeacherRobotControl {
     this.advanceProgram();this.changed();
   }
   private advanceProgram(){
-    const program=this.program;if(program?.phase!=='Running'||this.route?.activeRun||this.coordinate)return;
+    const program=this.program;if(program?.phase!=='Running'||this.route?.activeRun)return;
     if(!this.armed||this.connectionState!=='Listening'||!this.visible()){this.fault('Program canceled because the robot session changed.');return;}
     if(this.writeInFlight||this.now()-this.receivedAt>500)return;
     if(program.startup==='Home pending'){
@@ -147,11 +139,6 @@ export class TeacherRobotControl {
         this.retain();this.route=null;program.index++;program.waitUntil=this.now()+step.durationMs;program.message=`Waiting ${step.durationMs/1000} seconds.`;this.message=program.message;return;
       }
       if(step.kind==='pose'&&this.options.directSession){program.index++;program.motionIntervalMs=2;this.startTimedPose(step.positions,step.durationMs??1000,'Program');return;}
-      if(step.kind==='coordinates'||step.kind==='coordinateDelta'){
-        if(!this.reportedPose)throw Error('Wait for current XYZ feedback before starting this coordinate step.');
-        const target=step.kind==='coordinates'?step:{...this.reportedPose,[step.axis]:this.reportedPose[step.axis]+step.amount,durationMs:step.durationMs};
-        program.index++;program.motionIntervalMs=2;this.startCoordinate(target,'Program');return;
-      }
       const plan=step.kind==='pose'?absolutePosePlan(this.positions!,step.positions,{speed:program.speed,acceleration:program.acceleration}):absoluteJointPlan(this.positions!,step.servo,step.target,program.speed,program.acceleration);
       program.index++;program.motionIntervalMs=500;this.start({...plan,manual:false},'Program');
     }catch(error){this.fault(error instanceof Error?error.message:'Program movement could not start.');}
@@ -213,7 +200,7 @@ export class TeacherRobotControl {
     this.cancelStopHold('A new connection cannot replay a prior stop.');this.stopObservation=null;
     this.readySamples=[];this.timedHoldServos=[];
     this.writeUncertain=false;
-    this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = false; this.route = null;this.coordinate=null; this.operation = null;this.program=null;
+    this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = false; this.route = null; this.operation = null;this.program=null;
      this.parser.reset();  this.positions = null; this.reportedPose=null; this.receivedAt = -Infinity;
     this.connection.connect(async () => {
       const port = await select(); this.port = port;
@@ -231,7 +218,6 @@ export class TeacherRobotControl {
     if(this.pendingStop)return 'Stop requested. Waiting for the active USB write before sending the hold.';
     if (this.writeInFlight || this.manual.pending) return 'Waiting for the current write to finish.';
     if(this.program?.phase==='Running')return 'Program is running. Stop it before using manual controls.';
-    if(this.coordinate)return 'XYZ movement is in progress. Other actions are not queued.';
     if (this.route?.activeRun) return 'Movement is in progress. Other clicks are not queued.';
     if (this.now()-this.receivedAt>500) return 'Waiting for current position feedback; controls remain enabled.';
     if (this.now()-this.lastCommandAt<500) return 'Finishing the half-second command interval.';
@@ -247,10 +233,7 @@ export class TeacherRobotControl {
   }
   snapshot() {
     const reason = this.movementReason(), idle = this.idleReason();
-    let coordinateCaptureIssue:string|null=null;
-    if(this.reportedPose)try{validateCoordinateTarget({...this.reportedPose,durationMs:1000});}catch(error){coordinateCaptureIssue=error instanceof Error?error.message:'Coordinate reading is invalid.';}
-    const jointCaptureIssue=this.positions?(poseIssues(this.positions).join(' ')||null):'Wait for six current joint readings.';
-    const captureReason=idle??jointCaptureIssue??coordinateCaptureIssue??(this.reportedPose?null:'Wait for current XYZ/P/R/C readings.');
+    const captureReason=idle??(this.positions?(poseIssues(this.positions).join(' ')||null):'Wait for six current position readings.');
     return {connectionState: this.connectionState, positions: this.positions ? [...this.positions] : null,
       reportedPose:this.reportedPose?{...this.reportedPose}:null,
       armed: this.armed, faulted: this.faulted, message: this.message, reason,
@@ -261,9 +244,8 @@ export class TeacherRobotControl {
       enableReason: this.enableReason(), canMove: reason === null&&!this.liveTarget,liveServo:this.liveServo(),
       sliderServo:this.operation==='Slider'&&this.route?.phase==='Running'&&this.armed&&!this.manual.blocked&&this.visible()&&!this.writeInFlight&&this.now()-this.receivedAt<=500&&this.now()-this.lastCommandAt>=500?this.route.status().next?.servo:null,
       home: this.route?.status() ?? null, operation: this.operation,
-      coordinate:this.coordinate?{phase:this.coordinate.phase,waypoint:this.coordinate.checkIndex,total:this.coordinate.waypoints.length,target:{...this.coordinate.target}}:null,
       program:this.program?{phase:this.program.phase,keyboardSession:this.program.keyboardSession,startup:this.program.startup,message:this.program.message,completed:this.program.phase==='Completed'?this.program.steps.length:Math.max(0,this.program.index-(this.route?.phase==='Complete'?0:1)),total:this.program.steps.length,activeStep:this.program.phase==='Running'&&this.program.startup==='Running blocks'?this.program.index-1:null}:null,
-      busy: this.recoveryActive || this.stopReleaseActive || !!this.pendingStop || this.writeInFlight || !!this.route?.activeRun || !!this.coordinate || this.manual.pending || this.program?.phase==='Running',
+      busy: this.recoveryActive || this.stopReleaseActive || !!this.pendingStop || this.writeInFlight || !!this.route?.activeRun || this.manual.pending || this.program?.phase==='Running',
       manualPhase: this.options.directSession&&this.manual.phase==='Confirm holding'?'Restore settling':this.manual.phase, manualMessage: this.manual.message, manualReason: idle,
       feedbackFresh:this.connectionState==='Listening'&&this.visible()&&this.now()-this.receivedAt<=500,
       canCapture:captureReason===null,captureReason,
@@ -278,12 +260,6 @@ export class TeacherRobotControl {
     assertPoseTargets(this.positions,'Cannot record position');
     this.recordEvent('capture','Measured position snapshot read. No robot command sent.');
     return [...this.positions];
-  }
-  captureCoordinates():ReportedPose{
-    const reason=this.idleReason();if(reason)throw Error(reason);
-    if(!this.reportedPose||this.now()-this.receivedAt>500)throw Error('Wait for current XYZ feedback.');
-    this.recordEvent('capture-xyz','Measured XYZ/P/R/C snapshot read. No robot command sent.');
-    return {...this.reportedPose};
   }
 
   enable(confirmed: boolean) {
@@ -330,59 +306,6 @@ export class TeacherRobotControl {
     const plan=absolutePosePlan(this.positions!,target);
     this.liveTarget=null;this.lastLive=null;this.start(plan,'Saved position');
   }
-  moveToCoordinates(target:CoordinateTarget){
-    const reason=this.movementReason();if(reason)throw Error(reason);
-    this.startCoordinate(target,'XYZ');
-  }
-  jogCoordinate(axis:'x'|'y'|'z',amount:number,durationMs=600){
-    const reason=this.movementReason();if(reason)throw Error(reason);
-    if(!this.reportedPose)throw Error('Wait for current XYZ feedback.');
-    const checked=validateCoordinateIncrement(axis,amount);
-    this.startCoordinate({...this.reportedPose,[axis]:this.reportedPose[axis]+checked,durationMs},'XYZ');
-  }
-  private startCoordinate(input:CoordinateTarget,operation:'XYZ'|'Program'){
-    if(!this.positions||!this.reportedPose||this.now()-this.receivedAt>500)throw Error('Wait for fresh joint and XYZ feedback before coordinate movement.');
-    assertPoseTargets(this.positions,'Current pose for XYZ movement');
-    if(operation!=='Program')this.cancelKeyboardSession();
-    const waypoints=[coordinatePreflightTarget(input)];
-    this.stopObservation=null;this.retain();this.route=null;this.liveTarget=null;this.lastLive=null;this.faulted=false;this.operation=operation;
-    this.coordinate={generation:this.generation,target:waypoints.at(-1)!,waypoints,solutions:[],phase:'Calculating',checkIndex:0,pending:null,pendingAt:null,operation};
-    this.message='Checking the final XYZ destination before any movement.';
-    this.recordEvent('xyz-preflight',this.message);this.progressCoordinate();this.changed();
-  }
-  private receiveCoordinateSolution(frame:Frame){
-    const task=this.coordinate,target=task?.pending;if(!task||task.phase!=='Calculating'||!target)return;
-    const result=inspectCoordinateSolution(frame,target);
-    if(!result.positions){if(result.reason)this.fault(`Final XYZ destination was rejected: ${result.reason} No movement sent.`);return;}
-    try{
-      assertPoseTargets(result.positions,'Final XYZ destination');
-    }catch(error){this.fault(error instanceof Error?error.message:'Final XYZ joint targets were rejected.');return;}
-    task.solutions.push([...result.positions]);task.checkIndex++;task.pending=null;task.pendingAt=null;
-    this.message='Final XYZ destination passed its six joint-range checks. No movement sent yet.';
-    this.progressCoordinate();
-  }
-  private progressCoordinate(){
-    const task=this.coordinate;if(!task)return;
-    if(task.generation!==this.generation||!this.armed||this.connectionState!=='Listening'||!this.visible()||this.now()-this.receivedAt>1500){this.fault('XYZ route canceled because the robot session or fresh feedback changed.');return;}
-    if(task.phase==='Calculating'){
-      if(task.pending){if(this.now()-(task.pendingAt??this.now())>=2000)this.fault('No calculation-only reply for the final XYZ destination within two seconds. No movement sent.');return;}
-      if(task.checkIndex>=task.waypoints.length){
-        const finalSolution=task.solutions.at(-1);if(!finalSolution){this.fault('XYZ preflight supplied no final joint solution. No movement sent.');return;}
-        const plan=timedPosePlan(this.positions!,finalSolution,task.target.durationMs);
-        task.phase='Moving';this.route=new TimedPoseMotion(this.positions!,this.now(),plan);this.route.start(this.positions!,this.now());
-        this.message=`Final XYZ destination passed. Moving all six joints together over ${plan.durationMs/1000} seconds.`;
-        this.recordEvent('xyz-move',this.message);this.pump();
-      }
-      else if(!this.writeInFlight&&this.now()-this.lastCommandAt>=50){
-        const target=task.waypoints[task.checkIndex]!;task.pending=target;task.pendingAt=this.now();
-        this.write(encodeCoordinateCalculation(target),()=>this.progressCoordinate(),false,50,true);
-      }
-      return;
-    }
-    // Movement is supervised by TimedPoseMotion. It deliberately advances on
-    // elapsed frame time like factory action-group playback instead of forcing
-    // the arm to stop and settle at every Cartesian sample.
-  }
   private startTimedPose(target:readonly number[],durationMs:number,operation:Operation){
     if(operation!=='Program')this.cancelKeyboardSession();
     this.stopObservation=null;
@@ -412,7 +335,7 @@ export class TeacherRobotControl {
       this.fault('Movement stopped: connection, visibility, or fresh feedback changed.'); return;
     }
     if(route instanceof TimedPoseMotion){
-      if(this.writeInFlight||this.now()-this.lastCommandAt<2)return;
+      if(this.writeInFlight)return;
       const step=route.next(this.now());if(route.status().phase==='Fault'){this.fault(route.message);return;}
       if(step){if(!this.lastMovingServos.includes(step.servo))this.lastMovingServos.push(step.servo);if(!this.timedHoldServos.includes(step.servo))this.timedHoldServos.push(step.servo);const generation=this.generation;
         this.write(encodeSpeedPosition(step.servo,step.target,step.speed,step.acceleration),()=>{route.written(this.now());this.checkRoute();setTimeout(()=>{if(this.route===route&&this.generation===generation)this.pump();},2);},false,2);
@@ -437,13 +360,7 @@ export class TeacherRobotControl {
     if (this.route?.phase === 'Complete') {
       if(this.route instanceof TimedPoseMotion){
         // Elapsed time does not prove a joint stopped. Preserve Stop's hold set.
-        if(this.coordinate?.phase==='Moving'){
-          const task=this.coordinate,issues=this.reportedPose?coordinateArrivalIssues(this.reportedPose,task.target):['no fresh final coordinate reading'];
-          this.coordinate=null;this.message=issues.length
-            ?`XYZ frame time elapsed. ${task.operation==='Program'?'Program continuing':'Movement complete'}; final reading differs from the request: ${issues.join('; ')}.`
-            :'XYZ frame time elapsed with the final reading inside reporting tolerances.';
-          this.recordEvent('xyz-complete',this.message);this.advanceProgram();
-        }else this.message=`${this.operation==='Home'?'Home':this.operation==='Saved position'?'Saved position':'Program pose'} frame time elapsed. Check live readings; exact arrival is not verified.`;
+        this.message=`${this.operation==='Home'?'Home':this.operation==='Saved position'?'Saved position':'Program pose'} frame time elapsed. Check live readings; exact arrival is not verified.`;
         this.changed();return;
       }
       this.lastMovingServos=[];
@@ -483,10 +400,10 @@ export class TeacherRobotControl {
     this.message = 'Holding confirmed. Movement controls remain off until Enable.'; this.changed();
   }
 
-  private write(packet: Uint8Array, completed: () => void, urgent = false, interval=500,coordinateAuthorized=false) {
+  private write(packet: Uint8Array, completed: () => void, urgent = false, interval=500) {
     // Defense at the transport boundary, including any retained native route.
     for(let offset=0;offset+5<packet.length;){
-      if(packet[offset+2]===255&&(packet[offset+4]===7||packet[offset+4]===8)&&!coordinateAuthorized){this.fault('XYZ commands are allowed only through the preflighted coordinate route.');return;}
+      if(packet[offset+2]===255&&(packet[offset+4]===7||packet[offset+4]===8)){this.fault(COORDINATE_EXECUTION_BLOCKED_REASON);return;}
       const length=packet[offset+3]!+4;if(length<6||offset+length>packet.length)break;offset+=length;
     }
     if (this.writeInFlight || (!urgent && this.now() - this.lastCommandAt < interval) || !this.port?.writable) {
@@ -519,7 +436,6 @@ export class TeacherRobotControl {
   private receive(bytes: Uint8Array) {
     for (const frame of this.parser.push(bytes)) {
       if (this.connectionState !== 'Listening') break;
-      if(frame.command===7){this.receiveCoordinateSolution(frame);continue;}
       if (frame.deviceId !== 255 || frame.command !== 11 || frame.payload.length !== 24) continue;
       const positions = decodePositions(frame), at = this.now();
       if (!positions) continue;
@@ -536,7 +452,7 @@ export class TeacherRobotControl {
       }
       if(!this.writeInFlight)this.readySamples=[...this.readySamples,{at,positions:[...positions]}].slice(-3);
     }
-    this.progressStopRelease();this.progressRecovery();this.updateDirectSession();this.progressCoordinate();
+    this.progressStopRelease();this.progressRecovery();this.updateDirectSession();
     this.changed();
   }
   tick() {
@@ -551,7 +467,7 @@ export class TeacherRobotControl {
       this.fault('Holding write deadline exceeded. Physical holding needs confirmation.'); return;
     }
     if (this.receivedAt === -Infinity ? this.now() - this.connectedAt > 2000 : this.now() - this.receivedAt > 1500) {
-      if (this.recoveryActive||((this.route?.activeRun||this.coordinate||this.program?.phase==='Running') && !this.faulted)) this.fault('Movement canceled after 1.5 seconds without valid feedback.'); this.changed(); return;
+      if (this.recoveryActive||((this.route?.activeRun||this.program?.phase==='Running') && !this.faulted)) this.fault('Movement canceled after 1.5 seconds without valid feedback.'); this.changed(); return;
     }
     // Ask the feedback supervisor to check its deadline even while a write hangs.
     if (this.route?.phase === 'Running') {
@@ -559,7 +475,7 @@ export class TeacherRobotControl {
       if (this.route.status().phase === 'Fault') { this.fault(this.route.message); return; }
       if(this.route.status().phase==='Complete')this.checkRoute();
     }
-    this.progressRecovery();this.updateDirectSession();this.progressCoordinate();this.flushLive();this.advanceProgram();this.pump(); this.changed();
+    this.progressRecovery();this.updateDirectSession();this.flushLive();this.advanceProgram();this.pump(); this.changed();
   }
 
   private retain() {
@@ -573,8 +489,8 @@ export class TeacherRobotControl {
     if(this.stopObservation?.outcome==='submitted'){this.stopObservation.outcome='unavailable';this.stopObservation.message=message;}
     this.recordEvent('fault',message);
     this.cancelProgram('Fault',message);
-    const moving=this.route?.activeRun||!!this.coordinate&&this.coordinate.phase!=='Calculating';
-    this.liveTarget=null;this.lastLive=null;this.coordinate=null;this.armed = false; this.faulted = true; this.generation++;
+    const moving=this.route?.activeRun;
+    this.liveTarget=null;this.lastLive=null;this.armed = false; this.faulted = true; this.generation++;
     if (this.route?.activeRun) this.route.fail(message);
     this.manual.interrupt(message, this.positions ?? []);  this.message = message+(moving?' Future targets canceled. Use Stop or the physical cutoff to intervene in the current movement.':''); this.changed();
   }
@@ -635,7 +551,7 @@ export class TeacherRobotControl {
     this.cancelProgram('Stopped','Stopped. Edit your program and run again when ready.');
     this.liveTarget=null;this.lastLive=null;
     const moving=holdAllJoints?[1,2,3,4,5,6]:[...new Set([...this.timedHoldServos,...this.lastMovingServos])]; this.lastMovingServos=[];this.timedHoldServos=[];
-    this.armed = false; this.generation++;this.coordinate=null; this.route?.stop();
+    this.armed = false; this.generation++; this.route?.stop();
     this.manual.interrupt('Stopped by teacher.', this.positions ?? []);
     this.message = 'Stopped. Future commands canceled; connection remains open.';
     if(moving.length&&this.connectionState==='Listening'&&!this.manual.blocked){

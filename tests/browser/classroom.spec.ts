@@ -36,30 +36,12 @@ async function station(page:Page){
  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+100));
  await page.addInitScript(()=>{
   const home=[2050,2150,2100,2200,2000,1080],positions=[...home],targets=[...home],speeds=Array(6).fill(600);
-  const state={positions,targets,writes:[] as number[][],requests:0,paused:false,weak:false,reportedPose:[39,-1,399,184,8,-87],pendingCoordinate:null as number[]|null,coordinateJointWrites:0,holding:true,j3Offset:0,ikTargets:null as number[]|null,minimumReleaseGapMs:0,lastPositionWriteAt:-Infinity,ignoredEarlyReleases:0,ignoreReleaseWrites:0,deferNextWrite:false,finishWrite:null as null|(()=>void)};Object.assign(window,{classroomRobot:state});
+  const state={positions,targets,writes:[] as number[][],requests:0,paused:false,weak:false,reportedPose:[39,-1,399,184,8,-87],holding:true,j3Offset:0,ikTargets:null as number[]|null,minimumReleaseGapMs:0,lastPositionWriteAt:-Infinity,ignoredEarlyReleases:0,ignoreReleaseWrites:0,deferNextWrite:false,finishWrite:null as null|(()=>void)};Object.assign(window,{classroomRobot:state});
   Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>{state.requests++;let timer:ReturnType<typeof setInterval>,reader:ReadableStreamDefaultController<Uint8Array>;return {
    open:async()=>{},close:async()=>clearInterval(timer),readable:new ReadableStream<Uint8Array>({start(controller){reader=controller;timer=setInterval(()=>{
     if(state.paused)return;if(state.holding)positions.forEach((value,i)=>{const delta=targets[i]!-(i===2?state.j3Offset:0)-value;positions[i]=value+Math.sign(delta)*Math.min(Math.abs(delta),speeds[i]*.1);});
     const body=[255,26,11,...state.reportedPose.flatMap(value=>[value&255,(value>>8)&255]),...positions.flatMap(value=>[value&255,value>>8])];controller.enqueue(Uint8Array.from([255,255,...body,(~(state.weak?body.slice(0,3):body).reduce((a,b)=>a+b,0))&255]));
-   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){
-    state.writes.push([...bytes]);
-    for(let offset=0;offset<bytes.length;){
-     const b=bytes.slice(offset,offset+bytes[offset+3]!+4),word=(i:number)=>{const value=b[i]!+256*b[i+1]!;return value>=32768?value-65536:value;};
-     if(b[2]===255&&b[4]===7&&state.ikTargets){
-      state.pendingCoordinate=[word(7),word(9),word(11),word(5),word(13),word(15)];state.coordinateJointWrites=0;
-      const body=[255,26,7,...b.slice(7,13),...b.slice(5,7),...b.slice(13,17),...state.ikTargets.flatMap(n=>[n&255,n>>8])];
-      setTimeout(()=>reader.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255])),20);
-     }else if(b[2]===255&&b[4]===61){
-      if(b[5]===0&&(state.ignoreReleaseWrites>0||performance.now()-state.lastPositionWriteAt<state.minimumReleaseGapMs)){if(state.ignoreReleaseWrites>0)state.ignoreReleaseWrites--;state.ignoredEarlyReleases++;}
-      else state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);
-     }else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){
-      state.lastPositionWriteAt=performance.now();targets[b[2]!-1]=b[7]!+256*b[8]!;speeds[b[2]!-1]=b[11]!+256*b[12]!;
-      if(state.pendingCoordinate&&++state.coordinateJointWrites===6){state.reportedPose=[...state.pendingCoordinate];state.pendingCoordinate=null;}
-     }
-     offset+=b.length;
-    }
-    if(state.deferNextWrite){state.deferNextWrite=false;return new Promise<void>(resolve=>state.finishWrite=resolve);}
-   }})
+   },100);},cancel(){clearInterval(timer);}}),writable:new WritableStream<Uint8Array>({write(bytes){state.writes.push([...bytes]);for(let offset=0;offset<bytes.length;){const b=bytes.slice(offset,offset+bytes[offset+3]!+4);if(b[2]===255&&b[4]===7&&state.ikTargets){const body=[255,26,7,...b.slice(7,13),...b.slice(5,7),...b.slice(13,17),...state.ikTargets.flatMap(n=>[n&255,n>>8])];setTimeout(()=>reader.enqueue(Uint8Array.from([255,255,...body,(~body.reduce((a,b)=>a+b,0))&255])),20);}else if(b[2]===255&&b[4]===61){if(b[5]===0&&(state.ignoreReleaseWrites>0||performance.now()-state.lastPositionWriteAt<state.minimumReleaseGapMs)){if(state.ignoreReleaseWrites>0)state.ignoreReleaseWrites--;state.ignoredEarlyReleases++;}else state.holding=b[5]===1;if(state.holding)positions.forEach((value,i)=>targets[i]=value);}else if(b[2]!>=1&&b[2]!<=6&&b[5]===41){state.lastPositionWriteAt=performance.now();targets[b[2]!-1]=b[7]!+256*b[8]!;speeds[b[2]!-1]=b[11]!+256*b[12]!;}offset+=b.length;}if(state.deferNextWrite){state.deferNextWrite=false;return new Promise<void>(resolve=>state.finishWrite=resolve);}}})
   };}}});
  });
  await page.goto('/');
@@ -152,7 +134,7 @@ test('Save includes unused positions; New clears them and Load restores only tha
 });
 
 test('newly recorded unused positions travel with the file and imported positions can be deleted without reappearing',async({page})=>{
- await station(page);await connect(page);await page.getByRole('textbox',{name:'Position name'}).fill('Recorded first');await clickControl(page,'Record current XYZ position');await page.getByRole('textbox',{name:'Position name'}).fill('Recorded unused');await clickControl(page,'Record current XYZ position');
+ await station(page);await connect(page);await page.getByRole('textbox',{name:'Position name'}).fill('Recorded first');await clickControl(page,'Record current position');await page.getByRole('textbox',{name:'Position name'}).fill('Recorded unused');await clickControl(page,'Record current position');
  await page.getByRole('button',{name:'Add position Recorded first to code',exact:true}).click();const download=page.waitForEvent('download');await clickControl(page,'Save program');const text=await readFile((await (await download).path())!,'utf8');const file=JSON.parse(text);expect(file.positions.map((p:{name:string})=>p.name)).toEqual(['Recorded first','Recorded unused']);expect(file.instructions).toHaveLength(1);
  await clickControl(page,'New empty program');await expect(page.locator('#saved-positions li')).toHaveCount(0);await page.locator('#program-file').setInputFiles({name:'Recorded.json',mimeType:'application/json',buffer:Buffer.from(text)});await expect(page.locator('#program-file-status')).toContainText('loaded for review');await expect(page.locator('#saved-positions li')).toHaveCount(2);
  await clickControl(page,'Delete position Recorded first');await clickControl(page,'Run program');await expect(page.locator('#run-status')).toContainText('saved position is missing');expect(await writes(page)).toHaveLength(0);await clickControl(page,'Disconnect robot');
@@ -546,27 +528,22 @@ test('a saved program replaces the working position list and restores its poses 
  await connect(page);expect(await writes(page)).toHaveLength(0);await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(3600);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);
  await clickControl(page,'Disconnect robot');
 });
-test('XYZ blocks load without movement and run only after a calculation-only joint solution',async({page})=>{
- await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{ikTargets:number[]}}).classroomRobot.ikTargets=[2050,2150,2100,2200,2000,1080]);
- const xyz={kind:'coordinates',blockId:'xyz',x:54,y:-1,z:399,pitch:18.4,roll:8,claw:-87,durationMs:300};
- await page.locator('#program-file').setInputFiles({name:'xyz.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[xyz]}))});
- await expect(page.getByRole('region',{name:'Blocks workspace.',exact:true}).locator('.lesson_coordinates')).toHaveCount(1);expect(await writes(page)).toHaveLength(0);
- await clickControl(page,'Run program');await page.clock.runFor(1000);await expect(page.locator('#state')).toHaveText('Completed');expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3]);
- await expect(page.locator('#joints .joint-card strong').first()).toHaveText('54');await clickControl(page,'Disconnect robot');
-});
-test('axis jog and relative-axis blocks use the same calculation-first XYZ route',async({page})=>{
- await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{ikTargets:number[]}}).classroomRobot.ikTargets=[2050,2150,2100,2200,2000,1080]);
- await page.getByRole('tab',{name:'Positions',exact:true}).click();await page.locator('[data-axis="x"][data-direction="1"]').click();await page.clock.runFor(1000);
- expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3]);await expect(page.locator('#teach-readings [data-coordinate="x"] input')).toHaveValue('44');
- const delta={kind:'coordinateDelta',blockId:'delta',axis:'z',amount:5,durationMs:500};
- await page.locator('#program-file').setInputFiles({name:'jog.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[delta]}))});await clickControl(page,'Run program');await page.clock.runFor(1200);
- expect((await writes(page)).map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3,7,3,3,3,3,3,3]);await expect(page.locator('#teach-readings [data-coordinate="z"] input')).toHaveValue('404');await clickControl(page,'Disconnect robot');
-});
-test('a 150 mm relative-axis block exceeds the old cap and accepts the temporary J4=3054 target',async({page})=>{
- await station(page);await connect(page);await page.evaluate(()=>(window as unknown as {classroomRobot:{ikTargets:number[]}}).classroomRobot.ikTargets=[2050,2150,2100,3054,2000,1080]);
- const delta={kind:'coordinateDelta',blockId:'large-z',axis:'z',amount:150,durationMs:1000};
- await page.locator('#program-file').setInputFiles({name:'large-z.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:2,instructions:[delta]}))});await clickControl(page,'Run program');await page.clock.runFor(2500);
- await expect(page.locator('#state')).toHaveText('Completed');const commands=await writes(page);expect(commands.map(bytes=>bytes[4])).toEqual([7,3,3,3,3,3,3]);expect(commands[4]![2]).toBe(4);expect(commands[4]![7]!+256*commands[4]![8]!).toBe(3054);await expect(page.locator('#joints .joint-card strong').nth(2)).toHaveText('549');await clickControl(page,'Disconnect robot');
+test('joint programming hides XYZ and rejects old XYZ files without replacing the current program',async({page})=>{
+ await station(page);await connect(page);await clickControl(page,'Reload lesson');
+ await expect(page.locator('#add-coordinate, #robot-xyz')).toHaveCount(0);
+ await expect(page.locator('.blocklyFlyout:not(.blocklyTrashcanFlyout)')).not.toContainText('move to X');
+ await expect(page.getByRole('region',{name:'Blocks workspace.',exact:true}).locator('.lesson_repeat .math_number .blocklyText').first()).toHaveText('2');
+ const xyz={kind:'coordinates',blockId:'old-xyz',x:39,y:-1,z:-71,pitch:18.4,roll:8,claw:-87,durationMs:1000};
+ for(const instructions of [[xyz],[{kind:'repeat',blockId:'old-repeat',count:2,body:[xyz]}]]){
+  const file={format:'nexarm-classroom-program',schemaVersion:1,instructions};
+  await page.locator('#program-file').setInputFiles({name:'old-xyz.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(file))});
+  await expect(page.locator('#program-file-status')).toContainText('XYZ coordinate blocks are no longer supported');
+  await expect(page.getByRole('region',{name:'Blocks workspace.',exact:true}).locator('.lesson_repeat .math_number .blocklyText').first()).toHaveText('2');
+  expect(await writes(page)).toHaveLength(0);
+ }
+ await clickControl(page,'Load short practice program');await clickControl(page,'Run program');await page.clock.runFor(2300);
+ await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(2);
+ await clickControl(page,'Disconnect robot');
 });
 
 test('editing a joint-only program does not connect USB and the simulator stays hidden',async({page})=>{
@@ -582,7 +559,7 @@ test('after Home readiness, a small J3 pose target completes on its editable dur
  await editNumber(page,'lesson_pose','2');
  await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(1500);await expect(page.locator('#state')).toHaveText('Running');expect(await writes(page)).toHaveLength(6);
  const command=(await writes(page))[2]!;expect(command[2]).toBe(3);expect(command[7]!+256*command[8]!).toBe(2127);
- await page.clock.runFor(700);await expect(page.locator('#state')).toHaveText('Completed');await expect(page.locator('#run-status')).toContainText('timing complete');await expect(page.locator('.joint-card strong').nth(2)).toHaveText('399');expect(await writes(page)).toHaveLength(6);await clickControl(page,'Disconnect robot');
+ await page.clock.runFor(700);await expect(page.locator('#state')).toHaveText('Completed');await expect(page.locator('#run-status')).toContainText('timing complete');await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2100');expect(await writes(page)).toHaveLength(6);await clickControl(page,'Disconnect robot');
 });
 test('a measured 32-unit J3 offset advances through Blockly by frame time without retries',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[
@@ -592,9 +569,9 @@ test('a measured 32-unit J3 offset advances through Blockly by frame time withou
  await selectPosition(page,'reach');await appendPosition(page);await dragBlock(page,'Control','wait');await selectPosition(page,'home');await appendPosition(page);
  await page.evaluate(()=>(window as unknown as {classroomRobot:{j3Offset:number}}).classroomRobot.j3Offset=32);
  await clickControl(page,'Run program');await expect(page.locator('#state')).toHaveText('Running');await page.clock.runFor(2000);
- await expect(page.locator('.joint-card strong').nth(2)).toHaveText('399');await expect(page.locator('#run-status')).toContainText('Waiting');expect(await writes(page)).toHaveLength(6);
+ await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2806');await expect(page.locator('#run-status')).toContainText('Waiting');expect(await writes(page)).toHaveLength(6);
  const first=(await writes(page))[2]!;expect(first[2]).toBe(3);expect(first[7]!+256*first[8]!).toBe(2838);
- await page.clock.runFor(3000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);await expect(page.locator('.joint-card strong').nth(2)).toHaveText('399');
+ await page.clock.runFor(3000);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);await expect(page.locator('.joint-card strong').nth(2)).toHaveText('2068');
  await page.clock.runFor(3000);expect(await writes(page)).toHaveLength(12);await clickControl(page,'Disconnect robot');
 });
 test('endpoint-path deviations do not interrupt timed pose playback and Stop remains available',async({page})=>{
@@ -608,35 +585,31 @@ test('endpoint-path deviations do not interrupt timed pose playback and Stop rem
  await page.evaluate(()=>{const s=(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot;s.positions.forEach((value,i)=>s.positions[i]=value+240);});
  await page.clock.runFor(100);await expect(page.locator('#state')).toHaveText('Running');await expect(page.locator('#robot-status')).not.toContainText('outside its commanded path');
  await page.clock.runFor(2200);await expect(page.locator('#state')).toHaveText('Completed');expect(await writes(page)).toHaveLength(12);await ready(page);
- await expect(page.locator('.joint-card strong').first()).toHaveText('39');
+ await expect(page.locator('.joint-card strong').first()).toHaveText('2290');
  await clickControl(page,'Stop');await waitForRelease(page);expect(await writes(page)).toHaveLength(14);expect((await writes(page)).at(-2)).toHaveLength(84);expect((await writes(page)).at(-1)![4]).toBe(61);
  await page.clock.runFor(1000);expect(await writes(page)).toHaveLength(14);await clickControl(page,'Disconnect robot');
 });
 
-test('live coordinate boxes show ranges beside the name and block every out-of-range or stale capture',async({page})=>{
+test('live recording boxes show ranges beside the name and block every out-of-range or stale capture',async({page})=>{
  await station(page);await connect(page);await page.getByRole('tab',{name:'Positions',exact:true}).click();await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);
- const name=page.getByRole('textbox',{name:'Position name'}),record=page.getByRole('button',{name:'Record current XYZ position',exact:true});await name.fill('Pickup');
- await expect(page.locator('#teach-readings .teach-reading')).toHaveCount(6);await expect(page.locator('#teach-joints .joint-safety-card')).toHaveCount(6);await expect(page.locator('#joint-safety-status')).toContainText('All six joints');await expect(record).toBeEnabled();
- const nameBox=await name.boundingBox(),readingsBox=await page.locator('#teach-readings').boundingBox();expect(Math.abs(readingsBox!.x-nameBox!.x)).toBeLessThan(5);expect(nameBox!.y-readingsBox!.y).toBeLessThan(550);
- const keys=['x','y','z','pitch','roll','claw'],labels=['X (mm)','Y (mm)','Z (mm)','P · pitch (degrees)','R · roll (degrees)','C · claw (degrees)'],invalid=[[-1,551],[-551,551],[-571,571],[-1801,1801],[-91,91],[-91,91]],home=[39,-1,399,184,8,-87];
+ const name=page.getByRole('textbox',{name:'Position name'}),record=page.getByRole('button',{name:'Record current position',exact:true});await name.fill('Pickup');
+ await expect(page.locator('#teach-readings .teach-reading')).toHaveCount(6);await expect(record).toBeEnabled();
+ const nameBox=await name.boundingBox(),readingsBox=await page.locator('#teach-readings').boundingBox();expect(Math.abs(readingsBox!.x-nameBox!.x)).toBeLessThan(5);expect(nameBox!.y-readingsBox!.y).toBeLessThan(300);
+ const limits=[[900,3000],[525,2600],[2000,2900],[1250,3000],[1024,3072],[1024,2731]],home=[2050,2150,2100,2200,2000,1080];
  for(let i=0;i<6;i++){
-   const box=page.locator(`.teach-reading[data-coordinate="${keys[i]}"]`),input=page.getByRole('textbox',{name:`${labels[i]} reported value`,exact:true});
-   for(const raw of invalid[i]!){
-     const pose=[...home];pose[i]=raw;await page.evaluate(pose=>(window as unknown as {classroomRobot:{reportedPose:number[]}}).classroomRobot.reportedPose.splice(0,6,...pose),pose);await page.clock.runFor(100);
-     await expect(input).toHaveValue(String(i===3?raw/10:raw));await expect(input).toHaveAttribute('readonly','');await expect(input).toHaveAttribute('aria-invalid','true');await expect(box).toHaveCSS('border-top-color','rgb(180, 35, 24)');await expect(box).toContainText('Outside input range');await expect(record).toBeDisabled();
+   const box=page.locator(`.teach-reading[data-joint="${i+1}"]`),input=page.getByRole('textbox',{name:`J${i+1} reported position`,exact:true});await expect(box).toContainText(`${limits[i]![0]}–${limits[i]![1]}`);
+   for(const value of [limits[i]![0]!-1,limits[i]![1]!+1]){
+     const pose=[...home];pose[i]=value;await page.evaluate(pose=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions.splice(0,6,...pose),pose);await page.clock.runFor(100);
+     await expect(input).toHaveValue(String(value));await expect(input).toHaveAttribute('readonly','');await expect(input).toHaveAttribute('aria-invalid','true');await expect(box).toHaveCSS('border-top-color','rgb(180, 35, 24)');await expect(box).toContainText('Out of range');await expect(record).toBeDisabled();await expect(page.locator('#pose-capture-status')).toContainText(`J${i+1}`);
    }
-   await page.evaluate(pose=>(window as unknown as {classroomRobot:{reportedPose:number[]}}).classroomRobot.reportedPose.splice(0,6,...pose),home);await page.clock.runFor(100);await expect(input).toHaveAttribute('aria-invalid','false');await expect(record).toBeEnabled();
+   await page.evaluate(pose=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions.splice(0,6,...pose),home);await page.clock.runFor(100);await expect(input).toHaveAttribute('aria-invalid','false');await expect(record).toBeEnabled();
  }
- const j4=page.locator('.joint-safety-card[data-joint="4"]');
- await page.evaluate(()=>{const robot=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;robot.positions[3]=robot.targets[3]=3379;});await page.clock.runFor(100);
- await expect(j4).toContainText('3379');await expect(j4).toContainText('Accepted 1250');await expect(j4).toContainText('OUTSIDE RANGE');await expect(j4).toHaveCSS('border-top-color','rgb(180, 35, 24)');
- await expect(page.locator('#joint-safety')).toHaveClass(/out-of-range/);await expect(page.locator('#joint-safety-status')).toContainText('J4 is 3379');await expect(page.locator('#pose-capture-status')).toContainText('J4 is 3379');await expect(record).toBeDisabled();
- await page.evaluate(()=>{const robot=(window as unknown as {classroomRobot:{positions:number[];targets:number[]}}).classroomRobot;robot.positions[3]=robot.targets[3]=2200;});await page.clock.runFor(100);await expect(j4).not.toHaveClass(/out-of-range/);await expect(record).toBeEnabled();
  expect(await writes(page)).toHaveLength(1);expect(await page.evaluate(()=>localStorage.getItem('nexarm.named-positions.v1'))).toBeNull();
- await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=true);await page.clock.runFor(700);await expect(record).toBeDisabled();await expect(page.locator('#pose-capture-status')).toContainText('fresh live coordinate readings');await expect(page.locator('#teach-readings')).toContainText('Last reading');
+ await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=true);await page.clock.runFor(700);await expect(record).toBeDisabled();await expect(page.locator('#pose-capture-status')).toContainText('fresh live readings');await expect(page.locator('#teach-readings')).toContainText('last reading');
  await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=false);await page.clock.runFor(100);await expect(record).toBeEnabled();await record.click();await expect(page.locator('#saved-positions')).toContainText('Pickup');expect(await writes(page)).toHaveLength(1);
- expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!).poses[0])).toMatchObject({kind:'coordinates',coordinates:{x:39,y:-1,z:399,pitch:18.4,roll:8,claw:-87}});
- await page.setViewportSize({width:390,height:800});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await clickControl(page,'Disconnect robot');
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!).poses[0].positions)).toEqual(home);
+ await page.setViewportSize({width:390,height:800});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await clickControl(page,'Disconnect robot');
 });
 test('invalid recorded targets are flagged and prevent the entire live program without clearing Enable',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('nexarm.named-positions.v1',JSON.stringify({format:'nexarm-named-positions',schemaVersion:1,poses:[{id:'t2',name:'t2',positions:[1968,1335,3144,3407,2109,2397],capturedAt:'2026-10-23T00:00:00Z'}]})));
@@ -655,7 +628,7 @@ test('saved pose buttons send six targets after Connect and finish at frame time
  await expect(move).toBeDisabled();await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();
  expect(await writes(page)).toHaveLength(6);expect((await writes(page))[0]).toHaveLength(14);await page.clock.runFor(1200);
  await expect(page.locator('#state')).toHaveText('Complete');await expect(move).toBeEnabled();
- expect(await page.locator('.joint-card strong').allTextContents()).toEqual(['39','-1','399','18.4','8','-87']);
+ expect(await page.locator('.joint-card strong').allTextContents()).toEqual(['2130','2230','2180','2280','2080','1160']);
  await clickControl(page,'Move to position Home');await page.clock.runFor(1300);await expect(page.locator('#state')).toHaveText('Complete');expect(await writes(page)).toHaveLength(12);
  await clickControl(page,'Disconnect robot');
 });
@@ -747,9 +720,9 @@ test('release, hand-position, name and record, then restore holding without a re
  await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);
  expect((await writes(page))[0]).toEqual([255,255,255,3,61,0,192]);await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();
  const pose=[2070,2160,2080,2190,2010,1100];await page.evaluate(pose=>(window as unknown as {classroomRobot:{positions:number[]}}).classroomRobot.positions.splice(0,6,...pose),pose);await page.clock.runFor(100);
- await page.getByRole('textbox',{name:'Position name'}).fill('Pickup');await clickControl(page,'Record current XYZ position');
- await expect(page.locator('#saved-positions')).toContainText('Pickup');await expect(page.locator('#saved-positions')).toContainText('X 39');expect(await writes(page)).toHaveLength(1);
- const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!));expect(stored.poses[0]).toMatchObject({kind:'coordinates',coordinates:{x:39,y:-1,z:399,pitch:18.4,roll:8,claw:-87}});
+ await page.getByRole('textbox',{name:'Position name'}).fill('Pickup');await clickControl(page,'Record current position');
+ await expect(page.locator('#saved-positions')).toContainText('Pickup');await expect(page.locator('#saved-positions')).toContainText('S2: 2160');expect(await writes(page)).toHaveLength(1);
+ const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('nexarm.named-positions.v1')!));expect(stored.poses[0].positions).toEqual(pose);
  await clickControl(page,'Hold current position');await page.clock.runFor(600);expect((await writes(page))[1]).toEqual([255,255,255,3,61,1,191]);
  expect(await writes(page)).toHaveLength(2);
  await ready(page);await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeEnabled();
@@ -761,7 +734,7 @@ test('release, hand-position, name and record, then restore holding without a re
 test('stale capture is blocked and interrupted teaching survives reload without automatic restore',async({page})=>{
  await station(page);await connect(page);await page.getByRole('tab',{name:'Positions',exact:true}).click();await clickControl(page,'Release servos for hand positioning');await page.clock.runFor(600);
  await page.getByRole('textbox',{name:'Position name'}).fill('Dropoff');await page.evaluate(()=>(window as unknown as {classroomRobot:{paused:boolean}}).classroomRobot.paused=true);await page.clock.runFor(700);
- await expect(page.getByRole('button',{name:'Record current XYZ position',exact:true})).toBeDisabled();expect(await writes(page)).toHaveLength(1);
+ await expect(page.getByRole('button',{name:'Record current position',exact:true})).toBeDisabled();expect(await writes(page)).toHaveLength(1);
  await clickControl(page,'Disconnect robot');await page.reload();await connect(page);expect(await writes(page)).toEqual([]);
  await expect(page.locator('#teach-status')).toContainText('Recovery required');await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();
  await clickControl(page,'Clear saved positions');await expect(page.getByRole('button',{name:'Run program',exact:true})).toBeDisabled();

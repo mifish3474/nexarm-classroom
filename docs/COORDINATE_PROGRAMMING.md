@@ -1,26 +1,9 @@
-# Endpoint-first XYZ/P/R/C programming: dev.72
+# Checked XYZ/P/R/C programming: dev.43
 
-XYZ programming returned with explicit operator approval for the one development
-robot. Dev.70 requests one command-7 calculation for the exact final XYZ/P/R/C
-destination, validates all six returned joint targets, and only then sends that
-accepted solution through `TimedPoseMotion`. The same executor serves absolute
-blocks, relative-axis blocks, axis jogs and newly saved coordinate positions.
-Factory command-7 IK is retained, while command-8 timing is no longer used for
-playback; custom firmware remains out of scope.
-
-The first physical check should be one 5 mm axis jog from a clear, known pose.
-Final passive feedback is compared with 8 mm X/Y/Z and 4 degree P/R/C reporting
-tolerances. A difference is reported but does not retry, fault, or stop later blocks.
-These controls do not prove collision clearance, force limiting, singularity
-avoidance or a certified stop. See the dev.68 section of
-[implementation notes](./IMPLEMENTATION_NOTES.md) for the current implementation.
-
-## Historical dev.43 record
-
-The material below records the earlier investigation. Dev.70 uses the calculated
-endpoint as a timed joint pose after an endpoint-only preflight. It does not
-calculate or physically replay intermediate Cartesian samples and does not use
-command 8.
+**Historical reference only. XYZ programming was removed in dev.47.** Programs
+now use joint moves and saved six-joint positions. Old XYZ program files are
+rejected with an explanation, preserving the current editor. Do not follow the
+old testing instructions below. Custom ESP32/AT32 firmware is outside scope.
 
 Dev.43 immediately reports a fully checked calculation reply containing 24
 zero bytes as **no usable joint solution supplied**. The block-4 diagnostic
@@ -108,9 +91,6 @@ physical clearance/Stop validation remain student-release requirements.
 
 Development input bounds remain X 0–550, Y -550–550, Z -570–570, P -180–180,
 R/C -90–90. Z=-71 is accepted. These are input bounds, not a calibrated workspace.
-Relative instruction amounts may span the corresponding full domain: X ±550,
-Y ±1100 and Z ±1140 mm. The amount is then added to the fresh reported position;
-the resulting absolute coordinate must still remain inside the bounds above.
 
 1. Refresh and confirm **0.7.0-dev.43**. Connect and check the live joint and
    XYZ/P/R/C readings under **Robot readings and diagnostics** against the LCD.

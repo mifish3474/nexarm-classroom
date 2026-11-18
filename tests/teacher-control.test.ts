@@ -319,54 +319,27 @@ describe('teacher Home planning', () => {
 
 
 describe('smooth teacher controls',()=>{
- it('preflights XYZ and executes the final solution as one factory-style timed joint pose',async()=>{
-   const f=fixture({directSession:true});await f.ready();const target={x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300};
-   f.control.moveToCoordinates(target);await flush();expect(f.writes).toHaveLength(1);expect(f.writes[0]!.bytes[4]).toBe(7);
-   await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);f.setTime(1120);f.control.tick();await flush();await dispatchPose(f);
-   expect(f.writes).toHaveLength(7);expect(f.writes.slice(1).every(write=>write.bytes[4]===3)).toBe(true);
-   await f.feed(1430,TEACHER_HOME,false,[15,0,0,0,0,0]);f.control.tick();
-   expect(f.control.snapshot().coordinate).toBeNull();expect(f.control.snapshot().message).toContain('inside reporting tolerances');f.control.disconnect();await flush();
- });
- it('reports coordinate endpoint error without faulting or retrying after frame time',async()=>{
-   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();
-   await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);f.setTime(1120);f.control.tick();await flush();await dispatchPose(f);
-   await f.feed(1430,TEACHER_HOME,false,[0,0,0,0,0,0]);f.control.tick();
-   expect(f.control.snapshot()).toMatchObject({faulted:false,coordinate:null});expect(f.control.snapshot().message).toContain('Movement complete');expect(f.writes).toHaveLength(7);f.control.disconnect();await flush();
- });
- it('rejects an XYZ calculation outside a joint operating range before movement',async()=>{
-   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();
-   const invalid=[...TEACHER_HOME];invalid[2]=1999;await f.solution(invalid,[15,0,0,0,0,0]);
-   expect(f.writes).toHaveLength(1);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('J3 target 1999');f.control.disconnect();await flush();
- });
- it('rejects a direct XYZ route that starts outside a joint operating range before command 7',async()=>{
-   const f=fixture({directSession:true}),outside=[...TEACHER_HOME];outside[3]=3101;await f.ready(outside);
-   expect(()=>f.control.jogCoordinate('z',5)).toThrow('Current pose for XYZ movement: J4 target 3101');expect(f.writes).toHaveLength(0);f.control.disconnect();await flush();
- });
- it('calculates only the final destination before sending the first coordinated joint target',async()=>{
-   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:30,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:600});await flush();
-   expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);await f.solution(TEACHER_HOME,[30,0,0,0,0,0]);
-   expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);f.setTime(1150);f.control.tick();await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7,3]);expect(f.writes[1]!.bytes[2]).toBe(1);f.control.disconnect();await flush();
- });
- it('rejects an all-zero final destination result without sending joint movement',async()=>{
-   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:30,y:0,z:100,pitch:0,roll:0,claw:0,durationMs:600});await flush();
-   await f.solution([0,0,0,0,0,0],[0,0,0,0,0,0]);expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('Final XYZ destination was rejected');expect(f.control.snapshot().message).toContain('all-zero calculation result');f.control.disconnect();await flush();
- });
- it('cancels a direct XYZ preflight after feedback becomes stale and never sends movement later',async()=>{
-   const f=fixture({directSession:true});await f.ready();f.control.moveToCoordinates({x:15,y:0,z:0,pitch:0,roll:0,claw:0,durationMs:300});await flush();expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);
-   f.setTime(2701);f.control.tick();expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('without valid feedback');await f.solution(TEACHER_HOME,[15,0,0,0,0,0]);expect(f.writes.map(write=>write.bytes[4])).toEqual([7]);f.control.disconnect();await flush();
+ it.each(['first','after joint','after pose','after wait','inside repeat'])('rejects retired XYZ %s before Home, calculation, or joint writes',async placement=>{
+   const f=fixture({directSession:true,homeBeforeProgram:true});await f.ready(TEACHER_HOME.map(n=>n+100));
+   const xyz={kind:'coordinates',blockId:'c',x:39,y:-1,z:-71,pitch:18.4,roll:8,claw:-87,durationMs:2000};
+   const first=placement==='after joint'?{kind:'move',blockId:'j',servo:1,target:2130}:placement==='after pose'?{kind:'pose',blockId:'p',positionId:'p',name:'P',positions:[...TEACHER_HOME]}:{kind:'wait',blockId:'w',durationMs:1000};
+   const program=placement==='first'?[xyz]:placement==='inside repeat'?[{kind:'repeat',blockId:'r',count:2,body:[xyz]}]:[first,xyz];
+   expect(()=>f.control.runProgram(program)).toThrow('XYZ coordinate blocks are no longer supported');
+   for(let at=1200;at<=3500;at+=100){await f.feed(at);f.control.tick();await flush();}expect(f.writes).toHaveLength(0);
+   f.control.disconnect();await flush();
  });
  it.each([false,true])('rejects native packets at the writer boundary even with a preceding joint packet: %s',async prefixJoint=>{
    const f=fixture({directSession:true});await f.ready();let callback=false;
    const gateway=f.control as unknown as {write:(packet:Uint8Array,completed:()=>void)=>void};
    const native=encodeCoordinateTarget({x:200,y:0,z:200,pitch:0,roll:0,claw:0,durationMs:2000});
    gateway.write(prefixJoint?Uint8Array.from([...encodeSpeedPosition(1,2130,600,10),...native]):native,()=>{callback=true;});await flush();
-   expect(f.writes).toHaveLength(0);expect(callback).toBe(false);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('preflighted coordinate route');f.control.disconnect();await flush();
+   expect(f.writes).toHaveLength(0);expect(callback).toBe(false);expect(f.control.snapshot().faulted).toBe(true);expect(f.control.snapshot().message).toContain('no longer supported');f.control.disconnect();await flush();
  });
  it('also rejects calculation-only XYZ packets before any USB write',async()=>{
    const f=fixture({directSession:true});await f.ready();let completed=false;
    const gateway=f.control as unknown as {write:(packet:Uint8Array,completed:()=>void)=>void};
    gateway.write(encodeCoordinateCalculation({x:200,y:0,z:200,pitch:0,roll:0,claw:0,durationMs:1000}),()=>{completed=true;});await flush();
-   expect(f.writes).toHaveLength(0);expect(completed).toBe(false);expect(f.control.snapshot().message).toContain('preflighted coordinate route');f.control.disconnect();await flush();
+   expect(f.writes).toHaveLength(0);expect(completed).toBe(false);expect(f.control.snapshot().message).toContain('no longer supported');f.control.disconnect();await flush();
  });
  it('reports passive coordinates with freshness and diagnostics, rejects weak updates, and clears them on reconnect without writes',async()=>{
    const f=fixture({directSession:true});await f.ready();
@@ -484,7 +457,7 @@ describe('smooth teacher controls',()=>{
  it('checks slider, jog and factory comparison targets without blocking read-only out-of-range feedback or Stop holds',async()=>{
    const f=fixture(),outside=[2050,2150,3003,3084,2000,1080];await f.ready(outside);f.control.enable(true);
    expect(f.control.snapshot().positions).toEqual(outside);expect(()=>f.control.capturePosition()).toThrow('Cannot record position');
-   expect(()=>f.control.moveJoint(3,2901)).toThrow('2000–2900');expect(()=>f.control.liveJoint(4,3101)).toThrow('1250–3100');
+   expect(()=>f.control.moveJoint(3,2901)).toThrow('2000–2900');expect(()=>f.control.liveJoint(4,3001)).toThrow('1250–3000');
    expect(()=>f.control.jog(3,20)).toThrow('J3');expect(()=>f.control.compareServo3Factory()).toThrow('J3');expect(f.writes).toHaveLength(0);
    f.control.moveJoint(3,2900);await flush();expect(f.writes[0]!.bytes[7]!+256*f.writes[0]!.bytes[8]!).toBe(2900);
    f.control.stop();await flush();expect(f.writes[1]!.bytes[7]!+256*f.writes[1]!.bytes[8]!).toBe(3003);

@@ -27,8 +27,6 @@ Blockly.defineBlocksWithJsonArray([
   {type:'lesson_start',message0:'When Run clicked',nextStatement:null,colour:'#086b73',tooltip:'The program begins here.'},
   {type:'lesson_key',message0:'When %1 pressed',args0:[{type:'field_dropdown',name:'KEY',options:[['Choose key (Space is Stop)','unassigned'],...KEY_OPTIONS]}],nextStatement:null,colour:'#946f12',tooltip:'Run starts listening. One press runs this stack when the robot is idle. Space and Stop end listening.'},
   {type:'lesson_move',message0:'move joint %1 to %2',args0:[{type:'field_dropdown',name:'SERVO',options:['1','2','3','4','5','6'].map(id=>[id,id])},{type:'input_value',name:'TARGET',check:'Number'}],previousStatement:null,nextStatement:null,colour:'#2b6fa8',tooltip:'A whole-number raw target within this joint’s operating range.'},
-  {type:'lesson_coordinates',message0:'move to X %1 Y %2 Z %3',args0:[{type:'input_value',name:'X',check:'Number'},{type:'input_value',name:'Y',check:'Number'},{type:'input_value',name:'Z',check:'Number'}],message1:'P %1 R %2 C %3',args1:[{type:'input_value',name:'PITCH',check:'Number'},{type:'input_value',name:'ROLL',check:'Number'},{type:'input_value',name:'CLAW',check:'Number'}],message2:'over %1 seconds',args2:[{type:'input_value',name:'SECONDS',check:'Number'}],previousStatement:null,nextStatement:null,colour:'#2b6fa8',tooltip:'Ask the robot to calculate the exact XYZ destination, check all six final joint targets, then make one smooth coordinated move.'},
-  {type:'lesson_coordinate_delta',message0:'move %1 by %2 mm over %3 seconds',args0:[{type:'field_dropdown',name:'AXIS',options:[['X','x'],['Y','y'],['Z','z']]},{type:'input_value',name:'AMOUNT',check:'Number'},{type:'input_value',name:'SECONDS',check:'Number'}],previousStatement:null,nextStatement:null,colour:'#2b6fa8',tooltip:'Move a relative distance while keeping orientation. Limits: X ±550, Y ±1100, Z ±1140 mm; the resulting final coordinate must still be valid and reachable.'},
   {type:'lesson_home',message0:'move to Home',previousStatement:null,nextStatement:null,colour:'#2b6fa8',tooltip:'Move all six joints together to the established Home using the current Home motion settings. Keep the whole sweep clear.'},
   {type:'lesson_repeat',message0:'repeat %1 times',args0:[{type:'input_value',name:'COUNT',check:'Number'}],message1:'do %1',args1:[{type:'input_statement',name:'BODY'}],previousStatement:null,nextStatement:null,colour:'#9b620d',tooltip:'Evaluate the count once, then repeat 1–20 times.'},
   {type:'lesson_wait',message0:'wait %1 seconds',args0:[{type:'input_value',name:'SECONDS',check:'Number'}],previousStatement:null,nextStatement:null,colour:'#9b620d',tooltip:'Wait 0–10 seconds, in tenth-second steps.'},
@@ -61,7 +59,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     grid:{spacing:20,length:1,colour:'#cad7e2',snap:false},
     toolbox:{kind:'categoryToolbox',contents:[
       {kind:'category',name:'Events',colour:'#946f12',contents:[{kind:'block',type:'lesson_key',fields:{KEY:'a'}}]},
-      {kind:'category',name:'Motion',colour:'#2b6fa8',contents:[{kind:'block',type:'lesson_coordinates',inputs:{X:numberInput(200),Y:numberInput(0),Z:numberInput(200),PITCH:numberInput(0),ROLL:numberInput(0),CLAW:numberInput(0),SECONDS:numberInput(2)}},{kind:'block',type:'lesson_coordinate_delta',inputs:{AMOUNT:numberInput(5),SECONDS:numberInput(1)}},{kind:'block',type:'lesson_pose',inputs:{SECONDS:numberInput(1.5)}},{kind:'block',type:'lesson_home'},{kind:'block',type:'lesson_move',inputs:{TARGET:numberInput(2128)}}]},
+      {kind:'category',name:'Motion',colour:'#2b6fa8',contents:[{kind:'block',type:'lesson_move',inputs:{TARGET:numberInput(2128)}},{kind:'block',type:'lesson_pose',inputs:{SECONDS:numberInput(1)}},{kind:'block',type:'lesson_home'}]},
       {kind:'category',name:'Control',colour:'#9b620d',contents:[{kind:'block',type:'lesson_wait',inputs:{SECONDS:numberInput(1)}},{kind:'block',type:'lesson_repeat',inputs:{COUNT:numberInput(2)}},{kind:'block',type:'controls_if',extraState:{hasElse:true},inputs:{IF0:{shadow:{type:'logic_boolean',fields:{BOOL:'TRUE'}}}}},{kind:'block',type:'lesson_comment'}]},
       {kind:'category',name:'Math',colour:'#5965a5',contents:[{kind:'block',type:'math_number'},{kind:'block',type:'math_arithmetic',inputs:{A:numberInput(0),B:numberInput(0)}},{kind:'block',type:'math_round',inputs:{NUM:numberInput(0)}}]},
       {kind:'category',name:'Logic',colour:'#3d7694',contents:[{kind:'block',type:'logic_compare',inputs:{A:numberInput(0),B:numberInput(0)}},{kind:'block',type:'logic_operation'},{kind:'block',type:'logic_negate'},{kind:'block',type:'logic_boolean'}]},
@@ -115,16 +113,12 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
             nodes.push({kind:'call',blockId,name:String(block.getFieldValue('NAME'))});break;
           }
           case 'lesson_move':nodes.push({kind:'move',blockId,servo:Number(block.getFieldValue('SERVO')),target:n('TARGET')});break;
-          case 'lesson_coordinates':nodes.push({kind:'coordinates',blockId,x:n('X'),y:n('Y'),z:n('Z'),pitch:n('PITCH'),roll:n('ROLL'),claw:n('CLAW'),durationMs:milliseconds(n('SECONDS'))});break;
-          case 'lesson_coordinate_delta':nodes.push({kind:'coordinateDelta',blockId,axis:block.getFieldValue('AXIS') as 'x'|'y'|'z',amount:n('AMOUNT'),durationMs:milliseconds(n('SECONDS'))});break;
           case 'lesson_wait':nodes.push({kind:'wait',blockId,durationMs:milliseconds(n('SECONDS'))});break;
           case 'lesson_repeat':nodes.push({kind:'repeat',blockId,count:n('COUNT'),body:chain(block.getInputTargetBlock('BODY'),depth+1)});break;
           case 'lesson_pose':{
             const pose=allPositions().find(pose=>pose.id===block!.getFieldValue('POSITION'));
             if(!pose)throw new ProgramError('A saved position is missing. Record it or choose another position in the block.',blockId);
-            if(pose.kind==='coordinates')nodes.push({kind:'coordinates',blockId,...pose.coordinates,durationMs:milliseconds(n('SECONDS'))});
-            else nodes.push({kind:'pose',blockId,positionId:pose.id,name:pose.name,positions:[...pose.positions],durationMs:milliseconds(n('SECONDS'))});
-            break;
+            nodes.push({kind:'pose',blockId,positionId:pose.id,name:pose.name,positions:[...pose.positions],durationMs:milliseconds(n('SECONDS'))});break;
           }
           case 'variables_set':case 'math_change':nodes.push({kind:block.type==='variables_set'?'set':'change',blockId,name:variableLabel(block),value:n(block.type==='variables_set'?'VALUE':'DELTA')});break;
           case 'controls_if':{
@@ -173,8 +167,6 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
           case 'comment':state={type:'lesson_comment',fields:{TEXT:node.text}};break;
           case 'call':state={type:'procedures_callnoreturn',extraState:{name:node.name}};break;
           case 'move':state={type:'lesson_move',fields:{SERVO:String(node.servo)},inputs:{TARGET:value(node.target)}};break;
-          case 'coordinates':state={type:'lesson_coordinates',inputs:{X:value(node.x),Y:value(node.y),Z:value(node.z),PITCH:value(node.pitch),ROLL:value(node.roll),CLAW:value(node.claw),SECONDS:value(seconds(node.durationMs))}};break;
-          case 'coordinateDelta':state={type:'lesson_coordinate_delta',fields:{AXIS:node.axis},inputs:{AMOUNT:value(node.amount),SECONDS:value(seconds(node.durationMs))}};break;
           case 'pose':state={type:'lesson_pose',fields:{POSITION:node.positionId},inputs:{SECONDS:value(seconds(node.durationMs??1000))}};break;
           case 'wait':state={type:'lesson_wait',inputs:{SECONDS:value(seconds(node.durationMs))}};break;
           case 'repeat':{const body=chain(node.body);state={type:'lesson_repeat',inputs:{COUNT:value(node.count),...(body?{BODY:{block:body}}:{})}};break;}
@@ -261,8 +253,6 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
       for(const space of [workspace,workspace.getFlyout()?.getWorkspace()])for(const block of space?.getAllBlocks(false)??[]){const field=block.getField('POSITION');if(field instanceof Blockly.FieldDropdown)field.getOptions(false);}
     },
     addJoint:()=>append('lesson_move',{}, {TARGET:numberInput(2128)}),
-    addCoordinates:()=>append('lesson_coordinates',{}, {X:numberInput(200),Y:numberInput(0),Z:numberInput(200),PITCH:numberInput(0),ROLL:numberInput(0),CLAW:numberInput(0),SECONDS:numberInput(2)}),
-    addCoordinateDelta:()=>append('lesson_coordinate_delta',{AXIS:'z'},{AMOUNT:numberInput(5),SECONDS:numberInput(1)}),
     addHome:()=>append('lesson_home'),
     addWait:()=>append('lesson_wait',{}, {SECONDS:numberInput(1)}),
     addComment:()=>append('lesson_comment'),

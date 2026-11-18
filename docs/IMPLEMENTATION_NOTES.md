@@ -1,118 +1,28 @@
-# Classroom programming development preview 0.7.0-dev.72
+# Classroom programming development preview 0.7.0-dev.73
 
-## Axis-specific coordinate increments
+## Return to joint-position programming
 
-Dev.72 replaces the early generic ±100 mm relative-motion guard with limits based
-on each axis's complete development input domain: **X ±550 mm, Y ±1100 mm, and
-Z ±1140 mm**. One shared validator is used by prepared Blockly programs and the
-controller API. The visible hand-jog control intentionally remains 1–25 mm.
+Dev.73 retires the dev.67–72 XYZ experiment from the active classroom and
+teacher-control interfaces. Motion now contains joint targets, saved six-joint
+positions and Home. Teaching again records the six measured joint positions,
+shows each value beside its accepted range, and turns an invalid joint card and
+the recording panel red. No XYZ/P/R/C values or axis-jog controls are displayed.
 
-These are instruction bounds, not permission to leave the coordinate domain. At
-movement time, the increment is added to fresh reported coordinates and the
-resulting absolute X/Y/Z/P/R/C target must still pass its ordinary input bounds,
-factory command-7 calculation and all six joint ranges. Speed caps, timed-frame
-extension, Stop and the physical cutoff are unchanged.
+Programs and browser working data containing XYZ blocks or coordinate positions
+are rejected rather than silently converted, clamped or moved. The established
+joint Blockly features, variables, keyboard events, My Blocks, comments,
+automatic files, Home-first Run, Stop/release and recovery workflow are retained.
+The temporary XYZ-only J4 allowance is removed; J4 returns to 1250–3000.
 
-Validation: TypeScript check, production build, all 411 unit tests and all 109
-browser checks pass. The browser regression executes `Z + 150 mm`, confirming
-that a value above the old generic cap reaches the calculation-first route and
-the existing timed joint executor.
+Passive coordinate packet decoding remains internal for diagnostics and
+historical research, but no classroom or setup control can issue command 7 or 8.
+The transport boundary continues to reject both coordinate commands.
 
-## Temporary J4 development allowance
-
-The endpoint-first `Z + 100 mm` calculation succeeded but proposed J4=3054,
-54 raw units beyond the prior development ceiling. With explicit operator
-approval for the single test robot, dev.71 changes only J4's shared development
-range from 1250–3000 to **1250–3100**. The Positions safety panel, recording,
-Blockly validation, direct controls and diagnostics all read this same constant.
-
-This is a temporary testing allowance, not a measured mechanical limit or a
-student safety policy. No servo configuration is written and the other five
-ranges are unchanged. Revisit protected limits after observing the movement.
-
-Validation: TypeScript check, production build, all 410 unit tests and all 109
-browser checks pass. The Z+100 regression uses the exact calculated J4=3054
-target and confirms the timed executor safely extends its one-second request to
-respect the unchanged 600 speed cap.
-
-## Endpoint-first coordinate calculations
-
-Dev.70 follows the operator's observation that three saved XYZ positions ran but
-a final `move Z by 100 mm` block failed at invented waypoint 2. Dev.68/69 executed
-only the final calculated joint pose, so rejecting an unused intermediate
-Cartesian calculation did not describe the physical movement actually sent.
-
-Absolute coordinate blocks, saved coordinate positions and X/Y/Z increments now
-send one calculation-only command 7 for their exact final XYZ/P/R/C destination.
-The returned six-joint solution must be present, nonzero and inside every existing
-operating range before movement. A valid solution runs through the unchanged
-smooth timed-pose executor. An all-zero reply now identifies the **final XYZ
-destination** as rejected and sends no joint movement. There is no automatic
-clamping, retry, command-8 fallback or intermediate Cartesian calculation.
-
-This policy matches the actual joint-space playback but does not establish a
-straight Cartesian tool path, collision clearance or obstruction protection.
-Space/Stop and the physical cutoff remain unchanged.
-
-Validation: TypeScript check, production build, all 410 unit tests and all 109
-browser checks pass. Coverage includes a 100 mm Z increment issuing exactly one
-final coordinate calculation and one six-joint timed pose.
-
-## Prominent joint-range feedback while teaching XYZ positions
-
-Dev.69 keeps XYZ/P/R/C as the primary teaching display and adds a dedicated live
-six-joint safety panel immediately below it. Every joint card shows the measured
-raw value and its accepted development range. If a joint is outside that range,
-its card and the complete safety panel turn red, the card says `OUTSIDE RANGE`,
-and both status areas identify the exact joint, value and range. Recording remains
-disabled through the existing capture policy. This is a visibility improvement;
-it changes no operating ranges, coordinate calculations or physical movement.
-
-Validation: TypeScript check, production build, all 410 unit tests and all 108
-browser checks pass, including simulated J4=3379 detection and recovery to range.
-
-## Smooth calculation-first XYZ playback
-
-Dev.68 corrects the jerky start-stop behavior observed during the first physical
-XYZ route. Dev.67 sent every 15 mm / 5 degree calculation point as a separate
-command-8 movement and then required final XYZ/P/R/C settlement. That made the
-firmware accelerate and decelerate repeatedly, and ordinary endpoint error could
-abort the program even after useful physical movement.
-
-This section records the superseded dev.68 behavior. Its calculation-first gate
-asked command 7 to calculate six joint targets without movement for sampled
-points along the requested route. Dev.70 replaces those samples with one exact
-endpoint calculation because playback itself is one joint-space pose.
-
-After preflight, the final accepted six-joint solution now runs through the same
-`TimedPoseMotion` executor used by reliable joint saved positions: all six targets
-are sent with individually calculated speeds, a 600 speed cap and acceleration
-10, and the operation advances after effective frame time. Calculation samples
-are not physical stop points. Command 8 is no longer used for route playback.
-This removes the deliberate stop between waypoints and avoids a settlement retry
-loop. A final passive coordinate difference is reported for diagnosis but does
-not fault, retry, or prevent the next program block.
-
-The Motion toolbox adds an absolute X/Y/Z/P/R/C block and a relative X, Y or Z
-increment block. Positions shows live X/Y/Z/P/R/C, offers 1â€“25 mm axis jogs, and
-records new named positions as coordinate measurements. Saved coordinate buttons
-and blocks use the same preflighted route. Older six-joint saved positions remain
-loadable and are labeled legacy; they are not silently converted. Program files
-continue to use format 6 and store both coordinate and legacy records.
-
-The final calculation establishes a bounded IK endpoint but does not define the
-physical interpolation. The actual movement is a smooth joint-space sweep to the
-accepted endpoint, not a guaranteed straight Cartesian tool path. Final passive
-feedback uses 8 mm X/Y/Z and 4 degree P/R/C tolerances only to describe endpoint
-error. These checks reduce configuration jumps and reject known joint-limit
-conflicts; they do not prove collision clearance, singularity avoidance, force
-limiting or certified stopping.
-Space/Stop retains the tested fast-hold, steady-feedback and release sequence.
-Initial hardware testing should begin at a clear known pose with one 5 mm jog.
-
-Validation: TypeScript check, production build, all 410 unit tests and all 108
-browser checks pass. Browser robot tests use mocked USB. Physical verification
-of the smoother XYZ sweep remains with the operator.
+Validation: TypeScript check, production build, all 407 unit tests and all 107
+browser checks pass. Coverage confirms joint-only teaching and recording, saved
+six-joint position playback, red out-of-range feedback, transactional rejection
+of old XYZ files, joint-only setup controls and zero commands merely from
+connecting. Browser hardware is mocked; no physical robot was commanded.
 
 ## Draft-capable program files
 
