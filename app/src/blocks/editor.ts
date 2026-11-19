@@ -55,6 +55,7 @@ export function createEditor(container:HTMLElement,getPositions:()=>NamedPositio
     this.setTooltip('All six targets advance on planned frame time. Exact arrival is not verified. Check the whole sweep.');
   }};
   const workspace=Blockly.inject(container,{
+    renderer:'zelos',
     media:`${import.meta.env.BASE_URL}blockly-media/`,sounds:false,
     grid:{spacing:20,length:1,colour:'#cad7e2',snap:false},
     toolbox:{kind:'categoryToolbox',contents:[
