@@ -5,6 +5,7 @@ import type {ReportedPose} from '../protocol/FrameParser';
 import { encodeFactoryHolding, encodeSpeedPosition, encodeSpeedPositions } from '../protocol/NexArmCodec';
 import {COORDINATE_EXECUTION_BLOCKED_REASON} from './CoordinateExecutionPolicy';
 import { ConcurrentHomeMotion } from './ConcurrentHomeMotion';
+import { MotionProgressWatchdog } from './MotionProgressWatchdog';
 import {TimedPoseMotion,timedPosePlan} from './TimedPoseMotion';
 import { ManualPositioning } from './ManualPositioning';
 import { SmoothTeacherMotion, smoothPlan, MOTION_SPEED, MOTION_ACCELERATION, HOME_SPEED, absoluteJointPlan, absolutePosePlan } from './SmoothTeacherMotion';
@@ -34,6 +35,7 @@ type HomeRecovery={generation:number;requestedAtMs:number;phase:'Restoring holdi
 export class TeacherRobotControl {
   private readonly connection: PassiveConnection;
   private readonly parser = new FrameParser();
+  private readonly watchdog = new MotionProgressWatchdog();
   private manual: ManualPositioning;
   private port: TeacherPort | null = null;
   private connectionState = 'Disconnected';
@@ -179,6 +181,7 @@ export class TeacherRobotControl {
       if (state === 'Listening') {
         this.connectedAt = this.now(); this.message = this.options.directSession?'Connected. Waiting for fresh stable position feedback.':'Connected. Positions are read-only until you enable controls.';
       } else {
+        this.watchdog.end('connection ended', this.now());
         this.cancelRecovery('Connection ended.');
         this.cancelStopRelease('Connection ended.');
         this.cancelStopHold('Connection ended before the stop hold could be submitted.');this.stopObservation=null;
@@ -312,6 +315,7 @@ export class TeacherRobotControl {
     const plan=timedPosePlan(this.positions!,target,durationMs);
     this.retain();this.faulted=false;this.liveTarget=null;this.lastLive=null;
     this.route=new TimedPoseMotion(this.positions!,this.now(),plan);this.operation=operation;
+    if (!this.recoveryActive) this.watchdog.begin(operation, plan.durationMs, this.now());
     this.route.start(this.positions!,this.now());this.message=`Timed pose: requested ${durationMs/1000}s, planned ${plan.durationMs/1000}s; maximum speed 600, acceleration 10.`;
     this.pump();this.changed();
   }
@@ -324,6 +328,7 @@ export class TeacherRobotControl {
     const poseProgram=operation==='Program'&&this.program?.steps[this.program.index-1]?.kind==='pose';
     this.route = operation==='Home'||operation==='Saved position'||poseProgram?new ConcurrentHomeMotion(this.positions!,this.now(),plan,operation==='Home'?'Home':'saved position'):new SmoothTeacherMotion(this.positions!, this.now(), plan,previousPath,false,operation==='Program'); this.operation = operation;
     if (this.route.phase === 'Complete') { this.message = this.route.message; this.changed(); return; }
+    if (!this.recoveryActive) this.watchdog.begin(operation, null, this.now());
     this.route.start(this.positions!, this.now());
     this.message = operation === 'Home' ? 'Returning to Teacher Home with all needed joints moving together.' : operation==='Saved position'?'Moving to saved position with all needed joints together.':operation==='Program'?'Running your Blockly program. Waiting for each move to settle.':'Jogging one joint. Wait for feedback before another click.';
     this.pump(); this.changed();
@@ -338,23 +343,43 @@ export class TeacherRobotControl {
       if(this.writeInFlight)return;
       const step=route.next(this.now());if(route.status().phase==='Fault'){this.fault(route.message);return;}
       if(step){if(!this.lastMovingServos.includes(step.servo))this.lastMovingServos.push(step.servo);if(!this.timedHoldServos.includes(step.servo))this.timedHoldServos.push(step.servo);const generation=this.generation;
-        this.write(encodeSpeedPosition(step.servo,step.target,step.speed,step.acceleration),()=>{route.written(this.now());this.checkRoute();setTimeout(()=>{if(this.route===route&&this.generation===generation)this.pump();},2);},false,2);
+        const record = this.observeDispatch([step], step.speed, step.acceleration);
+        this.write(encodeSpeedPosition(step.servo,step.target,step.speed,step.acceleration),()=>{record();route.written(this.now());this.checkRoute();setTimeout(()=>{if(this.route===route&&this.generation===generation)this.pump();},2);},false,2);
       }return;
     }
     if (this.writeInFlight || this.now() - this.lastCommandAt < (this.operation==='Slider'?this.sliderInterval:500)) return;
     if(route instanceof ConcurrentHomeMotion){
       const steps=route.nextBatch(this.now());
       if(route.status().phase==='Fault'){this.fault(route.message);return;}
-      if(steps){this.lastMovingServos=steps.map(step=>step.servo);this.write(encodeSpeedPositions(steps,route.speed,route.acceleration),()=>{route.written(this.now());this.checkRoute();});}
+      if(steps){
+        this.lastMovingServos=steps.map(step=>step.servo);
+        const record = this.observeDispatch(steps, route.speed, route.acceleration);
+        this.write(encodeSpeedPositions(steps,route.speed,route.acceleration),()=>{record();route.written(this.now());this.checkRoute();});
+      }
       return;
     }
     const step = route.next(this.now());
     if (route.status().phase === 'Fault') { this.fault(route.message); return; }
-    if (step) { this.lastMovingServos=[step.servo]; this.write(encodeSpeedPosition(step.servo, step.target, route.speed, route.acceleration), () => {
-      route.written(this.now()); this.checkRoute();
+    if (step) { this.lastMovingServos=[step.servo];
+      const record = this.observeDispatch([step], route.speed, route.acceleration);
+      this.write(encodeSpeedPosition(step.servo, step.target, route.speed, route.acceleration), () => {
+      record(); route.written(this.now()); this.checkRoute();
     },false,this.operation==='Slider'?this.sliderInterval:500); }
   }
+  private observeDispatch(steps: readonly {servo: number; target: number}[], speed: number, acceleration: number) {
+    const submittedAtMs = this.now();
+    const before = this.positions!;
+    const route = this.route;
+    return () => {
+      if (route !== this.route || route?.phase !== 'Running') return;
+      const writtenAtMs = this.now();
+      for (const {servo, target} of steps) {
+        this.watchdog.written({servo, target, from: before[servo - 1]!, speed, acceleration, submittedAtMs, writtenAtMs});
+      }
+    };
+  }
   private checkRoute() {
+    if (this.route && !this.route.activeRun) this.watchdog.end(this.route.phase, this.now());
     if (this.route?.phase === 'Fault') { this.fault(this.route.message); return; }
     if (this.route?.phase === 'Settled short'){this.lastMovingServos=[];this.message=this.route.message;}
     if (this.route?.phase === 'Complete') {
@@ -446,6 +471,7 @@ export class TeacherRobotControl {
       const release=this.stopRelease;
       if(release?.phase==='Waiting for steady readings'&&at>(release.hold.finishedAtMs??Infinity))release.samples=[...release.samples,{atMs:at,positions:[...positions]}].slice(-3);
       if (this.route?.phase === 'Running') {
+        this.watchdog.observe(positions, at);
         this.route.observe(positions, at);
         const phase = this.route.status().phase;
         if (phase === 'Fault' || phase === 'Complete' || phase === 'Settled short') this.checkRoute();
@@ -482,6 +508,7 @@ export class TeacherRobotControl {
     if (this.route) this.history = [...this.history, {operation: this.operation, at: new Date().toISOString(), result: this.route.report()}].slice(-100);
   }
   private fault(message: string) {
+    this.watchdog.end('fault', this.now());
     this.readySamples=[];
     this.cancelRecovery(message,'Fault');
     this.cancelStopRelease(message,'Fault');
@@ -545,6 +572,7 @@ export class TeacherRobotControl {
   // selects stopThenRelease; disconnect/hidden-page/error paths never do.
   stop(){this.cancelRecovery('Recovery canceled.');this.cancelStopRelease('Control session canceled.');this.requestStop(false);}
   private requestStop(holdAllJoints:boolean) {
+    this.watchdog.end('stopped', this.now());
     this.readySamples=[];
     this.recordEvent('stop','Stop requested. No torque-off command is requested.');
     if(this.pendingStop){if(holdAllJoints)this.pendingStop.diagnostic.servos=[1,2,3,4,5,6];this.flushStopHold();this.changed();return;}
@@ -686,6 +714,7 @@ export class TeacherRobotControl {
     return {format: 'nexarm-teacher-control-session', schemaVersion: 1, capturedAt: new Date().toISOString(),
       operatingRanges:{source:'Operator-provided factory-software ranges, adjusted during development; 2026-10-23',protectedStudentPolicy:false,joints:OPERATING_RANGES.map((range,i)=>({servo:i+1,...range}))},
       diagnostics:{clock:'page monotonic milliseconds',state:this.connectionState,message:this.message,feedbackAgeMs:Number.isFinite(this.receivedAt)?this.now()-this.receivedAt:null,
+        motionProgressWatchdog: this.watchdog.report(this.now()),
         stopping:{speed:STOP_SPEED,acceleration:STOP_ACCELERATION,physicalStoppingVerified:false,pending:!!this.pendingStop,attempts:this.stops.map(stop=>({...stop,servos:[...stop.servos],targets:stop.targets?[...stop.targets]:null,feedback:stop.feedback.map(sample=>({...sample,positions:[...sample.positions]}))}))},
         stopThenRelease:this.stopRelease?{requestedAtMs:this.stopRelease.requestedAtMs,phase:this.stopRelease.phase,message:this.stopRelease.message,holdRequestedAtMs:this.stopRelease.hold.requestedAtMs,holdWriteFinishedAtMs:this.stopRelease.hold.finishedAtMs,releaseSubmittedAtMs:this.stopRelease.releaseSubmittedAtMs,releaseFinishedAtMs:this.stopRelease.releaseFinishedAtMs,releasePolicy:'post-hold-steady-feedback',physicalStoppingVerified:false,physicalReleaseVerified:false,samples:this.stopRelease.samples.map(sample=>({...sample,positions:[...sample.positions]}))}:null,
         homeRecovery:this.recovery?{requestedAtMs:this.recovery.requestedAtMs,phase:this.recovery.phase,message:this.recovery.message,homeTolerance:PROGRAM_HOME_TOLERANCE,routeClearanceVerified:false,physicalHoldingVerified:false}:null,

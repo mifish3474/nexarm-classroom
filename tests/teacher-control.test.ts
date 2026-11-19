@@ -45,6 +45,54 @@ const dispatchPose=async(f:ReturnType<typeof fixture>,positions:readonly number[
   for(let i=0;i<5;i++){await f.feed(f.time()+2,positions);f.control.tick();await flush();}
 };
 
+describe('observation-only motion diagnostics',()=>{
+ it('exports a would-stop observation while a saved pose finishes with exactly its six original writes', async () => {
+   const f = fixture({directSession:true});
+   await f.ready();
+   const target = [...TEACHER_HOME];
+   target[2] = 2500;
+   f.control.moveToPosition(target, 2000);
+   await flush();
+   await dispatchPose(f);
+   for (let at = 1200; at <= 3200; at += 100) { await f.feed(at); f.control.tick(); }
+   const trace = f.control.report().diagnostics.motionProgressWatchdog.traces[0]!;
+   expect(trace).toMatchObject({operation:'Saved position', outcome:'Complete', frameMs:2000});
+   expect(trace.commands.map(c => c.target)).toEqual(target);
+   expect(trace.analysis[2]!.findings).toEqual([expect.objectContaining({kind:'stall', wouldStop:true})]);
+   expect(f.writes).toHaveLength(6);
+   expect(f.control.snapshot().faulted).toBe(false);
+   f.control.disconnect(); await flush();
+ });
+ it('ends capture on Stop while a write is pending and ignores its late completion', async () => {
+   const f = fixture({directSession:true, hangWrites:[1]});
+   await f.ready();
+   f.control.runProgram([{kind:'move', servo:1, target:2400, blockId:'test'}]);
+   await flush();
+   await f.feed(1200);
+   f.control.stop();
+   f.finish(); await flush();
+   await f.window(1300);
+   expect(f.control.report().diagnostics.motionProgressWatchdog.traces).toMatchObject([
+     {outcome:'stopped', commands:[], samples:[], analysis:[]},
+   ]);
+   f.control.disconnect(); await flush();
+ });
+ it('records a feedback gap when only weak position frames arrive before the existing timeout', async () => {
+   const f = fixture({directSession:true});
+   await f.ready();
+   f.control.runProgram([{kind:'move', servo:1, target:2400, blockId:'test'}]);
+   await flush();
+   await f.feed(1700, TEACHER_HOME, true);
+   f.setTime(2800); f.control.tick();
+   const [trace] = f.control.report().diagnostics.motionProgressWatchdog.traces;
+   expect(trace).toMatchObject({samples:[], outcome:'fault', analysis:[
+     {servo:1, findings:[{kind:'feedback-gap', wouldStop:false}]},
+   ]});
+   expect(f.writes).toHaveLength(1);
+   f.control.disconnect(); await flush();
+ });
+});
+
 describe('Home-once keyboard control sessions',()=>{
  it('requires explicit startup, continues from the current pose, and revokes continuation on Stop',async()=>{
   const f=fixture({directSession:true,homeBeforeProgram:true});await f.ready();

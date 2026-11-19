@@ -1,4 +1,34 @@
-# Classroom programming development preview 0.7.0-dev.73
+# Classroom programming development preview 0.7.0-dev.74
+
+## Motion watchdog baseline collection (safety branch)
+
+In the local app, check the header for dev.74. Run a familiar, unobstructed
+joint or saved-position program in the usual hands-clear workspace. After it
+finishes, open **Robot → Robot readings and diagnostics → Export robot
+diagnostics**. Export before reloading or closing the page. An ordinary run is
+sufficient for this baseline. Avoid restraining a joint or creating an obstruction.
+
+The local JSON contains `diagnostics.motionProgressWatchdog`. The observer
+retains the latest 64 motion traces in memory and up to 512 measured poses
+per trace. Each command includes its starting reading, target, speed,
+acceleration and browser submission/write-completion times. The export includes
+the actual joint readings with timestamps and the provisional rule settings.
+Elapsed times use the page's clock. A completed browser write records delivery
+to the stream. The dedicated Restore & Return Home recovery and Stop sequences
+are outside the capture scope.
+
+Export analyzes each joint after its own completed write. It allows 250 ms
+for startup, evaluates two consecutive windows of at least 300 ms and three
+distinct sample times each, and lengthens the window for slow commands.
+An approaching joint that comes within 40 units or crosses the target finishes
+the progress check for that command. A feedback gap over 500 ms breaks the
+pattern. These starting values are for comparison against normal runs on the
+development arm. Short moves may have too few samples to assess.
+
+The `findings` in each joint's analysis identify stalls, travel away from the
+target, and gaps in readings. `wouldStop` marks a provisional J1–J5 motion
+finding for review. All J6 findings are observations because a normal grasp
+can stop short. The observer has no motion or holding controls.
 
 ## Return to joint-position programming
 
