@@ -70,6 +70,51 @@ async function loadKeys(page:Page,keyEvents:unknown[],instructions:unknown[]=[])
 async function loadProject(page:Page,project:object){await page.locator('#program-file').setInputFiles({name:'fixture.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({format:'nexarm-classroom-program',schemaVersion:4,...project}))});await expect(page.locator('#program-file-status')).toContainText('loaded for review');}
 const projectPose=(id:string,name:string)=>({id,name,positions:[2050,2150,2100,2200,2000,1080],capturedAt:'2026-10-28T12:00:00.000Z'});
 
+test('a calculated J4 target highlights its move and blocks even startup Home', async ({page}) => {
+  await station(page);
+  await loadProject(page, {
+    instructions: [{kind:'move', blockId:'first', servo:1, target:2130}],
+    keyEvents: [{key:'a', blockId:'event', body:[{kind:'call', blockId:'call', name:'Lift'}]}],
+    functions: [{name:'Lift', blockId:'lift', body:[{
+      kind:'move', blockId:'wrist', servo:4, target:{kind:'arithmetic', op:'ADD', left:3000, right:1},
+    }]}],
+    operatingRanges: [{servo:4, min:0, max:4095}],
+  });
+  await connect(page);
+  await clickControl(page, 'Restore & Return Home');
+  await page.clock.runFor(400);
+  await expect(page.locator('#state')).toHaveText('Ready at Home');
+  await moveReportedPose(page);
+  await clickControl(page, 'Run program');
+  await expect(page.locator('#run-status')).toContainText('J4 target 3001 is outside its operating range 1250–3000');
+  await expect(page.locator('#state')).toHaveText('Check block');
+  await expect(page.locator('[data-id="wrist"].blocklyHighlighted')).toBeVisible();
+  await page.clock.runFor(1000);
+  expect(await writes(page)).toHaveLength(0);
+});
+
+test('the two-pass disk routine sends every recorded joint target in order', async ({page}) => {
+  const targets = [
+    [1926,1626,2854,2634,2116,1080], [1911,1102,2814,2818,2010,1080],
+    [1918,1102,2813,2819,1997,1514], [1989,1761,2837,2819,1997,1514],
+    [2960,1733,2836,2819,1997,1514], [2954,1091,2840,2818,1997,1514],
+    [2958,1091,2840,2818,1996,1049], [1955,1939,2089,1987,1997,1049],
+  ];
+  const body = targets.map((positions, i) => ({
+    kind:'pose', positionId:`pose-${i}`, name:`Disk pose ${i+1}`, blockId:`move-${i}`, positions, durationMs:2000,
+  }));
+  await station(page);
+  await loadProject(page, {instructions:[{kind:'repeat', blockId:'repeat', count:2, body}], keyEvents:[]});
+  await connect(page);
+  await clickControl(page, 'Run program');
+  await expect(page.locator('#state')).toHaveText('Running');
+  await page.clock.runFor(38000);
+  await expect(page.locator('#state')).toHaveText('Completed');
+  const commands = (await writes(page)).map(packet => [packet[2], packet[7]! + 256 * packet[8]!]);
+  const expected = targets.flatMap(pose => pose.map((value, i) => [i+1, value]));
+  expect(commands).toEqual([...expected, ...expected]);
+});
+
 test('Motion Home block saves without a named position and returns all joints together after a joint move',async({page})=>{
  await station(page);await page.getByRole('treeitem',{name:'Motion',exact:true}).click();await expect(page.locator('.blocklyFlyout').getByText('move to Home',{exact:true})).toBeVisible();
  await dragBlock(page,'Motion','move joint');await dragBlock(page,'Motion','move to Home');

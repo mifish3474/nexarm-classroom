@@ -8,6 +8,7 @@ import { TeacherRobotControl } from './safety/TeacherRobotControl';
 import type { TeacherPort } from './safety/TeacherRobotControl';
 import {createTeachingPanel} from './poses/TeachingPanel';
 import {OPERATING_RANGES,assertPoseTargets,assertJointTarget} from './safety/OperatingRanges';
+import {assertProgramTargets} from './safety/ProgramTargets';
 import {ProgramError,UninitializedVariableError,copyVariableValues} from './runtime/ProgramLanguage';
 import type {Instruction,FunctionDefinition,VariableValues} from './runtime/ProgramLanguage';
 import {saveWorkspaceProjectFile,loadProjectFile,MAX_PROGRAM_FILE_BYTES} from './runtime/ProgramFile';
@@ -34,7 +35,7 @@ let interfaceErrorBlock:string|null=null;
 let plan:PlannedStep[]=[];
 const robotMode=()=>true;
 const teaching=createTeachingPanel(()=>control);
-element('operating-ranges').textContent=`Current operating ranges: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join('; ')}. J6: 1024 = open. These are operator-provided development ranges; protected student policy comes later.`;
+element('operating-ranges').textContent=`Allowed joint targets: ${OPERATING_RANGES.map((range,i)=>`J${i+1} ${range.min}–${range.max}`).join(', ')}. J6 opens at 1024. Run checks your targets before moving the robot.`;
 const editor=createEditor(element('blockly-editor'),()=>teaching.list(),positions=>teaching.replacePositions(positions));
 const projectTitle=element<HTMLInputElement>('project-name');
 const programFile=element<HTMLInputElement>('program-file'),fileStatus=element('program-file-status'),fileSaveState=element('file-save-state');
@@ -162,6 +163,8 @@ function refresh(){
   if(robot?.stopRelease?.active)element('state').textContent=robot.stopRelease.phase;
   if(live&&robot?.operation==='Saved position'&&robot.connectionState==='Listening'&&robot.manualPhase==='Normal')element('state').textContent=robot.home?.phase??state;
   if(keyEvents.active&&!busy)element('state').textContent='Keys active';
+  const blockedBlock=interfaceError&&interfaceErrorBlock&&!busy&&!stopRequested&&robot?.canMove;
+  if(blockedBlock)element('state').textContent='Check block';
   let activity=preparing?'Checking your program…':loadingProgram?'Loading program for review…':robot?.program?.message??readiness;
   if(!preparing&&!loadingProgram){
     if(!busy&&robot&&!robot.canMove&&!robot.faulted)activity=readiness;
@@ -171,7 +174,7 @@ function refresh(){
   }
   if(keyEvents.active&&!busy&&robot?.canMove)activity=`Listening for keys: ${[...keyHandlers.keys()].map(keyLabel).join(', ')}. Space or Stop ends keyboard events.`;
   if(interfaceError)activity=interfaceError;
-  if(robot?.recovery&&robot.operation==='Home'&&robot.connectionState==='Listening')activity=robot.recovery.message;
+  if(robot?.recovery&&robot.operation==='Home'&&robot.connectionState==='Listening'&&!blockedBlock)activity=robot.recovery.message;
   if(stopRequested&&robot?.connectionState==='Listening')activity=robot.message;
   if(status.textContent!==activity)status.textContent=activity;
   const keyControl=element('keyboard-control');
@@ -211,12 +214,6 @@ document.addEventListener('add-position-to-code',event=>{
   catch(error){interfaceError=error instanceof Error?error.message:'Could not add block.';refresh();}
 });
 function cancel(stopRobot=true,releaseHolding=false){endKeyEvents();session++;runner.cancel();preparing=loadingProgram=false;if(stopRobot){stopRequested=true;if(releaseHolding)control?.stopThenRelease();else control?.stop();}refresh();}
-function validateTargets(result:PreparedProgram){
-  for(const step of result.steps){
-    try{if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
-    catch(error){throw new ProgramError(error instanceof Error?error.message:'Invalid target.',step.blockId);}
-  }
-}
 function validateLiteralTargets(nodes:Instruction[]){
   for(const node of nodes){
     try{
@@ -242,13 +239,13 @@ async function prepareProgram(){
     for(const nodes of [instructions,...project.keyEvents.map(handler=>handler.body),...(project.functions??[]).map(fn=>fn.body)])validateLiteralTargets(nodes);
     const result=await runner.prepare(instructions,project.keyEvents.some(handler=>handler.body.length>0),project.functions);
     if(ownSession!==session)return;
-    validateTargets(result);
+    assertProgramTargets(result.steps);
     // Validate every enabled key stack before any startup Home/movement write.
     for(const handler of project.keyEvents){
       if(!handler.body.length)continue;
       try{
         const preview=await runner.prepare(handler.body,true,project.functions,result.variables);if(ownSession!==session)return;
-        validateTargets(preview);handlers.set(handler.key,{handler,result:preview,deferred:null});
+        assertProgramTargets(preview.steps);handlers.set(handler.key,{handler,result:preview,deferred:null});
       }catch(error){
         if(ownSession!==session)return;
         if(!(error instanceof UninitializedVariableError))throw error;
@@ -256,7 +253,7 @@ async function prepareProgram(){
       }
     }
     if(ownSession!==session||live!==robotMode())return;
-    validateTargets(result);preparing=false;plan=result.steps;
+    preparing=false;plan=result.steps;
     if(!control||!control.snapshot().canMove)throw Error(control?.snapshot().reason??'Connect the robot first.');
     if(handlers.size){
       keyHandlers=handlers;keySession={functions:project.functions??[],variables:[],pendingVariables:result.variables,starting:true};
@@ -347,7 +344,7 @@ window.addEventListener('keydown',async event=>{
     const result=await runner.prepare(binding.handler.body,true,activeSession.functions,activeSession.variables);
     if(ownSession!==session||keySession!==activeSession||!keyEvents.active)return;
     if(document.hidden||!document.hasFocus()){endKeyEvents('Keyboard preparation canceled after focus was lost. Run program to listen again.');refresh();return;}
-    validateTargets(result);
+    assertProgramTargets(result.steps);
     preparing=eventPreparation=false;
     interfaceError='';interfaceErrorBlock=null;plan=result.steps;
     activeSession.pendingVariables=result.variables;

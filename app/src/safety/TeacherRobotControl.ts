@@ -15,6 +15,7 @@ import type {PlannedStep} from '../runtime/instructions';
 
 import { TEACHER_HOME } from './TeacherControlPlan';
 import {assertJointTarget,assertPoseTargets,OPERATING_RANGES,poseIssues} from './OperatingRanges';
+import {assertProgramTargets} from './ProgramTargets';
 
 export interface TeacherPort extends ReadOnlyPort { readonly writable: WritableStream<Uint8Array> | null; }
 type Operation = 'Jog' | 'Home' | 'Saved position' | 'Servo 3 factory comparison' | 'Slider' | 'Program';
@@ -82,7 +83,7 @@ export class TeacherRobotControl {
   private liveTarget:SliderTarget|null=null;
   private lastLive:SliderTarget|null=null;
   private sliderInterval=500;
-  private program:{steps:PlannedStep[];keyboardSession:boolean;startup:'Home pending'|'Returning Home'|'Running blocks';homeVerifyUntil:number|null;speed:number;acceleration:number;stationLimitsEnforced:false;index:number;at:number;waitUntil:number|null;motionIntervalMs:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
+  private program:{steps:PlannedStep[];keyboardSession:boolean;startup:'Home pending'|'Returning Home'|'Running blocks';homeVerifyUntil:number|null;speed:number;acceleration:number;jointTargetLimitsEnforced:true;index:number;at:number;waitUntil:number|null;motionIntervalMs:number;phase:'Running'|'Completed'|'Stopped'|'Fault';message:string}|null=null;
   cancelKeyboardSession(){if(this.program)this.program.keyboardSession=false;}
   private cancelProgram(phase:'Stopped'|'Fault',message:string){this.cancelKeyboardSession();if(this.program?.phase==='Running'){this.program.phase=phase;this.program.message=message;}}
   runProgram(instructions:unknown){
@@ -95,14 +96,11 @@ export class TeacherRobotControl {
   }
   private beginProgram(instructions:unknown,keyboard:'startup'|'event'|null){
     const reason=this.movementReason();if(reason)throw Error(reason);
-    // Development testing only. The bounded language validates IDs and raw
-    // encoding values; protected robot-specific limits are a student-release gate.
     const steps=evaluateProgram(instructions,{allowNoMotion:keyboard!==null}).steps;
-    // Validate the entire program before the first write, including later poses.
-    for(const step of steps){if(step.kind==='pose')assertPoseTargets(step.positions,`Saved position "${step.name}"`);else if(step.kind!=='wait')assertJointTarget(step.servo,step.target);}
+    assertProgramTargets(steps);
     this.recovery=null;this.stopObservation=null;this.liveTarget=null;this.lastLive=null;this.retain();this.route=null;this.operation='Program';
     this.faulted=false;
-    this.program={steps,keyboardSession:keyboard!==null,startup:keyboard==='event'||keyboard===null&&this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,stationLimitsEnforced:false,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:keyboard==='event'?'Running key event from the current pose.':'Preparing Home-first program.'};
+    this.program={steps,keyboardSession:keyboard!==null,startup:keyboard==='event'||keyboard===null&&this.options.homeBeforeProgram===false?'Running blocks':'Home pending',homeVerifyUntil:null,speed:PROGRAM_SPEED,acceleration:PROGRAM_ACCELERATION,jointTargetLimitsEnforced:true,index:0,at:this.now(),waitUntil:null,motionIntervalMs:500,phase:'Running',message:keyboard==='event'?'Running key event from the current pose.':'Preparing Home-first program.'};
     this.recordEvent(keyboard==='event'?'keyboard-event':'program-start',keyboard==='event'?'Key event targets checked. Continuing from the current pose without returning Home.':'Starting a new Home-first program session.');
     this.advanceProgram();this.changed();
   }

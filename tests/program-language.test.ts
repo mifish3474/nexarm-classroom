@@ -49,7 +49,8 @@ describe('numeric variables and conditions',()=>{
     const result=evaluateProgram([set('pause',arithmetic('ADD',.1,.2)),move({kind:'round',op:'ROUNDUP',value:arithmetic('DIVIDE',4201,2)}),wait(arithmetic('MULTIPLY',variable('pause'),1000))]);
     expect(result.steps).toEqual([{blockId:'move',servo:1,target:2101},{kind:'wait',blockId:'pause',durationMs:300}]);
     expect(()=>evaluateProgram([wait(arithmetic('MULTIPLY',.25,1000))])).toThrow('tenth-second');
-    expect(()=>evaluateProgram([move(arithmetic('DIVIDE',4201,2))])).toThrow('whole-number');
+    expect(()=>evaluateProgram([move(arithmetic('DIVIDE',4201,2))])).toThrow('J1 target 2100.5 is invalid. Choose a whole-number target in its operating range 900–3000.');
+    expect(()=>copyInstructions([{kind:'move',blockId:'wrist',servo:4,target:4096}])).toThrow('J4 target 4096 is invalid. Choose a whole-number target in its operating range 1250–3000.');
   });
   it('identifies the failing block for divide-by-zero, nonfinite calculations and invalid computed counts',()=>{
     for(const input of [[move(arithmetic('DIVIDE',1,0))],[move(arithmetic('POWER',10,1000))],[{kind:'repeat',blockId:'bad-repeat',count:arithmetic('ADD',20,1),body:[wait()]}]]){

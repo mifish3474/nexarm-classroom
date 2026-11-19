@@ -617,7 +617,7 @@ describe('smooth teacher controls',()=>{
  const f=fixture({stored:new Map([['nexarm.classroom-profile.v1','invalid obsolete setup']])});await f.ready();f.control.enable(true);
  f.control.runProgram([{kind:'move',blockId:'x',servo:1,target:3000}]);await flush();
  const packet=f.writes[0]!.bytes;expect(packet[7]!+256*packet[8]!).toBe(3000);expect(packet.slice(11,13)).toEqual([88,2]);
- expect(f.control.report().program?.stationLimitsEnforced).toBe(false);f.control.disconnect();await flush();
+ expect(f.control.report().program?.jointTargetLimitsEnforced).toBe(true);f.control.disconnect();await flush();
  });
  it('Stop cancels the program, holds the active joint and requires no teacher to re-enable',async()=>{
  const f=fixture();await f.ready();f.control.enable(true);f.control.runProgram(program);await flush();f.control.stop();await flush();

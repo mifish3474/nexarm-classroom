@@ -1,5 +1,6 @@
 import type {SimulationStep} from '../simulation/RobotSimulator';
 import {TEACHER_HOME} from '../safety/TeacherControlPlan';
+import {OPERATING_RANGES} from '../safety/OperatingRanges';
 
 export const XYZ_REMOVED_MESSAGE='XYZ coordinate blocks are no longer supported. Replace them with joint moves or saved joint positions.';
 export type Numeric = number
@@ -37,6 +38,11 @@ export function variableName(value:unknown):string{
 function finite(value:number):number{
   if(!Number.isFinite(value)||Math.abs(value)>Number.MAX_SAFE_INTEGER)throw Error('A calculation is not a finite, usable number. Check its inputs.');
   return value;
+}
+function checkRawJointTarget(servo:number, target:number) {
+  if (Number.isInteger(target) && target >= 0 && target <= 4095) return;
+  const range = OPERATING_RANGES[servo - 1]!;
+  throw Error(`J${servo} target ${target} is invalid. Choose a whole-number target in its operating range ${range.min}–${range.max}.`);
 }
 export function copyVariableValues(input:unknown=[]):VariableValues{
   if(!Array.isArray(input)||input.length>32)throw Error('Use at most 32 session variables.');
@@ -107,7 +113,8 @@ export function copyInstructions(input:unknown,uniqueIds=false):Instruction[]{
           case 'coordinates':throw Error(XYZ_REMOVED_MESSAGE);
           case 'move':{
             const target=numeric(node.target,depth+1);
-            if(typeof node.servo!=='number'||!Number.isInteger(node.servo)||node.servo<1||node.servo>6||typeof target==='number'&&(!Number.isInteger(target)||target<0||target>4095))throw Error('Choose a joint from 1–6 and an integer target from 0–4095.');
+            if(typeof node.servo!=='number'||!Number.isInteger(node.servo)||node.servo<1||node.servo>6)throw Error('Choose a joint from 1 to 6.');
+            if(typeof target==='number')checkRawJointTarget(node.servo,target);
             return {kind:'move',blockId,servo:node.servo,target};
           }
           case 'pose':{
@@ -193,7 +200,7 @@ export function evaluateProgram(input:unknown,options:{allowNoMotion?:boolean;fu
             for(let i=0;i<count;i++)walk(node.body);break;
           }
           case 'move':{
-            const target=numeric(node.target);if(!Number.isInteger(target)||target<0||target>4095)throw Error(`Joint ${node.servo} needs a whole-number target from 0–4095. Use a rounding block if needed.`);
+            const target=numeric(node.target);checkRawJointTarget(node.servo,target);
             push({servo:node.servo as 1|2|3|4|5|6,target,blockId:node.blockId});break;
           }
           case 'wait':push({kind:'wait',durationMs:duration(node.durationMs,0),blockId:node.blockId});break;

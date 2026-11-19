@@ -1,8 +1,22 @@
-# Classroom programming development preview 0.7.0-dev.74
+# Classroom programming development preview 0.7.0-dev.75
+
+## Joint target checks on the safety branch
+
+The classroom editor and robot controller now use the same check on a prepared
+program. Run checks the startup stack and each keyboard stack it can evaluate
+before returning Home. Every keypress checks its targets again using the current
+variables. Errors identify the move block, joint, requested value and allowed
+range. A rejected move displays **Check block** even after a successful Return
+Home. The ranges also apply to saved positions loaded from files.
+
+Program diagnostics identify this check as `jointTargetLimitsEnforced`.
+These limits apply to requested destinations. An in-range destination can
+still have an obstruction along the way. Motion-progress reporting remains
+observation-only.
 
 ## Motion watchdog baseline collection (safety branch)
 
-In the local app, check the header for dev.74. Run a familiar, unobstructed
+Run a familiar, unobstructed
 joint or saved-position program in the usual hands-clear workspace. After it
 finishes, open **Robot → Robot readings and diagnostics → Export robot
 diagnostics**. Export before reloading or closing the page. An ordinary run is
