@@ -1,0 +1,227 @@
+{
+  "format": "nexarm-classroom-program",
+  "schemaVersion": 6,
+  "instructions": [
+    {
+      "kind": "repeat",
+      "blockId": "two-passes",
+      "count": 2,
+      "body": [
+        {
+          "kind": "pose",
+          "blockId": "above-out",
+          "positionId": "above",
+          "name": "above disk",
+          "positions": [
+            1926,
+            1626,
+            2854,
+            2634,
+            2116,
+            1080
+          ],
+          "durationMs": 2000
+        },
+        {
+          "kind": "pose",
+          "blockId": "around",
+          "positionId": "around",
+          "name": "around disk",
+          "positions": [
+            1911,
+            1102,
+            2814,
+            2818,
+            2010,
+            1080
+          ],
+          "durationMs": 2000
+        },
+        {
+          "kind": "pose",
+          "blockId": "above-back",
+          "positionId": "above",
+          "name": "above disk",
+          "positions": [
+            1926,
+            1626,
+            2854,
+            2634,
+            2116,
+            1080
+          ],
+          "durationMs": 2000
+        },
+        {
+          "kind": "pose",
+          "blockId": "home-pose",
+          "positionId": "home-reference",
+          "name": "Home pose 2s",
+          "positions": [
+            2050,
+            2150,
+            2100,
+            2200,
+            2000,
+            1080
+          ],
+          "durationMs": 2000
+        }
+      ]
+    }
+  ],
+  "keyEvents": [],
+  "name": "Direction changes 2s",
+  "positions": [
+    {
+      "id": "above",
+      "name": "above disk",
+      "positions": [
+        1926,
+        1626,
+        2854,
+        2634,
+        2116,
+        1080
+      ],
+      "capturedAt": "1970-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "around",
+      "name": "around disk",
+      "positions": [
+        1911,
+        1102,
+        2814,
+        2818,
+        2010,
+        1080
+      ],
+      "capturedAt": "1970-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "home-reference",
+      "name": "Home pose 2s",
+      "positions": [
+        2050,
+        2150,
+        2100,
+        2200,
+        2000,
+        1080
+      ],
+      "capturedAt": "1970-01-01T00:00:00.000Z"
+    }
+  ],
+  "workspace": {
+    "blocks": {
+      "languageVersion": 0,
+      "blocks": [
+        {
+          "type": "lesson_start",
+          "id": "5+B}/7xSbfgs~I.c5K0x",
+          "x": 20,
+          "y": 24,
+          "deletable": false,
+          "next": {
+            "block": {
+              "type": "lesson_repeat",
+              "id": "two-passes",
+              "inputs": {
+                "COUNT": {
+                  "shadow": {
+                    "type": "math_number",
+                    "id": ";{uP:0}z7FW_CKi0|Hid",
+                    "fields": {
+                      "NUM": 2
+                    }
+                  }
+                },
+                "BODY": {
+                  "block": {
+                    "type": "lesson_pose",
+                    "id": "above-out",
+                    "fields": {
+                      "POSITION": "above"
+                    },
+                    "inputs": {
+                      "SECONDS": {
+                        "shadow": {
+                          "type": "math_number",
+                          "id": "$LkgHJ0^`p3Oo#4zD{u.",
+                          "fields": {
+                            "NUM": 2
+                          }
+                        }
+                      }
+                    },
+                    "next": {
+                      "block": {
+                        "type": "lesson_pose",
+                        "id": "around",
+                        "fields": {
+                          "POSITION": "around"
+                        },
+                        "inputs": {
+                          "SECONDS": {
+                            "shadow": {
+                              "type": "math_number",
+                              "id": "De;JO6N9%x0z|4$@/wts",
+                              "fields": {
+                                "NUM": 2
+                              }
+                            }
+                          }
+                        },
+                        "next": {
+                          "block": {
+                            "type": "lesson_pose",
+                            "id": "above-back",
+                            "fields": {
+                              "POSITION": "above"
+                            },
+                            "inputs": {
+                              "SECONDS": {
+                                "shadow": {
+                                  "type": "math_number",
+                                  "id": "NU@nT::yf2cT[;C!T9S4",
+                                  "fields": {
+                                    "NUM": 2
+                                  }
+                                }
+                              }
+                            },
+                            "next": {
+                              "block": {
+                                "type": "lesson_pose",
+                                "id": "home-pose",
+                                "fields": {
+                                  "POSITION": "home-reference"
+                                },
+                                "inputs": {
+                                  "SECONDS": {
+                                    "shadow": {
+                                      "type": "math_number",
+                                      "id": "zm]M6Rj.I18dYm3)*T{b",
+                                      "fields": {
+                                        "NUM": 2
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
